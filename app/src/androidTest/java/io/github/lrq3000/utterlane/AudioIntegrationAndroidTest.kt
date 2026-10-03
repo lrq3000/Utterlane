@@ -46,7 +46,9 @@ class AudioIntegrationAndroidTest {
     private var oldEnabledImes = ""
     private var oldHardKeyboard = ""
     private var oldModelId = ModelCatalog.DEFAULT.id
-    private val voiceIme = "io.github.lrq3000.utterlane/io.github.lrq3000.utterlane.ime.VoiceInputMethodService"
+    // InputMethodInfo IDs use the short flattened component when application ID
+    // and class namespace match. The shell's `ime` command requires that exact ID.
+    private val voiceIme get() = ComponentName(app, io.github.lrq3000.utterlane.ime.VoiceInputMethodService::class.java).flattenToShortString()
 
     @Before fun prepare(): Unit = runBlocking {
         automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
@@ -172,8 +174,12 @@ class AudioIntegrationAndroidTest {
 
     @Test fun voiceImeCommitsLiveTextAndDrainsOnDone() {
         shell("ime enable $voiceIme")
-        shell("ime set $voiceIme")
         shell("settings put secure show_ime_with_hard_keyboard 1")
+        // Auxiliary IME selection via `ime set` is transient on this emulator:
+        // the settings observer restores the persisted keyboard on the next
+        // settings change. Select it persistently for this fixture; @After
+        // restores the original keyboard and enabled-method list.
+        shell("settings put secure default_input_method $voiceIme")
         launchEditor(showKeyboard = true)
         await("new IME capture") { source.get()?.running?.get() == true }
         await("IME live text") { editor("QA first editor")?.text?.contains("country", true) == true }
