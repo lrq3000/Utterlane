@@ -7,21 +7,29 @@ class TranscriptionSession(
     val store: TranscriptStore,
     private val corrections: StreamingCorrections,
     private val onSegment: suspend (String) -> Unit,
-    decode: suspend (AudioWindow) -> String
-) {
+    decode: suspend (AudioWindow) -> String,
+    private val onClosed: () -> Unit = {},
+    private val onProcessed: (Long, Long) -> Unit = { _, _ -> }
+) : java.io.Closeable {
+    private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
     private val segmenter = AudioSegmenter { window ->
+        val started = System.nanoTime()
         val text = decode(window)
         emit(corrections.accept(text))
+        onProcessed(window.ownedEnd, (System.nanoTime() - started) / 1000000)
         Log.i("TranscriptionSession", "Segment ${window.ownedStart}..${window.ownedEnd}; input=${window.samples.size}; completed=${store.segments}")
     }
     private var finished = false
     suspend fun accept(samples: ShortArray) = segmenter.accept(samples)
     suspend fun finish() {
         if (finished) return
-        segmenter.finish()
-        emit(corrections.finish())
-        finished = true
+        try {
+            segmenter.finish()
+            emit(corrections.finish())
+            finished = true
+        } finally { close() }
     }
+    override fun close() { if (closed.compareAndSet(false, true)) onClosed() }
     private suspend fun emit(text: String) {
         if (text.isBlank()) return
         store.append(text)

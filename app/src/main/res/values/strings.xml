@@ -263,4 +263,20 @@
     <string name="history_duration">%1$d seconds</string>
     <string name="stream_recover">Recover transcript</string>
     <string name="stream_recover_none">No recoverable transcript. Text is kept temporarily when delivery fails.</string>
+    <string name="model_choose">Recognition model</string>
+    <string name="model_delete">Delete selected model files</string>
+    <string name="model_moondream_attribution">Moondream / NVIDIA · CC-BY-4.0 · CrispASR GGUF runtime</string>
+    <string name="model_import_catalog">Select a folder containing: %1$s. Only the catalog artifact with matching size and checksum will be loaded.</string>
+    <string name="capture_tap_finish">Tap waveform to finish recording</string>
+    <string name="capture_listening">Listening — speak now</string>
+    <string name="capture_stopping">Finishing capture…</string>
+    <string name="capture_processing">Transcribing remaining audio</string>
+    <string name="capture_complete">Transcription complete</string>
+    <string name="capture_failed">Recording could not complete</string>
+    <string name="capture_no_signal">No audio signal detected. Check your microphone or speak closer.</string>
+    <string name="capture_no_frames">No microphone audio is arriving. Check the microphone and permissions.</string>
+    <string name="capture_blocked">Android reports this microphone capture is silenced. Another capture or system policy may be blocking it.</string>
+    <string name="capture_audio_progress">%1$d of %2$d seconds processed</string>
+    <string name="capture_working">Working…</string>
+    <string name="capture_eta">About %1$d seconds remaining</string>
 </resources>

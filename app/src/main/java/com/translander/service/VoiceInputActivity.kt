@@ -66,7 +66,7 @@ class VoiceInputActivity : ComponentActivity() {
             }, onCaptureEnded = { isRecording = false; recordingOverlay?.setStatus(getString(R.string.state_processing)) },
             onWarning = { Toast.makeText(this, it, Toast.LENGTH_LONG).show() },
             onReady = { recordingOverlay?.setStatus(getString(R.string.state_listening)) })
-        microphoneSession?.start()
+        microphoneSession?.let { recordingOverlay?.bind(activityScope, it); it.start() }
     }
     private fun stopRecording() { Log.i(TAG, "Stopping recording"); isRecording = false; microphoneSession?.stop(); recordingOverlay?.setStatus(getString(R.string.state_processing)) }
     private fun fail(message: String) { Toast.makeText(this, message, Toast.LENGTH_LONG).show(); setResult(RESULT_CANCELED); finish() }

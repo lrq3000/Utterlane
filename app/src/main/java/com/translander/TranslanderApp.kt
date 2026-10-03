@@ -79,6 +79,7 @@ class TranslanderApp : Application() {
 
         // Auto-load model on startup if setting is enabled
         applicationScope.launch(Dispatchers.IO) {
+            modelManager.initializeSelection()
             val autoLoad = settingsRepository.autoLoadModel.first()
             if (autoLoad && modelManager.isModelReady()) {
                 Log.i(TAG, "Auto-loading speech model")

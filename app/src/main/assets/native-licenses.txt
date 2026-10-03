@@ -1,0 +1,61 @@
+CrispASR (Parakeet runtime and shared primitives)
+https://github.com/CrispStrobe/CrispASR
+Revision: 966561aa596cfc653aa0e9885d44117fad9cca35
+
+MIT License
+
+Copyright (c) 2023-2026 The ggml authors
+Copyright (c) 2020-present Silero Team (Silero timestamp postprocessing in src/core/index_echo_windows.h)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+ggml (CrispStrobe fork)
+https://github.com/CrispStrobe/ggml
+Revision: 2f5a80d258c46e6ac8eee95f1328c0f58376d7ee
+
+MIT License
+
+Copyright (c) 2023-2026 The ggml authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Downloaded model weights are separate from the application:
+NVIDIA Parakeet v3: https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3
+Moondream Ultra: https://huggingface.co/moondream/parakeet-ultra
+Moondream Redux: https://huggingface.co/moondream/parakeet-redux
+GGUF conversions: https://huggingface.co/cstr/parakeet-ultra-GGUF
+and https://huggingface.co/cstr/parakeet-redux-GGUF
+Model licenses: CC-BY-4.0, https://creativecommons.org/licenses/by/4.0/
+Quantized GGUF conversions differ from the original weight packaging.

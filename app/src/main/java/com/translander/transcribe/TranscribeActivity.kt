@@ -208,6 +208,7 @@ fun TranscribeScreen(
             android.util.Log.e("TranscribeActivity", "Incremental transcription failed", e)
             message = e.message ?: context.getString(R.string.transcribe_error_failed)
         } finally {
+            activeSession?.close()
             // Cancellation can happen between file creation and the first UI
             // publication. Such an unexposed empty store still has an owner.
             if (store == null) withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { activeSession?.store?.dispose() }

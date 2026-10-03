@@ -29,7 +29,7 @@ jobs:
       uses: nttld/setup-ndk@v1
       id: setup-ndk
       with:
-        ndk-version: r27c
+        ndk-version: r28c
 
     - name: Cache sherpa-onnx AAR
       id: cache-aar
@@ -45,6 +45,11 @@ jobs:
         ./build-sherpa-onnx-aar.sh
       env:
         ANDROID_NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
+
+    - name: Prepare pinned CrispASR native sources
+      run: |
+        sdkmanager "ndk;28.2.13676358" "cmake;3.22.1"
+        python3 tools/prepare_native.py
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
@@ -80,7 +85,7 @@ jobs:
       uses: nttld/setup-ndk@v1
       id: setup-ndk
       with:
-        ndk-version: r27c
+        ndk-version: r28c
 
     - name: Cache sherpa-onnx AAR
       id: cache-aar
@@ -96,6 +101,11 @@ jobs:
         ./build-sherpa-onnx-aar.sh
       env:
         ANDROID_NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
+
+    - name: Prepare pinned CrispASR native sources
+      run: |
+        sdkmanager "ndk;28.2.13676358" "cmake;3.22.1"
+        python3 tools/prepare_native.py
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew

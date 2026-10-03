@@ -336,6 +336,7 @@ fun SettingsScreen(
     val themeMode by settingsRepository.themeMode.collectAsStateWithLifecycle(initialValue = SettingsRepository.THEME_SYSTEM)
     val autoLoadModel by settingsRepository.autoLoadModel.collectAsStateWithLifecycle(initialValue = false)
     val downloadState by modelManager.downloadState.collectAsStateWithLifecycle()
+    val selectedModel by modelManager.selected.collectAsStateWithLifecycle()
     val recognizerManager = TranslanderApp.instance.recognizerManager
     val isRecognizerReady by recognizerManager.isReady.collectAsStateWithLifecycle()
     val isRecognizerLoading by recognizerManager.isLoading.collectAsStateWithLifecycle()
@@ -392,19 +393,28 @@ fun SettingsScreen(
         ) {
             // Speech Model (required for all voice input)
             SettingsSection(title = stringResource(R.string.section_speech_model)) {
+                ModelSelector()
                 ModelSettingItem(
+                    modelName = selectedModel.name,
+                    modelBytes = selectedModel.downloadBytes,
+                    importFiles = selectedModel.artifacts.joinToString(", ") { it.url.substringAfterLast('/').substringBefore('?') },
+                    importUrl = selectedModel.artifacts.first().url.substringBefore("/resolve/"),
                     downloadState = downloadState,
                     isRecognizerReady = isRecognizerReady,
                     isRecognizerLoading = isRecognizerLoading,
                     onDownload = {
                         scope.launch {
-                            modelManager.downloadModel()
+                            try { modelManager.downloadModel() }
+                            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                            catch (e: Exception) { Toast.makeText(context, e.message, Toast.LENGTH_LONG).show() }
                         }
                     },
                     onLoadLocal = {
                         onPickModelFolder { uri ->
                             scope.launch {
-                                modelManager.importFromFolder(uri)
+                                try { modelManager.importFromFolder(uri) }
+                                catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                                catch (e: Exception) { Toast.makeText(context, e.message, Toast.LENGTH_LONG).show() }
                             }
                         }
                     },
@@ -417,7 +427,10 @@ fun SettingsScreen(
                         }
                     },
                     onUnloadModel = {
-                        scope.launch { recognizerManager.release() }
+                        scope.launch {
+                            try { recognizerManager.release() }
+                            catch (e: Exception) { Toast.makeText(context, e.message, Toast.LENGTH_LONG).show() }
+                        }
                         // Stop floating service when model is unloaded
                         if (serviceEnabled) {
                             scope.launch {
@@ -427,17 +440,27 @@ fun SettingsScreen(
                         }
                     }
                 )
+                if (downloadState is ModelManager.DownloadState.Downloading || downloadState is ModelManager.DownloadState.Copying) {
+                    TextButton(onClick = { modelManager.cancelTransfer() }) { Text(stringResource(R.string.action_cancel)) }
+                } else if (modelManager.isModelReady()) {
+                    TextButton(onClick = {
+                        scope.launch {
+                            try { recognizerManager.deleteSelectedModel() }
+                            catch (e: Exception) { Toast.makeText(context, e.message, Toast.LENGTH_LONG).show() }
+                        }
+                    }) { Text(stringResource(R.string.model_delete)) }
+                }
 
                 val context = LocalContext.current
                 Text(
-                    text = stringResource(R.string.model_attribution),
+                    text = if (selectedModel.id == "parakeet-v3") stringResource(R.string.model_attribution) else stringResource(R.string.model_moondream_attribution),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
                         .padding(horizontal = 16.dp)
                         .clickable {
                             try {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3")))
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(if (selectedModel.id == "parakeet-v3") "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" else "https://huggingface.co/moondream/parakeet-" + if (selectedModel.id.contains("ultra")) "ultra" else "redux")))
                             } catch (_: ActivityNotFoundException) {
                                 Toast.makeText(context, context.getString(R.string.error_no_browser), Toast.LENGTH_SHORT).show()
                             }
@@ -821,6 +844,10 @@ fun PermissionItem(
 
 @Composable
 fun ModelSettingItem(
+    modelName: String,
+    modelBytes: Long,
+    importFiles: String,
+    importUrl: String,
     downloadState: ModelManager.DownloadState,
     isRecognizerReady: Boolean,
     isRecognizerLoading: Boolean,
@@ -834,10 +861,10 @@ fun ModelSettingItem(
 
     Column {
         ListItem(
-            headlineContent = { Text("Parakeet TDT v3") },
+            headlineContent = { Text(modelName) },
             supportingContent = {
                 when {
-                    downloadState is ModelManager.DownloadState.NotStarted -> Text(stringResource(R.string.model_not_downloaded) + "\n" + stringResource(R.string.model_size))
+                    downloadState is ModelManager.DownloadState.NotStarted -> Text(stringResource(R.string.model_not_downloaded) + "\n${modelBytes / 1000000} MB")
                     downloadState is ModelManager.DownloadState.Downloading -> Text(stringResource(R.string.model_downloading, downloadState.progress))
                     downloadState is ModelManager.DownloadState.Copying -> Text(stringResource(R.string.model_copying, downloadState.progress))
                     downloadState is ModelManager.DownloadState.Extracting -> Text(stringResource(R.string.model_extracting))
@@ -907,12 +934,12 @@ fun ModelSettingItem(
             title = { Text(stringResource(R.string.model_import_title)) },
             text = {
                 Column {
-                    Text(stringResource(R.string.model_import_instructions))
+                    Text(stringResource(R.string.model_import_catalog, importFiles))
                     Spacer(modifier = Modifier.size(12.dp))
                     TextButton(
                         onClick = {
                             try {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(context.getString(R.string.model_import_link))))
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(importUrl)))
                             } catch (_: ActivityNotFoundException) {
                                 Toast.makeText(context, context.getString(R.string.error_no_browser), Toast.LENGTH_SHORT).show()
                             }

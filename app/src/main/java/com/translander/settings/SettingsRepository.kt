@@ -28,6 +28,7 @@ class SettingsRepository(private val context: Context) {
         private val MONITORED_FOLDERS_KEY = stringSetPreferencesKey("monitored_folders")
         private val FLOATING_BUTTON_SIZE_KEY = stringPreferencesKey("floating_button_size")
         private val HISTORY_RETENTION_KEY = stringPreferencesKey("history_retention")
+        private val SELECTED_MODEL_KEY = stringPreferencesKey("selected_model")
 
         const val BUTTON_SIZE_SMALL = "small"   // 44dp
         const val BUTTON_SIZE_MEDIUM = "medium" // 56dp (default)
@@ -44,6 +45,9 @@ class SettingsRepository(private val context: Context) {
     val historyRetention: Flow<HistoryRetention> = context.dataStore.data.map { preferences ->
         HistoryRetention.fromKey(preferences[HISTORY_RETENTION_KEY])
     }
+
+    val selectedModelId: Flow<String> = context.dataStore.data.map { it[SELECTED_MODEL_KEY] ?: "parakeet-v3" }
+    suspend fun setSelectedModelId(id: String) { context.dataStore.edit { it[SELECTED_MODEL_KEY] = id } }
 
     suspend fun setHistoryRetention(retention: HistoryRetention) {
         context.dataStore.edit { it[HISTORY_RETENTION_KEY] = retention.key }

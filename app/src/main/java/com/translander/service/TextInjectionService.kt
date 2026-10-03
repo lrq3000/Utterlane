@@ -27,6 +27,7 @@ class TextInjectionService : AccessibilityService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var microphoneSession: MicrophoneSession? = null
+    private var recordingOverlay: com.translander.ui.RecordingOverlay? = null
     private val isRecording = AtomicBoolean(false)
 
     private var accessibilityButtonCallback: AccessibilityButtonController.AccessibilityButtonCallback? = null
@@ -104,25 +105,31 @@ class TextInjectionService : AccessibilityService() {
         Log.i(TAG, "startRecording called, recognizer ready=${recognizerManager.isInitialized()}")
 
         if (!recognizerManager.isInitialized()) {
-            Log.w(TAG, "Recognizer not initialized, trying to initialize")
-            showToast(getString(R.string.toast_loading_model))
-            initializeRecognizer()
-            return
+            Log.i(TAG, "Capture session will initialize the selected model")
         }
 
         isRecording.set(true)
         showToast(getString(R.string.state_recording))
 
         val target = captureStreamingTarget()
+        recordingOverlay = com.translander.ui.RecordingOverlay(this).apply {
+            onDoneClick = { if (isRecording.get()) stopRecording() }
+            onCancelClick = {
+                microphoneSession?.cancel(); microphoneSession = null; isRecording.set(false)
+                hideCapturePanel()
+            }
+            show()
+        }
         microphoneSession = TranslanderApp.instance.microphoneSessions.create(this, serviceScope,
-            onText = { delta, _ -> target.accept(delta) },
+            onText = { delta, _ -> target.accept(delta); recordingOverlay?.setStatus(delta) },
             onComplete = { store, error ->
                 isRecording.set(false); microphoneSession = null
+                hideCapturePanel()
                 target.finish(store, preserve = error != null)
                 error?.let { showToast(it.message); store?.let { result -> TranscriptRecovery.show(this, result) } }
             }, onCaptureEnded = { isRecording.set(false) }, onWarning = { showToast(it) })
         Log.i(TAG, "Starting incremental audio recording")
-        microphoneSession?.start()
+        microphoneSession?.let { recordingOverlay?.bind(serviceScope, it); it.start() }
     }
 
     private fun stopRecording() {
@@ -169,6 +176,7 @@ class TextInjectionService : AccessibilityService() {
         }
         microphoneSession?.cancel()
         microphoneSession = null
+        hideCapturePanel()
         serviceScope.cancel()
         instance = null
     }
@@ -305,4 +313,5 @@ class TextInjectionService : AccessibilityService() {
     fun showToast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
+    private fun hideCapturePanel() { recordingOverlay?.hide(); recordingOverlay = null }
 }

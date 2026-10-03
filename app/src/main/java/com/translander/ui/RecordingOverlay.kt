@@ -1,135 +1,55 @@
 package com.translander.ui
 
+import android.accessibilityservice.AccessibilityService
 import android.content.Context
-import android.content.res.Configuration
-import android.graphics.Color
 import android.graphics.PixelFormat
-import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
-import com.translander.R
+import com.translander.asr.MicrophoneSession
+import kotlinx.coroutines.CoroutineScope
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
-/**
- * Shared recording UI builder - creates identical UI for both VoiceInputActivity
- * and VoiceInputMethodService.
- */
 object RecordingUIBuilder {
-
-    data class RecordingUI(
-        val view: LinearLayout,
-        val statusText: TextView
-    )
-
-    private fun isNightMode(context: Context): Boolean {
-        val uiMode = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
-        return uiMode == Configuration.UI_MODE_NIGHT_YES
-    }
-
-    fun createRecordingBar(
-        context: Context,
-        onDoneClick: () -> Unit,
-        onCancelClick: () -> Unit
-    ): RecordingUI {
-        val statusText: TextView
-        val night = isNightMode(context)
-        val backgroundColor = if (night) Color.parseColor("#2D2D2D") else Color.parseColor("#F2F2F2")
-        val textColor = if (night) Color.WHITE else Color.parseColor("#1C1B1F")
-
-        val layout = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(24, 24, 24, 24)
-            setBackgroundColor(backgroundColor)
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        statusText = TextView(context).apply {
-            id = R.id.recording_status
-            text = context.getString(R.string.state_listening)
-            textSize = 16f
-            setTextColor(textColor)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        layout.addView(statusText)
-
-        val doneButton = Button(context).apply {
-            id = R.id.recording_done
-            text = context.getString(R.string.overlay_done)
-            setOnClickListener { onDoneClick() }
-        }
-        layout.addView(doneButton)
-
-        val cancelButton = Button(context).apply {
-            text = context.getString(R.string.overlay_cancel)
-            setOnClickListener { onCancelClick() }
-        }
-        layout.addView(cancelButton)
-
-        return RecordingUI(layout, statusText)
+    data class RecordingUI(val view: LinearLayout, val statusText: TextView, val panel: RecordingPanel)
+    fun createRecordingBar(context: Context, onDoneClick: () -> Unit, onCancelClick: () -> Unit): RecordingUI {
+        val panel = RecordingPanel(context, onDoneClick, onCancelClick)
+        return RecordingUI(panel, panel.statusText, panel)
     }
 }
 
-/**
- * System overlay wrapper - displays RecordingUI as a system overlay that doesn't steal focus.
- * Used by VoiceInputActivity.
- */
+/** Bottom overlay that leaves the original editor focused. Accessibility needs no extra overlay permission. */
 class RecordingOverlay(private val context: Context) {
-
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
-    private var statusText: TextView? = null
-
+    private var panel: RecordingPanel? = null
     var onDoneClick: (() -> Unit)? = null
     var onCancelClick: (() -> Unit)? = null
 
     fun show() {
         if (overlayView != null) return
-
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-
-        val ui = RecordingUIBuilder.createRecordingBar(
-            context,
-            onDoneClick = { onDoneClick?.invoke() },
-            onCancelClick = { onCancelClick?.invoke() }
-        )
-        overlayView = ui.view
-        statusText = ui.statusText
-
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE,
-            // FLAG_NOT_FOCUSABLE prevents stealing focus from browser
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.BOTTOM
+        val ui = RecordingUIBuilder.createRecordingBar(context, { onDoneClick?.invoke() }, { onCancelClick?.invoke() })
+        overlayView = ui.view; panel = ui.panel
+        // Navigation/cutout padding keeps the large stop target above system controls.
+        ViewCompat.setOnApplyWindowInsetsListener(ui.view) { view, insets ->
+            val bottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars() or WindowInsetsCompat.Type.displayCutout()).bottom
+            view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, (12 * context.resources.displayMetrics.density).toInt() + bottom)
+            insets
         }
-
+        val params = WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            if (context is AccessibilityService) WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY else WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN, PixelFormat.TRANSLUCENT).apply { gravity = Gravity.BOTTOM }
         windowManager?.addView(ui.view, params)
     }
-
+    fun bind(scope: CoroutineScope, session: MicrophoneSession) { panel?.bind(scope, session.telemetry.state) }
+    fun setStatus(text: String) { panel?.preview(text) }
     fun hide() {
-        overlayView?.let {
-            try {
-                windowManager?.removeView(it)
-            } catch (e: Exception) {
-                // View might already be removed
-            }
-        }
-        overlayView = null
-        windowManager = null
-    }
-
-    fun setStatus(text: String) {
-        statusText?.text = text
+        panel?.release()
+        overlayView?.let { try { windowManager?.removeView(it) } catch (_: IllegalArgumentException) { /* already removed by the window manager */ } }
+        overlayView = null; panel = null; windowManager = null
     }
 }

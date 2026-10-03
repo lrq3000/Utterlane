@@ -64,6 +64,9 @@ A fully offline voice typing app for Android. Speak into your phone and text app
 Parakeet v3 here uses **simulated streaming** over the existing offline ONNX model, not a native online model. Results arrive in segments rather than individual keystrokes; timing depends on pauses and device speed. Chunked recognition can differ from whole-utterance recognition near boundaries.
 
 ### Modern UI
+- Large bottom capture panel with an actual PCM-driven waveform; tap the waveform to finish
+- Live low/no-signal feedback; Android-reported capture silencing is shown on supported Android versions
+- After stopping, completed-audio percentage and measured remaining-time estimate
 - Material 3 design with Jetpack Compose
 - Dark and Light theme support
 - System theme auto-detection
@@ -127,9 +130,23 @@ The user interface is available in all supported languages. Translations were ma
 
 ## Build
 
+### Alternative recognition models
+
+Settings → Recognition model offers NVIDIA Parakeet v3 (default), Moondream
+Parakeet Ultra and Moondream Parakeet Redux. Each alternative offers Q8_0
+(674 MB) and Q4_K (402 MB) GGUF files through the pinned CrispASR CPU runtime.
+Downloads/imports are checked against their expected size and SHA-256 before
+publication. A model cannot be switched or removed during an active session.
+Redux's original Photon 178 MB packing and benchmark speeds do not apply to
+these dequantized/requantized GGUF artifacts. Q8_0 inference for both models
+has been verified on LDPlayer; Q4_K uses the same backend but has not received
+a separate on-device inference run.
+
 ### Prerequisites
 - Android Studio (or standalone Android SDK)
 - JDK 21+
+- Python 3 and Git (one-time pinned native source preparation)
+- Android NDK 28.2.13676358 and CMake 3.22.1
 
 ### Commands
 ```bash
@@ -139,10 +156,24 @@ export JAVA_HOME=~/android-studio/jbr
 export PATH=$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH
 
 # Build debug APK
+python tools/prepare_native.py
 ./gradlew assembleDebug
 
 # Install on connected device
 adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+Native source revisions and MIT attribution are packaged in
+`app/src/main/assets/native-licenses.txt`. The Python preparation command is
+cross-platform; it is preferable to introducing another shell build script.
+The existing sherpa-onnx AAR source-build prerequisite still applies.
+
+For fast iteration, use focused JVM tests and normal incremental Gradle builds.
+After installing the application and test APK once, rerun a specific Android
+test directly without a Gradle build/install cycle:
+
+```text
+adb -s emulator-5554 shell am instrument -w -e class com.translander.CapturePanelAndroidTest at.webformat.translander.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 ## Permissions

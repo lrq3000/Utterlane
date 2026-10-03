@@ -23,6 +23,7 @@ class VoiceInputMethodService : InputMethodService() {
     private var editorActive = false
     private var targetEditor: Pair<String?, Int>? = null
     private var statusText: TextView? = null
+    private var recordingPanel: com.translander.ui.RecordingPanel? = null
 
     override fun onCreate() { super.onCreate(); Log.i(TAG, "VoiceInputMethodService created") }
     override fun onDestroy() {
@@ -37,6 +38,8 @@ class VoiceInputMethodService : InputMethodService() {
             onDoneClick = { if (isRecording) stopRecordingAndTranscribe() else if (microphoneSession == null) switchBackToPreviousKeyboard() },
             onCancelClick = { cleanup(); switchBackToPreviousKeyboard() })
         statusText = ui.statusText
+        recordingPanel = ui.panel
+        microphoneSession?.let { ui.panel.bind(serviceScope, it.telemetry.state) }
         return ui.view
     }
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
@@ -82,7 +85,7 @@ class VoiceInputMethodService : InputMethodService() {
             }, onCaptureEnded = { isRecording = false; statusText?.text = getString(R.string.state_processing) },
             onWarning = { Toast.makeText(this, it, Toast.LENGTH_LONG).show() },
             onReady = { statusText?.text = getString(R.string.state_listening) })
-        microphoneSession?.start()
+        microphoneSession?.let { recordingPanel?.bind(serviceScope, it.telemetry.state); it.start() }
     }
     private fun stopRecordingAndTranscribe() {
         Log.i(TAG, "Stopping recording")
@@ -93,5 +96,5 @@ class VoiceInputMethodService : InputMethodService() {
         try { @Suppress("DEPRECATION") switchToPreviousInputMethod() }
         catch (e: Exception) { Log.e(TAG, "Failed to switch back", e) }
     }
-    private fun cleanup() { editorActive = false; isRecording = false; microphoneSession?.cancel(); microphoneSession = null }
+    private fun cleanup() { editorActive = false; isRecording = false; microphoneSession?.cancel(); microphoneSession = null; recordingPanel?.release() }
 }

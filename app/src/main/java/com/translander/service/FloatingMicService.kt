@@ -50,6 +50,7 @@ class FloatingMicService : Service() {
     private lateinit var layoutParams: WindowManager.LayoutParams
 
     private var microphoneSession: MicrophoneSession? = null
+    private var recordingOverlay: com.translander.ui.RecordingOverlay? = null
 
     private val isRecording = AtomicBoolean(false)
     private var isIntentionalStop = false
@@ -132,6 +133,7 @@ class FloatingMicService : Service() {
         }
         microphoneSession?.cancel()
         microphoneSession = null
+        hideCapturePanel()
         if (::floatingView.isInitialized) {
             windowManager.removeView(floatingView)
         }
@@ -267,26 +269,31 @@ class FloatingMicService : Service() {
         Log.i(TAG, "startRecording called, recognizer ready=${recognizerManager.isInitialized()}")
 
         if (!recognizerManager.isInitialized()) {
-            Log.w(TAG, "Recognizer not initialized, trying to load")
-            TextInjectionService.instance?.showToast(getString(R.string.toast_loading_model))
-                ?: android.widget.Toast.makeText(this, getString(R.string.toast_loading_model), android.widget.Toast.LENGTH_SHORT).show()
-            initializeRecognizer()
-            return
+            Log.i(TAG, "Capture session will initialize the selected model")
         }
 
         isRecording.set(true)
         updateMicButtonState()
 
         val target = TextInjectionService.instance?.captureStreamingTarget() ?: StreamingTextTarget(this) { false }
+        recordingOverlay = com.translander.ui.RecordingOverlay(this).apply {
+            onDoneClick = { if (isRecording.get()) stopRecording() }
+            onCancelClick = {
+                microphoneSession?.cancel(); microphoneSession = null; isRecording.set(false)
+                updateMicButtonState(); hideCapturePanel()
+            }
+            show()
+        }
         microphoneSession = TranslanderApp.instance.microphoneSessions.create(this, serviceScope,
-            onText = { delta, _ -> target.accept(delta) },
+            onText = { delta, _ -> target.accept(delta); recordingOverlay?.setStatus(delta) },
             onComplete = { store, error ->
                 isRecording.set(false); microphoneSession = null; updateMicButtonState()
+                hideCapturePanel()
                 target.finish(store, preserve = error != null)
                 error?.let { showToast(it.message); store?.let { result -> TranscriptRecovery.show(this, result) } }
             }, onCaptureEnded = { isRecording.set(false); updateMicButtonState() }, onWarning = { showToast(it) })
         Log.i(TAG, "Starting incremental audio recording")
-        microphoneSession?.start()
+        microphoneSession?.let { recordingOverlay?.bind(serviceScope, it); it.start() }
     }
 
     private fun stopRecording() {
@@ -339,4 +346,5 @@ class FloatingMicService : Service() {
     private fun showToast(message: String) {
         android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
     }
+    private fun hideCapturePanel() { recordingOverlay?.hide(); recordingOverlay = null }
 }

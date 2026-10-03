@@ -32,14 +32,14 @@ The app requires the following permissions:
 
 ## Speech Recognition Model
 
-- The speech recognition model (Parakeet TDT v3) is downloaded once from HuggingFace
+- The selected speech recognition model (NVIDIA Parakeet v3 or optional Moondream Ultra/Redux) is downloaded from HuggingFace and stored locally
 - After download, all processing happens offline on your device
 - No audio or text is sent to a speech recognition server
 - If you explicitly share audio or text, the receiving app controls what happens to that shared data
 
 ## Third-Party Services
 
-- **HuggingFace**: Used only for initial model download (Parakeet TDT v3)
+- **HuggingFace**: Used only for user-requested model downloads (NVIDIA Parakeet v3 and Moondream Ultra/Redux GGUF conversions)
 - No other third-party services are used
 
 ## Data Storage

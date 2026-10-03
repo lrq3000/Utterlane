@@ -4,4 +4,10 @@ package com.translander.asr
 interface AudioCapture {
     fun startRecording(onSamples: (ShortArray) -> Unit, shouldContinue: () -> Boolean = { true })
     fun stop()
+    fun setObserver(observer: CaptureObserver) {}
+}
+
+interface CaptureObserver {
+    fun onStarted() {}
+    fun onSilenced(silenced: Boolean) {}
 }

@@ -13,7 +13,7 @@ import java.io.File
 class ParakeetRecognizer(
     private val context: Context,
     private val modelPath: String
-) {
+) : RecognitionBackend {
     companion object {
         private const val TAG = "ParakeetRecognizer"
     }
@@ -73,7 +73,7 @@ class ParakeetRecognizer(
         }
     }
 
-    fun transcribeWindow(audioData: ShortArray): OfflineRecognizerResult {
+    override fun transcribeWindow(audioData: ShortArray): WindowResult {
         val rec = checkNotNull(recognizer) { "Recognizer not initialized" }
         require(audioData.isNotEmpty() && audioData.size <= 12 * AudioRecorder.SAMPLE_RATE) {
             "Inference must use a bounded, nonempty window"
@@ -91,7 +91,7 @@ class ParakeetRecognizer(
 
             rec.decode(stream)
 
-            rec.getResult(stream)
+            rec.getResult(stream).let { WindowResult(it.tokens, it.timestamps) }
 
         } catch (e: Exception) {
             Log.e(TAG, "Transcription failed", e)
@@ -105,6 +105,7 @@ class ParakeetRecognizer(
         recognizer?.release()
         recognizer = null
     }
+    override fun close() = release()
 
     fun isReady(): Boolean = recognizer != null
 }

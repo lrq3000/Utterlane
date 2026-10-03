@@ -23,6 +23,7 @@ tasks.named("preBuild") {
 }
 
 android {
+    ndkVersion = "28.2.13676358"
     namespace = "com.translander"
     compileSdk = 35
 
@@ -38,6 +39,9 @@ android {
         // Remove this filter if you need to support older 32-bit devices or emulators
         ndk {
             abiFilters += "arm64-v8a"
+        }
+        externalNativeBuild {
+            cmake { targets += "translander_crisp"; arguments += "-DANDROID_STL=c++_static" }
         }
     }
 
@@ -63,6 +67,9 @@ android {
     buildFeatures {
         compose = true
         viewBinding = true
+    }
+    externalNativeBuild {
+        cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" }
     }
 
     packaging {
