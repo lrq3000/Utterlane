@@ -340,6 +340,7 @@ fun SettingsScreen(
     val recognizerManager = TranslanderApp.instance.recognizerManager
     val isRecognizerReady by recognizerManager.isReady.collectAsStateWithLifecycle()
     val isRecognizerLoading by recognizerManager.isLoading.collectAsStateWithLifecycle()
+    val recognizerFailure by recognizerManager.failure.collectAsStateWithLifecycle()
     val dictionaryManager = TranslanderApp.instance.dictionaryManager
     val dictionaryEnabled by settingsRepository.dictionaryEnabled.collectAsStateWithLifecycle(initialValue = true)
     val replacementRules by dictionaryManager.rules.collectAsStateWithLifecycle()
@@ -440,6 +441,19 @@ fun SettingsScreen(
                         }
                     }
                 )
+                recognizerFailure?.let { message ->
+                    Text(
+                        text = stringResource(R.string.model_load_error_details, message),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+                // Independent of ready/loading/download state: a failed or stuck
+                // native load must never hide the one action that can recover it.
+                TextButton(onClick = {
+                    recognizerManager.forceUnload()
+                    Toast.makeText(context, context.getString(R.string.model_reset_done), Toast.LENGTH_SHORT).show()
+                }) { Text(stringResource(R.string.model_force_unload)) }
                 if (downloadState is ModelManager.DownloadState.Downloading || downloadState is ModelManager.DownloadState.Copying) {
                     TextButton(onClick = { modelManager.cancelTransfer() }) { Text(stringResource(R.string.action_cancel)) }
                 } else if (modelManager.isModelReady()) {

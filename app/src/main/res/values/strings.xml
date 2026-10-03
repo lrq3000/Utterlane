@@ -279,4 +279,7 @@
     <string name="capture_audio_progress">%1$d of %2$d seconds processed</string>
     <string name="capture_working">Working…</string>
     <string name="capture_eta">About %1$d seconds remaining</string>
+    <string name="model_force_unload">Force unload / reset recognition</string>
+    <string name="model_reset_done">Recognition stopped and model unloaded. You can load or select another model.</string>
+    <string name="model_load_error_details">Model could not run: %1$s</string>
 </resources>

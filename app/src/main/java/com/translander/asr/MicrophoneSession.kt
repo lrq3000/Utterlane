@@ -26,15 +26,20 @@ class MicrophoneSession(
     companion object {
         private val active = AtomicReference<MicrophoneSession?>(null)
         fun isBusy(): Boolean = active.get() != null
+        fun resetActive() { active.get()?.let { it.resetRequested = true; it.cancel() } }
     }
     private var job: Job? = null
     val telemetry = CaptureTelemetry()
     @Volatile private var cancelled = false
+    @Volatile private var resetRequested = false
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun start() {
         check(job == null)
         if (!active.compareAndSet(null, this)) { onComplete(null, SessionFailure(SessionFailure.Kind.BUSY, context.getString(R.string.stream_busy))); return }
-        job = scope.launch(Dispatchers.IO) {
+        // Even reset-before-dispatch must enter try/finally so all five callers
+        // receive their cleanup callback and release their local session reference.
+        job = scope.launch(Dispatchers.IO, start = CoroutineStart.ATOMIC) {
             var session: TranscriptionSession? = null
             var recording: RecordingHistory.Recording? = null
             var lease: Closeable? = null
@@ -166,7 +171,8 @@ class MicrophoneSession(
                 withContext(NonCancellable + Dispatchers.Main) {
                     if (cancelled) telemetry.cancelled() else telemetry.completed(failure?.message)
                     if (!cancelled) finalizationWarning?.let { onWarning(it) }
-                    if (!cancelled) onComplete(session?.store, failure)
+                    if (resetRequested) onComplete(session?.store, SessionFailure(SessionFailure.Kind.MODEL, context.getString(R.string.model_reset_done)))
+                    else if (!cancelled) onComplete(session?.store, failure)
                     else session?.store?.let { com.translander.service.TranscriptRecovery.show(context, it) }
                 }
             }

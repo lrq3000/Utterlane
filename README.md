@@ -142,6 +142,13 @@ these dequantized/requantized GGUF artifacts. Q8_0 inference for both models
 has been verified on LDPlayer; Q4_K uses the same backend but has not received
 a separate on-device inference run.
 
+Model loading now runs a short encoder/decoder validation before reporting ready.
+Inference runs in a private worker process so Settings → **Force unload / reset
+recognition** can stop a failed or stuck model without force-closing the app.
+This cancels active transcription/capture while preserving saved audio and
+recoverable completed text. Downloads and settings are retained. Load failures
+are displayed with their cause; a worker timeout also releases the model.
+
 ### Prerequisites
 - Android Studio (or standalone Android SDK)
 - JDK 21+

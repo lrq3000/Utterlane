@@ -55,6 +55,12 @@ class TranslanderApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // The private recognition worker owns only model inference. Initializing
+        // DataStore, auto-load or monitor services there would duplicate the app
+        // lifecycle and could recursively start a second model.
+        val processName = if (Build.VERSION.SDK_INT >= 28) getProcessName() else
+            getSystemService(android.app.ActivityManager::class.java).runningAppProcesses?.firstOrNull { it.pid == android.os.Process.myPid() }?.processName
+        if (processName == "$packageName:recognition") return
         settingsRepository = SettingsRepository(this)
         dictionaryManager = DictionaryManager(this)
         modelManager = ModelManager(this)

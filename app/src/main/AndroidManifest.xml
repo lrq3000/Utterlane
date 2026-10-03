@@ -25,6 +25,10 @@
         android:theme="@style/Theme.VoiceKeyboard">
 
         <!-- Main Settings Activity -->
+        <service android:name=".asr.RecognitionWorkerService"
+            android:exported="false" android:process=":recognition" />
+
+        <!-- Main Settings Activity -->
         <activity
             android:name=".settings.SettingsActivity"
             android:exported="true"

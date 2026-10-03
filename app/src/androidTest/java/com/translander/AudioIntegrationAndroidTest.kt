@@ -45,6 +45,7 @@ class AudioIntegrationAndroidTest {
     private var oldIme = ""
     private var oldEnabledImes = ""
     private var oldHardKeyboard = ""
+    private var oldModelId = ModelCatalog.DEFAULT.id
     private val voiceIme = "at.webformat.translander/com.translander.ime.VoiceInputMethodService"
 
     @Before fun prepare(): Unit = runBlocking {
@@ -63,6 +64,12 @@ class AudioIntegrationAndroidTest {
             val destination = File(directory, name)
             if (!destination.exists()) File("/sdcard/Download/parakeet-qa", name).copyTo(destination)
         }
+        // These are original-model integration regressions. Do not inherit a
+        // preceding Moondream test's persisted selection (ARM emulation can be
+        // slower than live audio and legitimately trigger the bounded backlog).
+        oldModelId = app.settingsRepository.selectedModelId.first()
+        app.recognizerManager.forceUnload()
+        app.recognizerManager.selectModel(ModelCatalog.DEFAULT)
         assertTrue(app.recognizerManager.ensureInitialized())
         app.settingsRepository.setHistoryRetention(HistoryRetention.NONE)
         app.recordingHistory.prune(HistoryRetention.NONE)
@@ -89,6 +96,7 @@ class AudioIntegrationAndroidTest {
         restoreSetting("accessibility_enabled", oldAccessibility)
         automation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME)
         await("microphone cleanup") { !MicrophoneSession.isBusy() }
+        runBlocking { app.recognizerManager.selectModel(ModelCatalog.find(oldModelId)) }
         if (::previousFactory.isInitialized) app.microphoneSessions = previousFactory
     }
 

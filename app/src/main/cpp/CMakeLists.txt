@@ -23,6 +23,13 @@ set(GGML_METAL OFF CACHE BOOL "" FORCE)
 add_compile_definitions(GGML_MAX_NAME=128)
 add_subdirectory("${CRISP_SOURCE}/ggml" "${CMAKE_BINARY_DIR}/ggml" EXCLUDE_FROM_ALL)
 
+# Android's debug configuration otherwise leaves ggml's CPU/quantization hot
+# loops at -O0. Optimizing only the JNI target does not propagate to libraries;
+# retain debug symbols, but use the same kernel optimization as release builds.
+foreach(kernel ggml ggml-base ggml-cpu)
+    target_compile_options(${kernel} PRIVATE -O3)
+endforeach()
+
 add_library(translander_crisp SHARED
     crisp_jni.cpp
     "${CRISP_SOURCE}/src/parakeet.cpp"
