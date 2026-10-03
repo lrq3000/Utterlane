@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <queries><package android:name="at.webformat.translander" /></queries>
+    <queries><package android:name="io.github.lrq3000.utterlane" /></queries>
     <application>
         <!-- Test-only editor/caller; no QA activity is shipped in the application APK. -->
-        <activity android:name="com.translander.QAEditorActivity"
+        <activity android:name="io.github.lrq3000.utterlane.QAEditorActivity"
             android:exported="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" />
     </application>
 </manifest>

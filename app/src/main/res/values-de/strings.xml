@@ -3,15 +3,15 @@
     <string name="settings_title">Einstellungen</string>
 
     <!-- Service -->
-    <string name="service_notification_title">TranSlander aktiv</string>
+    <string name="service_notification_title">Utterlane aktiv</string>
     <string name="service_notification_text">Auf das schwebende Mikrofon tippen, um Sprache zu transkribieren</string>
     <string name="service_alert_channel_name">Dienstwarnungen</string>
     <string name="service_alert_channel_description">Benachrichtigungen, wenn Dienste nicht starten können</string>
     <string name="service_start_floating_mic">Tippen, um schwebendes Mikrofon zu starten</string>
     <string name="service_start_folder_monitor">Tippen, um Ordnerüberwachung zu starten</string>
-    <string name="service_start_services">Tippen, um TranSlander-Dienste zu starten</string>
-    <string name="accessibility_service_label">TranSlander Texteingabe</string>
-    <string name="accessibility_service_description">Ermöglicht TranSlander, transkribierten Text direkt in Textfelder einzufügen. Für nahtlose Spracheingabe aktivieren.</string>
+    <string name="service_start_services">Tippen, um Utterlane-Dienste zu starten</string>
+    <string name="accessibility_service_label">Utterlane Texteingabe</string>
+    <string name="accessibility_service_description">Ermöglicht Utterlane, transkribierten Text direkt in Textfelder einzufügen. Für nahtlose Spracheingabe aktivieren.</string>
 
     <!-- Settings Sections -->
     <string name="section_speech_model">Sprachmodell</string>
@@ -154,7 +154,7 @@
     <string name="toast_no_field_clipboard">Kein Textfeld fokussiert. In Zwischenablage kopiert.</string>
     <string name="toast_copied_clipboard_paste">In Zwischenablage kopiert (manuell einfügen)</string>
     <string name="toast_copied">Kopiert: %s</string>
-    <string name="toast_overlay_required">Overlay-Berechtigung erforderlich. In TranSlander-Einstellungen aktivieren.</string>
+    <string name="toast_overlay_required">Overlay-Berechtigung erforderlich. In Utterlane-Einstellungen aktivieren.</string>
     <string name="toast_voice_model_unavailable">Sprachmodell nicht verfügbar</string>
     <string name="toast_error_loading_model">Fehler beim Laden des Sprachmodells</string>
     <string name="toast_recording_error">Aufnahmefehler</string>

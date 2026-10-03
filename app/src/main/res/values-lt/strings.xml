@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_title">Nustatymai</string>
-    <string name="service_notification_title">TranSlander aktyvus</string>
+    <string name="service_notification_title">Utterlane aktyvus</string>
     <string name="service_notification_text">Bakstelėkite slankųjį mikrofoną, kad transkribuotumėte kalbą</string>
     <string name="service_alert_channel_name">Paslaugų įspėjimai</string>
     <string name="service_alert_channel_description">Pranešimai, kai paslaugos nepavyksta paleisti</string>
     <string name="service_start_floating_mic">Bakstelėkite, kad paleistumėte slankųjį mikrofoną</string>
     <string name="service_start_folder_monitor">Bakstelėkite, kad paleistumėte aplankų stebėjimą</string>
-    <string name="service_start_services">Palieskite, kad paleistumėte TranSlander paslaugas</string>
-    <string name="accessibility_service_label">TranSlander teksto įvestis</string>
-    <string name="accessibility_service_description">Leidžia TranSlander įterpti transkribuotą tekstą tiesiai į teksto laukus. Įjunkite tai sklandžiai balso-į-tekstą įvesčiai.</string>
+    <string name="service_start_services">Palieskite, kad paleistumėte Utterlane paslaugas</string>
+    <string name="accessibility_service_label">Utterlane teksto įvestis</string>
+    <string name="accessibility_service_description">Leidžia Utterlane įterpti transkribuotą tekstą tiesiai į teksto laukus. Įjunkite tai sklandžiai balso-į-tekstą įvesčiai.</string>
     <string name="section_speech_model">Kalbos modelis</string>
     <string name="section_microphone">Mikrofonas</string>
     <string name="section_keyboard">Klaviatūros integracija</string>
@@ -124,7 +124,7 @@
     <string name="toast_no_field_clipboard">Nėra aktyvaus teksto lauko. Nukopijuota į iškarpinę.</string>
     <string name="toast_copied_clipboard_paste">Nukopijuota į iškarpinę (įklijuokite rankiniu būdu)</string>
     <string name="toast_copied">Nukopijuota: %s</string>
-    <string name="toast_overlay_required">Reikalingas perdangos leidimas. Įjunkite TranSlander nustatymuose.</string>
+    <string name="toast_overlay_required">Reikalingas perdangos leidimas. Įjunkite Utterlane nustatymuose.</string>
     <string name="toast_voice_model_unavailable">Kalbos modelis nepasiekiamas</string>
     <string name="toast_error_loading_model">Klaida įkeliant kalbos modelį</string>
     <string name="toast_recording_error">Įrašymo klaida</string>

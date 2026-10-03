@@ -24,11 +24,11 @@ tasks.named("preBuild") {
 
 android {
     ndkVersion = "28.2.13676358"
-    namespace = "com.translander"
+    namespace = "io.github.lrq3000.utterlane"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "at.webformat.translander"
+        applicationId = "io.github.lrq3000.utterlane"
         minSdk = 26
         targetSdk = 35
         versionCode = 10
@@ -41,7 +41,7 @@ android {
             abiFilters += "arm64-v8a"
         }
         externalNativeBuild {
-            cmake { targets += "translander_crisp"; arguments += "-DANDROID_STL=c++_static" }
+            cmake { targets += "utterlane_crisp"; arguments += "-DANDROID_STL=c++_static" }
         }
     }
 

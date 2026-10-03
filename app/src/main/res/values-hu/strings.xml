@@ -3,15 +3,15 @@
     <string name="settings_title">Beállítások</string>
 
     <!-- Service -->
-    <string name="service_notification_title">TranSlander aktív</string>
+    <string name="service_notification_title">Utterlane aktív</string>
     <string name="service_notification_text">Koppintson a lebegő mikrofonra a beszéd átírásához</string>
     <string name="service_alert_channel_name">Szolgáltatás figyelmeztetések</string>
     <string name="service_alert_channel_description">Értesítések, ha a szolgáltatások nem indulnak el</string>
     <string name="service_start_floating_mic">Koppintson a lebegő mikrofon indításához</string>
     <string name="service_start_folder_monitor">Koppintson a mappafigyelő indításához</string>
-    <string name="service_start_services">Érintse meg a TranSlander szolgáltatások indításához</string>
-    <string name="accessibility_service_label">TranSlander szövegbevitel</string>
-    <string name="accessibility_service_description">Lehetővé teszi a TranSlander számára, hogy az átírt szöveget közvetlenül a szövegmezőkbe illessze be. Engedélyezze a zökkenőmentes hangalapú szövegbevitelhez.</string>
+    <string name="service_start_services">Érintse meg az Utterlane szolgáltatások indításához</string>
+    <string name="accessibility_service_label">Utterlane szövegbevitel</string>
+    <string name="accessibility_service_description">Lehetővé teszi az Utterlane számára, hogy az átírt szöveget közvetlenül a szövegmezőkbe illessze be. Engedélyezze a zökkenőmentes hangalapú szövegbevitelhez.</string>
 
     <!-- Settings Sections -->
     <string name="section_speech_model">Beszédfelismerő modell</string>
@@ -154,7 +154,7 @@
     <string name="toast_no_field_clipboard">Nincs aktív szövegmező. Vágólapra másolva.</string>
     <string name="toast_copied_clipboard_paste">Vágólapra másolva (illessze be kézzel)</string>
     <string name="toast_copied">Másolva: %s</string>
-    <string name="toast_overlay_required">Átfedési engedély szükséges. Engedélyezze a TranSlander beállításaiban.</string>
+    <string name="toast_overlay_required">Átfedési engedély szükséges. Engedélyezze az Utterlane beállításaiban.</string>
     <string name="toast_voice_model_unavailable">A hangmodell nem érhető el</string>
     <string name="toast_error_loading_model">Hiba a hangmodell betöltésekor</string>
     <string name="toast_recording_error">Felvételi hiba</string>

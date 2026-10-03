@@ -3,15 +3,15 @@
     <string name="settings_title">Impostazioni</string>
 
     <!-- Service -->
-    <string name="service_notification_title">TranSlander attivo</string>
+    <string name="service_notification_title">Utterlane attivo</string>
     <string name="service_notification_text">Tocca il microfono flottante per trascrivere il parlato</string>
     <string name="service_alert_channel_name">Avvisi di servizio</string>
     <string name="service_alert_channel_description">Notifiche quando i servizi non riescono ad avviarsi</string>
     <string name="service_start_floating_mic">Tocca per avviare il microfono flottante</string>
     <string name="service_start_folder_monitor">Tocca per avviare il monitoraggio cartelle</string>
-    <string name="service_start_services">Tocca per avviare i servizi TranSlander</string>
-    <string name="accessibility_service_label">Immissione testo TranSlander</string>
-    <string name="accessibility_service_description">Consente a TranSlander di inserire testo trascritto direttamente nei campi di testo. Attivalo per un\'immissione vocale fluida.</string>
+    <string name="service_start_services">Tocca per avviare i servizi Utterlane</string>
+    <string name="accessibility_service_label">Immissione testo Utterlane</string>
+    <string name="accessibility_service_description">Consente a Utterlane di inserire testo trascritto direttamente nei campi di testo. Attivalo per un\'immissione vocale fluida.</string>
 
     <!-- Settings Sections -->
     <string name="section_speech_model">Modello vocale</string>
@@ -154,7 +154,7 @@
     <string name="toast_no_field_clipboard">Nessun campo di testo attivo. Copiato negli appunti.</string>
     <string name="toast_copied_clipboard_paste">Copiato negli appunti (incolla manualmente)</string>
     <string name="toast_copied">Copiato: %s</string>
-    <string name="toast_overlay_required">Permesso di sovrapposizione necessario. Attivalo nelle impostazioni di TranSlander.</string>
+    <string name="toast_overlay_required">Permesso di sovrapposizione necessario. Attivalo nelle impostazioni di Utterlane.</string>
     <string name="toast_voice_model_unavailable">Modello vocale non disponibile</string>
     <string name="toast_error_loading_model">Errore nel caricamento del modello vocale</string>
     <string name="toast_recording_error">Errore di registrazione</string>

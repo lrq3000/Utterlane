@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(translander_crisp LANGUAGES C CXX)
+project(utterlane_crisp LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -30,13 +30,13 @@ foreach(kernel ggml ggml-base ggml-cpu)
     target_compile_options(${kernel} PRIVATE -O3)
 endforeach()
 
-add_library(translander_crisp SHARED
+add_library(utterlane_crisp SHARED
     crisp_jni.cpp
     "${CRISP_SOURCE}/src/parakeet.cpp"
     "${CRISP_SOURCE}/src/core/mel.cpp"
     "${CRISP_SOURCE}/src/core/gguf_loader.cpp"
     "${CRISP_SOURCE}/src/crispasr_imatrix.cpp")
-target_include_directories(translander_crisp PRIVATE
+target_include_directories(utterlane_crisp PRIVATE
     "${CRISP_SOURCE}/src" "${CRISP_SOURCE}/include" "${CRISP_SOURCE}/ggml/src")
-target_compile_options(translander_crisp PRIVATE -O3 -fvisibility=hidden)
-target_link_libraries(translander_crisp PRIVATE ggml ggml-base ggml-cpu log)
+target_compile_options(utterlane_crisp PRIVATE -O3 -fvisibility=hidden)
+target_link_libraries(utterlane_crisp PRIVATE ggml ggml-base ggml-cpu log)

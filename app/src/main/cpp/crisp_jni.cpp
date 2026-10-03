@@ -23,7 +23,7 @@ jstring utf8(JNIEnv* env, const char* text) {
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_translander_asr_CrispParakeetBackend_openNative(JNIEnv* env, jobject, jstring path) {
+Java_io_github_lrq3000_utterlane_asr_CrispParakeetBackend_openNative(JNIEnv* env, jobject, jstring path) {
     const char* filename = env->GetStringUTFChars(path, nullptr);
     auto params = parakeet_context_default_params();
     params.n_threads = 4; params.use_gpu = false; params.verbosity = 0;
@@ -36,7 +36,7 @@ Java_com_translander_asr_CrispParakeetBackend_openNative(JNIEnv* env, jobject, j
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_translander_asr_CrispParakeetBackend_decodeNative(JNIEnv* env, jobject, jlong handle, jfloatArray audio) {
+Java_io_github_lrq3000_utterlane_asr_CrispParakeetBackend_decodeNative(JNIEnv* env, jobject, jlong handle, jfloatArray audio) {
     auto* context = reinterpret_cast<parakeet_context*>(handle);
     const int count = env->GetArrayLength(audio);
     if (!context || count <= 0 || count > 192000) { error(env, "Invalid bounded native inference input"); return nullptr; }
@@ -65,6 +65,6 @@ Java_com_translander_asr_CrispParakeetBackend_decodeNative(JNIEnv* env, jobject,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_translander_asr_CrispParakeetBackend_closeNative(JNIEnv*, jobject, jlong handle) {
+Java_io_github_lrq3000_utterlane_asr_CrispParakeetBackend_closeNative(JNIEnv*, jobject, jlong handle) {
     if (handle) parakeet_free(reinterpret_cast<parakeet_context*>(handle));
 }

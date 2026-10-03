@@ -3,15 +3,15 @@
     <string name="settings_title">Nastavenia</string>
 
     <!-- Service -->
-    <string name="service_notification_title">TranSlander je aktívny</string>
+    <string name="service_notification_title">Utterlane je aktívny</string>
     <string name="service_notification_text">Klepnite na plávajúci mikrofón pre prepis reči</string>
     <string name="service_alert_channel_name">Upozornenia služieb</string>
     <string name="service_alert_channel_description">Oznámenia pri zlyhaní spustenia služieb</string>
     <string name="service_start_floating_mic">Klepnite pre spustenie plávajúceho mikrofónu</string>
     <string name="service_start_folder_monitor">Klepnite pre spustenie monitorovania priečinkov</string>
-    <string name="service_start_services">Klepnutím spustíte služby TranSlander</string>
-    <string name="accessibility_service_label">TranSlander Textový vstup</string>
-    <string name="accessibility_service_description">Umožňuje TranSlander vkladať prepísaný text priamo do textových polí. Povoľte pre plynulý hlasový vstup.</string>
+    <string name="service_start_services">Klepnutím spustíte služby Utterlane</string>
+    <string name="accessibility_service_label">Utterlane Textový vstup</string>
+    <string name="accessibility_service_description">Umožňuje Utterlane vkladať prepísaný text priamo do textových polí. Povoľte pre plynulý hlasový vstup.</string>
 
     <!-- Settings Sections -->
     <string name="section_speech_model">Rozpoznávací model</string>
@@ -154,7 +154,7 @@
     <string name="toast_no_field_clipboard">Žiadne textové pole nie je aktívne. Skopírované do schránky.</string>
     <string name="toast_copied_clipboard_paste">Skopírované do schránky (vložte ručne)</string>
     <string name="toast_copied">Skopírované: %s</string>
-    <string name="toast_overlay_required">Vyžadované oprávnenie na prekrytie. Povoľte v nastaveniach TranSlander.</string>
+    <string name="toast_overlay_required">Vyžadované oprávnenie na prekrytie. Povoľte v nastaveniach Utterlane.</string>
     <string name="toast_voice_model_unavailable">Hlasový model nie je dostupný</string>
     <string name="toast_error_loading_model">Chyba pri načítavaní hlasového modelu</string>
     <string name="toast_recording_error">Chyba nahrávania</string>

@@ -15,5 +15,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "VoiceKeyboard"
+rootProject.name = "Utterlane"
 include(":app")

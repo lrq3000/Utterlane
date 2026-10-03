@@ -14,7 +14,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
     <application
-        android:name=".TranslanderApp"
+        android:name=".UtterlaneApp"
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -22,7 +22,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.VoiceKeyboard">
+        android:theme="@style/Theme.Utterlane">
 
         <!-- Main Settings Activity -->
         <service android:name=".asr.RecognitionWorkerService"
@@ -33,7 +33,7 @@
             android:name=".settings.SettingsActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.VoiceKeyboard">
+            android:theme="@style/Theme.Utterlane">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -83,7 +83,7 @@
             android:name=".transcribe.TranscribeActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
-            android:theme="@style/Theme.VoiceKeyboard.Dialog">
+            android:theme="@style/Theme.Utterlane.Dialog">
 
             <!-- Share intent from apps like WhatsApp -->
             <intent-filter>
@@ -103,7 +103,7 @@
 
             <!-- Custom transcribe action -->
             <intent-filter>
-                <action android:name="at.webformat.translander.action.TRANSCRIBE" />
+                <action android:name="io.github.lrq3000.utterlane.action.TRANSCRIBE" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="audio/*" />
             </intent-filter>

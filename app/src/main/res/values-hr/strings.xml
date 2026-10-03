@@ -3,15 +3,15 @@
     <string name="settings_title">Postavke</string>
 
     <!-- Service -->
-    <string name="service_notification_title">TranSlander je aktivan</string>
+    <string name="service_notification_title">Utterlane je aktivan</string>
     <string name="service_notification_text">Dodirnite plutajući mikrofon za transkripciju govora</string>
     <string name="service_alert_channel_name">Upozorenja usluga</string>
     <string name="service_alert_channel_description">Obavijesti kada se usluge ne mogu pokrenuti</string>
     <string name="service_start_floating_mic">Dodirnite za pokretanje plutajućeg mikrofona</string>
     <string name="service_start_folder_monitor">Dodirnite za pokretanje praćenja mapa</string>
-    <string name="service_start_services">Dodirnite za pokretanje TranSlander usluga</string>
-    <string name="accessibility_service_label">TranSlander Unos teksta</string>
-    <string name="accessibility_service_description">Omogućuje TranSlander umetanje transkribiranog teksta izravno u tekstualna polja. Omogućite za besprijekoran glasovni unos teksta.</string>
+    <string name="service_start_services">Dodirnite za pokretanje Utterlane usluga</string>
+    <string name="accessibility_service_label">Utterlane Unos teksta</string>
+    <string name="accessibility_service_description">Omogućuje Utterlane umetanje transkribiranog teksta izravno u tekstualna polja. Omogućite za besprijekoran glasovni unos teksta.</string>
 
     <!-- Settings Sections -->
     <string name="section_speech_model">Model za prepoznavanje govora</string>
@@ -154,7 +154,7 @@
     <string name="toast_no_field_clipboard">Nema aktivnog tekstualnog polja. Kopirano u međuspremnik.</string>
     <string name="toast_copied_clipboard_paste">Kopirano u međuspremnik (zalijepite ručno)</string>
     <string name="toast_copied">Kopirano: %s</string>
-    <string name="toast_overlay_required">Potrebna dozvola za preklapanje. Omogućite u postavkama TranSlander.</string>
+    <string name="toast_overlay_required">Potrebna dozvola za preklapanje. Omogućite u postavkama Utterlane.</string>
     <string name="toast_voice_model_unavailable">Glasovni model nije dostupan</string>
     <string name="toast_error_loading_model">Greška pri učitavanju glasovnog modela</string>
     <string name="toast_recording_error">Greška snimanja</string>
