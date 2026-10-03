@@ -337,6 +337,8 @@ fun SettingsScreen(
     val autoLoadModel by settingsRepository.autoLoadModel.collectAsStateWithLifecycle(initialValue = false)
     val downloadState by modelManager.downloadState.collectAsStateWithLifecycle()
     val selectedModel by modelManager.selected.collectAsStateWithLifecycle()
+    // A confirmation belongs to the named model, not whichever model is selected later.
+    var showModelDeleteDialog by remember(selectedModel.id) { mutableStateOf(false) }
     val recognizerManager = TranslanderApp.instance.recognizerManager
     val isRecognizerReady by recognizerManager.isReady.collectAsStateWithLifecycle()
     val isRecognizerLoading by recognizerManager.isLoading.collectAsStateWithLifecycle()
@@ -403,6 +405,10 @@ fun SettingsScreen(
                     downloadState = downloadState,
                     isRecognizerReady = isRecognizerReady,
                     isRecognizerLoading = isRecognizerLoading,
+                    canDeleteModel = modelManager.isModelReady() &&
+                        downloadState !is ModelManager.DownloadState.Downloading &&
+                        downloadState !is ModelManager.DownloadState.Copying,
+                    onDeleteModel = { showModelDeleteDialog = true },
                     onDownload = {
                         scope.launch {
                             try { modelManager.downloadModel() }
@@ -456,13 +462,30 @@ fun SettingsScreen(
                 }) { Text(stringResource(R.string.model_force_unload)) }
                 if (downloadState is ModelManager.DownloadState.Downloading || downloadState is ModelManager.DownloadState.Copying) {
                     TextButton(onClick = { modelManager.cancelTransfer() }) { Text(stringResource(R.string.action_cancel)) }
-                } else if (modelManager.isModelReady()) {
-                    TextButton(onClick = {
-                        scope.launch {
-                            try { recognizerManager.deleteSelectedModel() }
-                            catch (e: Exception) { Toast.makeText(context, e.message, Toast.LENGTH_LONG).show() }
+                }
+                if (showModelDeleteDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showModelDeleteDialog = false },
+                        title = { Text(stringResource(R.string.model_delete_confirm_title)) },
+                        text = { Text(stringResource(R.string.model_delete_confirm_message, selectedModel.name)) },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    val confirmedModelId = selectedModel.id
+                                    showModelDeleteDialog = false
+                                    scope.launch {
+                                        try { recognizerManager.deleteSelectedModel(confirmedModelId) }
+                                        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                                        catch (e: Exception) { Toast.makeText(context, e.message, Toast.LENGTH_LONG).show() }
+                                    }
+                                },
+                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                            ) { Text(stringResource(R.string.model_delete_button)) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showModelDeleteDialog = false }) { Text(stringResource(R.string.action_cancel)) }
                         }
-                    }) { Text(stringResource(R.string.model_delete)) }
+                    )
                 }
 
                 val context = LocalContext.current
@@ -865,6 +888,8 @@ fun ModelSettingItem(
     downloadState: ModelManager.DownloadState,
     isRecognizerReady: Boolean,
     isRecognizerLoading: Boolean,
+    canDeleteModel: Boolean,
+    onDeleteModel: () -> Unit,
     onDownload: () -> Unit,
     onLoadLocal: () -> Unit,
     onLoadModel: () -> Unit,
@@ -899,42 +924,58 @@ fun ModelSettingItem(
             },
             leadingContent = { Icon(Icons.Default.RecordVoiceOver, contentDescription = null) },
             trailingContent = {
-                when {
-                    downloadState is ModelManager.DownloadState.NotStarted ||
-                    downloadState is ModelManager.DownloadState.Error -> {
-                        Column(horizontalAlignment = Alignment.End) {
-                            Button(onClick = onDownload) {
-                                Text(stringResource(R.string.action_download))
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    when {
+                        downloadState is ModelManager.DownloadState.NotStarted ||
+                        downloadState is ModelManager.DownloadState.Error -> {
+                            Column(horizontalAlignment = Alignment.End) {
+                                Button(onClick = onDownload) {
+                                    Text(stringResource(R.string.action_download))
+                                }
+                                TextButton(onClick = { showImportDialog = true }) {
+                                    Text(stringResource(R.string.action_load_local))
+                                }
                             }
-                            TextButton(onClick = { showImportDialog = true }) {
-                                Text(stringResource(R.string.action_load_local))
+                        }
+                        downloadState is ModelManager.DownloadState.Downloading ||
+                        downloadState is ModelManager.DownloadState.Copying -> {
+                            val progress = when (downloadState) {
+                                is ModelManager.DownloadState.Downloading -> downloadState.progress
+                                is ModelManager.DownloadState.Copying -> downloadState.progress
+                                else -> 0
+                            }
+                            CircularProgressIndicator(
+                                progress = { progress / 100f },
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        downloadState is ModelManager.DownloadState.Extracting || isRecognizerLoading -> {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        }
+                        isRecognizerReady -> {
+                            TextButton(onClick = onUnloadModel) {
+                                Text(stringResource(R.string.model_unload))
+                            }
+                        }
+                        downloadState is ModelManager.DownloadState.Ready -> {
+                            Button(onClick = onLoadModel) {
+                                Text(stringResource(R.string.model_load))
                             }
                         }
                     }
-                    downloadState is ModelManager.DownloadState.Downloading ||
-                    downloadState is ModelManager.DownloadState.Copying -> {
-                        val progress = when (downloadState) {
-                            is ModelManager.DownloadState.Downloading -> downloadState.progress
-                            is ModelManager.DownloadState.Copying -> downloadState.progress
-                            else -> 0
-                        }
-                        CircularProgressIndicator(
-                            progress = { progress / 100f },
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    downloadState is ModelManager.DownloadState.Extracting || isRecognizerLoading -> {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    }
-                    isRecognizerReady -> {
-                        TextButton(onClick = onUnloadModel) {
-                            Text(stringResource(R.string.model_unload))
-                        }
-                    }
-                    downloadState is ModelManager.DownloadState.Ready -> {
-                        Button(onClick = onLoadModel) {
-                            Text(stringResource(R.string.model_load))
-                        }
+                    if (canDeleteModel) {
+                        // Same filled, rounded Material button as Download/Load;
+                        // only the destructive-action colors differ.
+                        Button(
+                            onClick = onDeleteModel,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
+                            )
+                        ) { Text(stringResource(R.string.model_delete_button)) }
                     }
                 }
             }

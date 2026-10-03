@@ -282,4 +282,8 @@
     <string name="model_force_unload">Force unload / reset recognition</string>
     <string name="model_reset_done">Recognition stopped and model unloaded. You can load or select another model.</string>
     <string name="model_load_error_details">Model could not run: %1$s</string>
+    <string name="model_delete_confirm_title">Delete model weights?</string>
+    <string name="model_delete_button">Delete</string>
+    <string name="model_delete_confirm_message">Delete the downloaded weights for %1$s? You will need to download or import them again to use this model.</string>
+    <string name="model_delete_selection_changed">The selected model changed. Please confirm deletion again.</string>
 </resources>

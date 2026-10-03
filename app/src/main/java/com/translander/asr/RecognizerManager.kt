@@ -172,8 +172,11 @@ class RecognizerManager(
             modelManager.select(model)
         }
     }
-    suspend fun deleteSelectedModel() = withContext(Dispatchers.IO) {
+    suspend fun deleteSelectedModel(expectedModelId: String = modelManager.selected.value.id) = withContext(Dispatchers.IO) {
         mutex.withLock {
+            // Check inside the same lock as selection/deletion: a queued request
+            // must never delete a different model than the user confirmed.
+            check(modelManager.selected.value.id == expectedModelId) { context.getString(R.string.model_delete_selection_changed) }
             val old = synchronized(stateLock) {
                 check(sessions.isEmpty() && !MicrophoneSession.isBusy()) { context.getString(R.string.stream_busy) }
                 check(!modelManager.isTransferring) { "A model transfer is running" }
