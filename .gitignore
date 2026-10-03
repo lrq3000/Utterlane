@@ -35,3 +35,7 @@ CLAUDE.local.md
 qa-artifacts/
 .native-cache/
 .cxx/
+
+# Python tooling caches
+__pycache__/
+*.pyc

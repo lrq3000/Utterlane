@@ -32,3 +32,8 @@ Select an explicit ADB serial and use UI-tree bounds for interactions.
 Branding assets can be regenerated with `tools/generate_brand_assets.py`; the
 source image is hash-checked and its derived launcher masks have a visual preview
 in `docs/design/utterlane-icon-preview.png`.
+
+The [rebrand verification report](utterlane-rebrand.md) records the packaged-APK,
+native inference, input-integration and visual checks. Rerun the source audit with
+`python tools/qa/check_rebrand.py`; add `--aapt` and one or more `--apk` arguments
+to inspect distribution artifacts too.
