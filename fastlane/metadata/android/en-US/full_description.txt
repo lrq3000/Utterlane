@@ -1,9 +1,12 @@
-A fully offline voice typing app for Android. Speak into your phone and text appears in any app — no internet required, no cloud processing, your voice data never leaves your device.
+Utterlane — fast, offline transcription for Android. Speak into your phone and receive text as you go, with speech recognition running entirely on your device. No account or subscription required.
 
 <b>Features</b>
 
 <b>Offline Speech Recognition</b>
-Uses the Parakeet TDT v3 neural model running locally via sherpa-onnx. Supports 25 languages with auto-detection. No internet connection needed after the initial model download.
+Uses NVIDIA Parakeet TDT v3 via sherpa-onnx, with optional Moondream Parakeet Ultra/Redux models through CrispASR. Supports 25 languages with auto-detection. Download a model or import its files locally; recognition then works without internet.
+
+<b>Incremental Results</b>
+Completed text segments appear while you continue speaking. Audio-file transcription also shows partial results. Output arrives in segments, with latency depending on the selected model and device.
 
 <b>Works in Any App</b>
 Uses Android Accessibility API to inject text directly into any focused text field. Falls back to clipboard if no text field is focused.
@@ -20,7 +23,7 @@ Share or open audio files from any app to transcribe them. Supports OPUS, AAC, O
 Custom dictionary to fix recurring recognition errors. Define rules like "Tamtam" → "Tamdam" and they're applied automatically.
 
 <b>Privacy First</b>
-All speech processing happens locally on your device. No audio data is ever sent to any server. No analytics, no tracking.
+All speech recognition happens locally. No audio is uploaded to a speech service, and there are no analytics or tracking. Microphone history is off by default; enable it to replay or retranscribe recordings with configurable local retention. Explicitly sharing audio or text gives it to your chosen receiving app.
 
 <b>Accessibility</b>
 This app uses Android's Accessibility Service to help users who have difficulty typing on touchscreens. Voice input is directly inserted into any text field, making the device more accessible for users with motor impairments or other conditions that make typing challenging.
@@ -33,4 +36,7 @@ English, German, French, Spanish, Italian, Portuguese, Dutch, Polish, Russian, U
 • Accessibility — to inject text into apps
 • Overlay — for floating mic button
 • Storage — to access audio files for transcription
-• Internet — one-time model download only
+• Internet — requested model downloads
+
+<b>Open Source</b>
+Maintained by Stephen Karl Larroque. Utterlane is an independently maintained fork of TranSlander, licensed under Apache-2.0. Its new application identity installs separately from the upstream app.

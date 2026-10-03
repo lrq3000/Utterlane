@@ -1,4 +1,10 @@
-# Voice Keyboard - Project Context
+# Utterlane - Project Context
+
+Maintainer: Stephen Karl Larroque <LRQ3000@GMAIL.COM>.
+Project: https://github.com/lrq3000/Utterlane.
+This independently maintained fork has a separate Android application identity.
+See README.md for lineage and CONTRIBUTING.md for human sanity checking of AI
+contributions. Original/derived artwork is documented in docs/design/.
 
 ## What Is This App?
 
@@ -40,7 +46,7 @@ export PATH=$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 # If signature mismatch error, uninstall first:
-adb uninstall at.webformat.translander && adb install app/build/outputs/apk/debug/app-debug.apk
+adb uninstall io.github.lrq3000.utterlane && adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ### Build Verification After Changes
@@ -52,17 +58,17 @@ Always run `./gradlew assembleDebug` after significant changes (localization, re
 - After changing build config, NDK version, or sherpa-onnx srclib version
 - NOT needed for resource-only changes on feature branches
 
-**F-Droid build skips if APK exists:** fdroid checks `unsigned/at.webformat.translander_{versionCode}.apk`. Remove it to force a rebuild:
+**F-Droid build skips if APK exists:** once metadata for the new identity is submitted, fdroid checks `unsigned/io.github.lrq3000.utterlane_{versionCode}.apk`. Remove it to force a rebuild:
 ```bash
-rm fdroiddata/unsigned/at.webformat.translander_3.apk
-rm fdroiddata/unsigned/at.webformat.translander_3_src.tar.gz
+rm fdroiddata/unsigned/io.github.lrq3000.utterlane_3.apk
+rm fdroiddata/unsigned/io.github.lrq3000.utterlane_3_src.tar.gz
 ```
 
 ### Gradle Daemon Issues
 Stale Gradle daemons and corrupt cache cause `For input string: ""` errors. Clean before F-Droid builds:
 ```bash
 rm -rf ~/.gradle/daemon
-rm -rf /home/hatsch/claude/transcript/fdroiddata/build/at.webformat.translander/.gradle
+rm -rf /home/hatsch/claude/transcript/fdroiddata/build/io.github.lrq3000.utterlane/.gradle
 ```
 
 ### sherpa-onnx AAR
@@ -71,7 +77,9 @@ Run `./build-sherpa-onnx-aar.sh` to build it. This location is outside the gradl
 so it survives `gradle clean` (required for F-Droid builds).
 
 ### NDK
-F-Droid build requires NDK. Currently using `27.0.12077973` (set in fdroiddata YAML `ndk:` field). Available locally:
+F-Droid build requires NDK. The current Gradle build pins `28.2.13676358`;
+any new F-Droid metadata must match it. The upstream metadata previously used
+`27.0.12077973`. NDK versions available in the original build environment:
 - `27.0.12077973`
 - `28.2.13676358`
 
@@ -128,7 +136,7 @@ Tap mic → AudioRecorder (16kHz PCM) → ParakeetRecognizer (ONNX)
 
 ## Key Directories
 ```
-app/src/main/java/com/translander/
+app/src/main/java/io/github/lrq3000/utterlane/
 ├── asr/                  # Speech recognition
 │   ├── AudioRecorder.kt
 │   ├── ModelManager.kt       # Downloads Parakeet model from HuggingFace
@@ -160,7 +168,7 @@ Post-processing text replacements after speech recognition. User defines rules l
 
 ### Files Added/Modified
 - **NEW**: `asr/DictionaryManager.kt` - Stores rules in `replacements.json`, applies whole-word regex matching
-- `TranslanderApp.kt` - Added `dictionaryManager` instance
+- `UtterlaneApp.kt` - Added `dictionaryManager` instance
 - `asr/RecognizerManager.kt` - Calls `applyReplacements()` after transcription
 - `settings/SettingsRepository.kt` - Added `dictionaryEnabled` preference
 - `settings/SettingsActivity.kt` - Added "Word Corrections" UI section with dialog
@@ -187,8 +195,8 @@ Transcribe voice messages from apps like WhatsApp, Signal, or any downloaded aud
 ### Access Methods
 
 **Implemented:**
-1. **Share intent** - Share audio from WhatsApp/Signal → Voice Transcribe appears in share sheet
-2. **Open with** - Open audio files from file manager → Voice Transcribe in app picker
+1. **Share intent** - Share audio from WhatsApp/Signal → Utterlane appears in share sheet
+2. **Open with** - Open audio files from file manager → Utterlane in app picker
 3. **Folder monitoring** - Background service watches Downloads folder, shows notification when audio detected
 
 **Future options (not yet implemented):**
@@ -283,24 +291,24 @@ OfflineRecognizerConfig(
 - READ_MEDIA_AUDIO (API >= 33, audio monitor)
 
 ## Package Info
-- **Package**: `at.webformat.translander`
-- **App Class**: `TranslanderApp.kt`
+- **Package and source namespace**: `io.github.lrq3000.utterlane`
+- **App Class**: `UtterlaneApp.kt`
 - **Main Activity**: `SettingsActivity.kt`
 
 ## Testing
 1. Build and install (see Build section above)
 2. Test floating mic: Enable in Settings → tap to transcribe
-3. Test accessibility button: Enable in Android Settings → Accessibility → Translander
-4. Test share: WhatsApp → share voice message → Translander appears in share sheet
-5. Test open with: File manager → select audio → Open with Translander
+3. Test accessibility button: Enable in Android Settings → Accessibility → Utterlane
+4. Test share: WhatsApp → share voice message → Utterlane appears in share sheet
+5. Test open with: File manager → select audio → Open with Utterlane
 6. Test folder monitoring: Enable in Settings → new audio in Downloads → auto-transcription
 7. Test formats: OPUS, AAC, M4A, OGG, MP3
 
 ## Open Tasks
 
 ### F-Droid Publishing
-- [x] F-Droid metadata created (`fdroiddata/metadata/at.webformat.translander.yml`)
-- [x] F-Droid local build verified with `fdroid build`
+- [ ] Create metadata for `io.github.lrq3000.utterlane` (no fdroiddata checkout is included here)
+- [ ] Verify this new identity with `fdroid build` (upstream verification does not establish this)
 - [x] Add app screenshots to `fastlane/metadata/android/en-US/images/phoneScreenshots/`
 - [x] Create feature graphic at `fastlane/metadata/android/en-US/images/featureGraphic.png`
 - [ ] Submit to F-Droid via GitLab RFP at https://gitlab.com/fdroid/rfp
@@ -310,7 +318,7 @@ OfflineRecognizerConfig(
 
 **Note:** F-Droid uses fast-forward merges. Always rebase the fdroiddata branch, never merge:
 ```bash
-cd fdroiddata && git fetch origin master && git rebase origin/master && git push --force myfork add-translander
+cd fdroiddata && git fetch origin master && git rebase origin/master && git push --force myfork add-utterlane
 ```
 See [Git guide for fdroiddata contributors](https://gitlab.com/fdroid/wiki/-/wikis/Tips-for-fdroiddata-contributors/Git-Usage).
 
@@ -326,7 +334,7 @@ See [Git guide for fdroiddata contributors](https://gitlab.com/fdroid/wiki/-/wik
 ```bash
 rm -rf ~/.gradle/daemon
 cd /home/hatsch/claude/transcript/fdroiddata
-ANDROID_HOME=/home/hatsch/Android/Sdk fdroid build at.webformat.translander
+ANDROID_HOME=/home/hatsch/Android/Sdk fdroid build io.github.lrq3000.utterlane
 ```
 
 **Testing unreleased commits (LOCAL ONLY — never commit this change):**
@@ -338,6 +346,9 @@ commit: feature/localization   # or a specific commit hash
 Then remove the existing APK from `unsigned/` and run `fdroid build`. Always revert the YAML change afterward.
 
 ### Google Play Publishing
+
+The following checklist records upstream publishing work, not an Utterlane
+listing. The new application ID requires its own listing and publishing setup.
 - [x] Developer account created
 - [x] App listing created with screenshots, descriptions, privacy policy
 - [x] Accessibility service disclosure dialog added (required for permission approval)
@@ -347,7 +358,9 @@ Then remove the existing APK from `unsigned/` and run `fdroid build`. Always rev
 - [ ] Run closed test for 14 days with 12+ testers
 - [ ] Apply for production access and permission review
 
-**Status:** On hold. Production requires 12 testers for 14 days before you can even apply. Closed test release is published and ready. Low priority — F-Droid + GitHub releases cover distribution for now.
+**Upstream status at handover:** On hold, with a closed-test release reported.
+Check current Google Play requirements before publishing Utterlane; old testing
+milestones and distribution claims do not transfer to the new application ID.
 
 ### Known Issues
 - Vanadium browser doesn't handle voice input results (browser bug, not fixable on our side)

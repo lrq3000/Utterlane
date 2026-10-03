@@ -1,10 +1,10 @@
-# Privacy Policy for Translander
+# Privacy Policy for Utterlane
 
 **Last updated:** October 2026
 
 ## Overview
 
-Translander is a voice-to-text application that performs all speech recognition **entirely on your device**. We are committed to protecting your privacy.
+Utterlane is a voice-to-text application maintained by Stephen Karl Larroque that performs all speech recognition **entirely on your device**. We are committed to protecting your privacy.
 
 ## Data Collection
 
@@ -26,7 +26,7 @@ The app requires the following permissions:
 | Microphone | Record speech for on-device transcription |
 | Accessibility Service | Inject transcribed text into other apps |
 | Display Over Other Apps | Show floating microphone button |
-| Internet | One-time download of speech recognition model (~600MB) |
+| Internet | Requested downloads of speech recognition models (approximately 402–674 MB each) |
 | Storage/Media | Access audio files for voice message transcription |
 | Notifications | Show service status |
 
@@ -44,7 +44,7 @@ The app requires the following permissions:
 
 ## Data Storage
 
-All data remains on your device:
+Utterlane processes and stores application data locally. Android may back up eligible settings and files according to your system configuration; microphone history is explicitly excluded:
 - Speech recognition model stored in app's private storage
 - User preferences stored locally
 - Word correction rules stored locally
@@ -63,9 +63,10 @@ We may update this privacy policy from time to time. Changes will be posted in t
 
 ## Contact
 
-For questions about this privacy policy, please open an issue at:
-https://github.com/hatsch/translander/issues
+For questions about this privacy policy, contact Stephen Karl Larroque at
+[LRQ3000@GMAIL.COM](mailto:LRQ3000@GMAIL.COM), or open an issue at:
+https://github.com/lrq3000/Utterlane/issues
 
 ## Open Source
 
-Translander is open source software licensed under Apache 2.0. You can review the complete source code to verify these privacy claims.
+Utterlane is open source software licensed under Apache 2.0. You can review the complete source code to verify these privacy claims.
