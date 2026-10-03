@@ -59,7 +59,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: TranSlander-debug
+          name: Utterlane-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           # APKs are already ZIP archives; compressing them again wastes CPU.
@@ -79,7 +79,7 @@ jobs:
       - name: Download APK
         uses: actions/download-artifact@v8.0.1
         with:
-          name: TranSlander-debug
+          name: Utterlane-debug
           path: apk
 
       - name: Attach debug APK
@@ -90,5 +90,5 @@ jobs:
         # Environment variables keep release tags out of shell source code.
         # Replacing the same asset makes a rerun of this job safe.
         run: |
-          mv apk/app-debug.apk apk/TranSlander-debug.apk
-          gh release upload "$RELEASE_TAG" apk/TranSlander-debug.apk --clobber
+          mv apk/app-debug.apk apk/Utterlane-debug.apk
+          gh release upload "$RELEASE_TAG" apk/Utterlane-debug.apk --clobber

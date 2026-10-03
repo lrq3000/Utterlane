@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/lrq3000/Utterlane/actions/workflows/android.yml"><img src="https://github.com/lrq3000/Utterlane/actions/workflows/android.yml/badge.svg" alt="Android CI"></a>
+  <a href="https://github.com/lrq3000/Utterlane/actions/workflows/build_apk.yml"><img src="https://github.com/lrq3000/Utterlane/actions/workflows/build_apk.yml/badge.svg" alt="Build APK"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0 license"></a>
   <img src="https://img.shields.io/badge/Android-8%2B%20%C2%B7%20ARM64-3DDC84" alt="Android 8 or later, ARM64">
   <img src="https://img.shields.io/badge/speech%20recognition-on--device-0088ee" alt="On-device speech recognition">

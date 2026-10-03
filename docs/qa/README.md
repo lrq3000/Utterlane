@@ -37,3 +37,6 @@ The [rebrand verification report](utterlane-rebrand.md) records the packaged-APK
 native inference, input-integration and visual checks. Rerun the source audit with
 `python tools/qa/check_rebrand.py`; add `--aapt` and one or more `--apk` arguments
 to inspect distribution artifacts too.
+
+See [updated-main replay verification](utterlane-main-replay.md) for preservation
+of the model-deletion confirmation UI and newer APK workflow.

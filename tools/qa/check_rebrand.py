@@ -25,6 +25,7 @@ class RebrandAudit:
         "docs/qa/utterlane-rebrand.md",
         "docs/superpowers/plans/2026-10-02-audio-history-streaming.md",
         "docs/superpowers/plans/2026-10-04-utterlane-rebrand.md",
+        "docs/superpowers/plans/2026-10-04-apk-workflow.md",
         "tools/qa/check_rebrand.py",
     }
 
