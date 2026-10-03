@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased — Utterlane
+
+### Changed
+- Rebrand the application, first-party source packages, JNI library, localized
+  labels, release artifacts, and documentation as Utterlane.
+- Use `io.github.lrq3000.utterlane` as the new Android application identity.
+  This installs separately; upstream app data and permissions are not migrated.
+- Apply the supplied Utterlane wordmark and icon to launcher, Settings,
+  notifications, README and store artwork; archive the original design.
+- Document maintenance by Stephen Karl Larroque, upstream lineage, and the
+  policy welcoming AI contributions sanity checked by humans.
+
+Earlier entries and release links below belong to the upstream TranSlander
+history and are retained as historical records.
+
 ## [1.2.4] - 2026-02-07
 
 ### Fixed

@@ -143,15 +143,15 @@ jobs:
 
     - name: Rename artifacts
       run: |
-        mv ${{ steps.sign_apk.outputs.signedFile }} app/build/outputs/apk/release/translander-${{ steps.get_version.outputs.VERSION }}.apk
-        mv ${{ steps.sign_aab.outputs.signedFile }} app/build/outputs/bundle/release/translander-${{ steps.get_version.outputs.VERSION }}.aab
+        mv ${{ steps.sign_apk.outputs.signedFile }} app/build/outputs/apk/release/utterlane-${{ steps.get_version.outputs.VERSION }}.apk
+        mv ${{ steps.sign_aab.outputs.signedFile }} app/build/outputs/bundle/release/utterlane-${{ steps.get_version.outputs.VERSION }}.aab
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          app/build/outputs/apk/release/translander-${{ steps.get_version.outputs.VERSION }}.apk
-          app/build/outputs/bundle/release/translander-${{ steps.get_version.outputs.VERSION }}.aab
+          app/build/outputs/apk/release/utterlane-${{ steps.get_version.outputs.VERSION }}.apk
+          app/build/outputs/bundle/release/utterlane-${{ steps.get_version.outputs.VERSION }}.aab
         generate_release_notes: true
         draft: false
         prerelease: ${{ contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}

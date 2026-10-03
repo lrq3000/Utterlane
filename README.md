@@ -1,261 +1,275 @@
-# TranSlander
+<p align="center">
+  <img src="assets/utterlane-banner.png" alt="Utterlane — Fast. Offline. Transcription." width="900">
+</p>
 
-A fully offline voice typing app for Android. Speak into your phone and text appears in any app — no internet required, no cloud processing, your voice data never leaves your device.
+<p align="center">
+  <strong>Speak naturally. Get text as you go. Keep speech recognition on your device.</strong>
+</p>
 
-[<img src="assets/get-it-on-github.svg" alt="Get it on GitHub" height="60">](https://github.com/hatsch/translander/releases/latest)
+<p align="center">
+  <a href="https://github.com/lrq3000/Utterlane/actions/workflows/android.yml"><img src="https://github.com/lrq3000/Utterlane/actions/workflows/android.yml/badge.svg" alt="Android CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0 license"></a>
+  <img src="https://img.shields.io/badge/Android-8%2B%20%C2%B7%20ARM64-3DDC84" alt="Android 8 or later, ARM64">
+  <img src="https://img.shields.io/badge/speech%20recognition-on--device-0088ee" alt="On-device speech recognition">
+</p>
 
-> **Note:** This started as a fun project. I really hate typing on touch screens and I hate voice messages even more. Then I got to know Parakeet and found it quite handy. As I am not an Android developer, I played around with Claude Code and came to the point where I thought it might be useful for others as well. So here we are.
+<p align="center">
+  <a href="#get-started">Get started</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#privacy">Privacy</a> ·
+  <a href="#build-from-source">Build</a> ·
+  <a href="#contributing">Contribute</a> ·
+  <a href="#lineage-and-maintenance">Lineage</a>
+</p>
+
+Utterlane is an open-source **offline voice-typing and audio-transcription app for
+Android**, built around responsive capture and incremental output. Dictate into
+other apps, use your keyboard's microphone button, or turn a shared voice message
+into text. No account, subscription, or speech-recognition server is required.
+
+## Get started
+
+### Install
+
+Get an APK from [GitHub Releases](https://github.com/lrq3000/Utterlane/releases)
+when an Utterlane release is available, or [build from source](#build-from-source).
+Use an **Android 8.0+ device with ARM64 support** and leave room for a speech model
+(approximately 402–674 MB, depending on your selection).
+
+Utterlane uses the application ID `io.github.lrq3000.utterlane`. It installs
+separately from its predecessor: settings, model files, recording history, and
+permissions do not migrate automatically. Store publishing under this new
+identity is separate from upstream distribution; the presence of Fastlane
+metadata does not mean a Google Play or F-Droid listing is live.
+
+### Your first dictation
+
+1. Open **Utterlane** and select a recognition model.
+2. **Download the model**, or **Import from folder** if you already have the
+   required files. Once installed, recognition works without a network connection.
+3. Grant **Microphone** access.
+4. Choose your input method:
+   - **Keyboard mic:** open **Keyboard Integration → Voice Input Method**, enable
+     Utterlane, and enable the voice-input key in a compatible keyboard such as
+     [HeliBoard](https://github.com/Helium314/HeliBoard).
+   - **Accessibility button:** enable Utterlane's text-input accessibility service
+     in Android Settings to insert recognized text into the focused field.
+   - **Floating mic:** allow **Display over other apps** and enable the floating
+     button in Utterlane.
+5. Focus a text field, tap the microphone, and speak. Tap the recording panel to
+   finish. If text cannot be inserted, Utterlane can use the clipboard or provide
+   transcript recovery/export.
+
+**Already have an audio file?** Share it with Utterlane or choose **Open with →
+Utterlane** in your file manager. You can also monitor selected folders for newly
+saved voice messages.
 
 ## Features
 
-### Offline Speech Recognition
-- Uses [Parakeet TDT v3](https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8) neural model (~600MB) running locally via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)
-- Supports 25 languages with auto-detection
-- No internet connection needed after model download
-- **Import from folder** — load model files from local storage instead of downloading
+| | What you can do |
+| --- | --- |
+| **On-device recognition** | Run NVIDIA Parakeet v3 or optional Moondream Parakeet Ultra/Redux models locally. |
+| **Incremental text** | Receive completed speech segments while microphone capture continues; see file-transcription results before the whole file finishes. |
+| **System-wide input** | Use a keyboard microphone, accessibility button, or draggable floating microphone. |
+| **Voice-message transcription** | Share, open, or monitor audio files including OPUS, AAC, OGG, M4A, MP3, and WAV, subject to device codec support. |
+| **25 recognition languages** | Automatic language detection; a multilingual user interface. |
+| **Word corrections** | Fix recurring names and recognition mistakes with your own whole-word replacement rules. |
+| **Optional local history** | Replay, share, delete, or retranscribe saved microphone recordings with configurable retention. Off by default. |
+| **Long-session handling** | Bounded audio queues, chunked decoding, cancellation, and recoverable completed transcripts. |
+| **Live feedback** | Audio-driven waveform, low/no-signal feedback, processing progress, and an estimated remaining time after stopping. |
+| **Model recovery** | Unload/reset recognition without force-closing the app if a model fails or becomes stuck. |
 
-### Works in Any App
-- Uses Android Accessibility API to inject text directly into any focused text field
-- Falls back to clipboard if no text field is focused
+### A closer look
 
-### Multiple Input Methods
-- **Accessibility Button** — System navigation bar button, works system-wide
-- **Floating Mic Button** — Draggable overlay, always visible (optional)
-- **Keyboard Mic Button** — Integrates with keyboards like HeliBoard
+<p align="center">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" alt="Utterlane recognition model and microphone settings" width="300">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" alt="Utterlane keyboard, accessibility and floating microphone settings" width="300">
+</p>
 
-### Voice Message Transcription
-- **Share** audio files from any app
-- **Open with** audio files from file managers
-- **Folder monitoring** — Watch Downloads or custom folders for new voice messages
-- Automatic notifications when voice messages are detected
-- Supports OPUS, AAC, OGG, M4A, MP3, WAV formats
+### How streaming works
 
-**Example: Signal voice messages**
-1. Open Translander Settings → Voice Message Transcription
-2. Add watch folder: `Music/Signal` (where Signal saves voice messages)
-3. Enable "Monitor Folders"
-4. In Signal, long-press a voice message → Save
-5. Transcription popup appears automatically
+Utterlane processes microphone audio while capture continues and delivers
+completed text segments. The default Parakeet v3 backend uses **simulated
+streaming over an offline model**, with context around bounded windows of at most
+12 seconds per inference call. This is segment-by-segment output, not a promise
+of instantaneous word-by-word results. Latency depends on pauses, model, and
+device speed; recognition near segment boundaries can differ from a single
+whole-recording pass.
 
-### Word Corrections
-- Custom dictionary to fix recurring recognition errors
-- Example: "Tamtam" → "Tamdam"
-- Whole-word matching with case-insensitive option
-- Manage rules easily in Settings
+With history disabled, microphone audio stays in bounded memory queues. If the
+device cannot keep up, recording stops visibly and accepted audio finishes
+processing. With history enabled, recordings also provide a disk-backed backlog.
+Optional audio history is approximately **115 MB per hour**, split into hourly
+PCM16 WAV parts. Retention ranges from one hour to forever; Android can delay
+background cleanup while asleep or force-stopped.
 
-### Microphone Recording History
-- **Off by default** — Settings → Microphone → Keep microphone audio
-- Retention options: **No history, 1 hour, 6 hours, 1 day, 7 days, 30 days, 90 days, Forever**
-- Only microphone recordings are saved; shared/opened audio is not duplicated
-- Browse, play, share, delete, and retranscribe saved recordings from Settings
-- Audio is private, offline PCM16 WAV (~115 MB/hour), split into hourly parts for long sessions
-- Expired recordings are pruned automatically. Android can defer scheduled deletion while asleep; active readers/recordings are protected
-- An interrupted recording can be recovered from its saved audio after restarting the app
+### Models and languages
 
-### Long Audio and Incremental Results
-- Files are decoded, downmixed, and resampled incrementally instead of loaded completely into memory
-- Parakeet v3 runs through bounded offline windows with boundary context: **at most 12 seconds per inference call**
-- Microphone recognition runs while capture continues; the IME and accessibility/floating input emit completed text segments
-- File transcription shows completed text before the whole file has finished, with cancellation, bounded preview pages, Copy, and full text-file Share
-- Single-result activity/API and clipboard transfers have a safe size limit; Settings → Recover transcript provides text-file export when delivery fails
-- With No history, microphone audio stays in bounded memory queues and no audio file is created. If recognition cannot keep up, capture stops visibly and accepted audio finishes processing
-- With history enabled, the saved recording also serves as the disk-backed audio backlog. History writing uses a separate bounded worker; a write failure warns and falls back to the bounded live queue
+| Model | Runtime | Approximate model download |
+| --- | --- | --- |
+| NVIDIA Parakeet TDT v3 — default | sherpa-onnx / ONNX INT8 | 670 MB |
+| Moondream Parakeet Ultra | CrispASR / GGUF Q8_0 or Q4_K | 674 MB or 402 MB |
+| Moondream Parakeet Redux | CrispASR / GGUF Q8_0 or Q4_K | 674 MB or 402 MB |
 
-Parakeet v3 here uses **simulated streaming** over the existing offline ONNX model, not a native online model. Results arrive in segments rather than individual keystrokes; timing depends on pauses and device speed. Chunked recognition can differ from whole-utterance recognition near boundaries.
+These Redux GGUF conversions are not the original 178 MB Photon packing, and
+published Photon benchmarks do not establish their performance on your phone.
+The Q8 alternatives have on-emulator inference coverage; Q4 variants share the
+backend but have not received a separate on-device inference run.
 
-### Modern UI
-- Large bottom capture panel with an actual PCM-driven waveform; tap the waveform to finish
-- Live low/no-signal feedback; Android-reported capture silencing is shown on supported Android versions
-- After stopping, completed-audio percentage and measured remaining-time estimate
-- Material 3 design with Jetpack Compose
-- Dark and Light theme support
-- System theme auto-detection
+<details>
+<summary>Supported recognition languages</summary>
 
-### Keyboard Integration
-Translander provides three APIs for voice input integration:
+Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French,
+German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish,
+Portuguese, Romanian, Russian, Slovak, Slovenian, Spanish, Swedish, and Ukrainian.
 
-| Component | API | Use Case |
-|-----------|-----|----------|
-| `VoiceInputMethodService` | InputMethodService (voice IME) | Keyboard mic buttons (HeliBoard) |
-| `SpeechRecognitionService` | RecognitionService | Apps using SpeechRecognizer class |
-| `VoiceInputActivity` | RECOGNIZE_SPEECH intent | Apps launching voice input via intent |
+Language selection is automatic. Existing interface translations were
+machine-generated; corrections and completion of newer strings are welcome.
 
-**Setup for keyboard mic button (HeliBoard):**
-1. Open Translander → Keyboard Integration → Tap "Voice Input Method"
-2. Enable "Translander" in the system keyboard list
-3. In HeliBoard settings, enable "Voice input key"
-4. Mic button should now appear on keyboard toolbar
+</details>
 
-## How It Works
+### Example: saved Signal messages
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Voice Input Flow                         │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  Floating Mic ─┐                                             │
-│                ├─→ AudioRecorder (16kHz PCM)                 │
-│  Accessibility ┤          ↓                                  │
-│  Button       ─┤   Parakeet ONNX Model (offline)             │
-│                │          ↓                                  │
-│  Keyboard Mic ─┘   Word Corrections (optional)               │
-│                           ↓                                  │
-│                ┌──────────┴──────────┐                       │
-│                ↓                     ↓                       │
-│         Accessibility API      Keyboard IME                  │
-│         (inject into apps)     (direct input)                │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+In **Voice Message Transcription**, add the folder where Signal saves audio
+(for example, `Music/Signal`) and enable folder monitoring. Save a voice message
+from Signal to that folder; Utterlane detects it and offers transcription.
 
-┌─────────────────────────────────────────────────────────────┐
-│                Voice Message Transcription                   │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  Share/Open audio file  OR  Folder monitor detects file      │
-│       ↓                                                      │
-│  AudioDecoder (MediaCodec → 16kHz mono PCM)                  │
-│       ↓                                                      │
-│  Parakeet ONNX Model                                         │
-│       ↓                                                      │
-│  Result displayed with Copy/Share options                    │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
+## Privacy
 
-## Supported Languages
+- Speech recognition runs locally; Utterlane does not upload audio or transcripts
+  to a speech service, collect analytics, or require an account.
+- Network access is used for requested model downloads from Hugging Face. Local
+  model import is available; after setup, recognition works offline.
+- Microphone history is **disabled by default**. When enabled, it is private to
+  the app and excluded from Android cloud backup and device transfer.
+- Temporary text files support long transcripts and recovery. User-requested
+  exports and clipboard transfers give data to their receiving apps; those apps
+  have their own privacy behavior.
 
-Auto-detect, English, German, French, Spanish, Italian, Portuguese, Dutch, Polish, Russian, Ukrainian, Czech, Slovak, Hungarian, Romanian, Bulgarian, Croatian, Slovenian, Greek, Danish, Swedish, Finnish, Estonian, Latvian, Lithuanian, Maltese
+See the [privacy policy](PRIVACY_POLICY.md) for retention and permission details.
+Devices that support per-app network controls can also disable Utterlane's
+network access after model setup.
 
-The user interface is available in all supported languages. Translations were machine-generated and may contain errors or awkward phrasing — pull requests welcome.
+## Build from source
 
-## Build
+### Requirements
 
-### Alternative recognition models
+- JDK 21+, Android SDK platform 35, Android NDK `28.2.13676358`, CMake `3.22.1`.
+- Python 3 and Git for pinned native-source preparation.
+- Bash and the upstream Android build prerequisites for the initial sherpa-onnx
+  source build. Gradle `8.12.1` is provided by the wrapper.
 
-Settings → Recognition model offers NVIDIA Parakeet v3 (default), Moondream
-Parakeet Ultra and Moondream Parakeet Redux. Each alternative offers Q8_0
-(674 MB) and Q4_K (402 MB) GGUF files through the pinned CrispASR CPU runtime.
-Downloads/imports are checked against their expected size and SHA-256 before
-publication. A model cannot be switched or removed during an active session.
-Redux's original Photon 178 MB packing and benchmark speeds do not apply to
-these dequantized/requantized GGUF artifacts. Q8_0 inference for both models
-has been verified on LDPlayer; Q4_K uses the same backend but has not received
-a separate on-device inference run.
+Set `JAVA_HOME` and `ANDROID_HOME` to **absolute paths** for your installation.
+The first build needs network access to retrieve dependencies and source code.
 
-Model loading now runs a short encoder/decoder validation before reporting ready.
-Inference runs in a private worker process so Settings → **Force unload / reset
-recognition** can stop a failed or stuck model without force-closing the app.
-This cancels active transcription/capture while preserving saved audio and
-recoverable completed text. Downloads and settings are retained. Load failures
-are displayed with their cause; a worker timeout also releases the model.
-
-### Prerequisites
-- Android Studio (or standalone Android SDK)
-- JDK 21+
-- Python 3 and Git (one-time pinned native source preparation)
-- Android NDK 28.2.13676358 and CMake 3.22.1
-
-### Commands
 ```bash
-# Set environment (adjust paths as needed)
-export ANDROID_HOME=~/Android/Sdk
-export JAVA_HOME=~/android-studio/jbr
-export PATH=$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH
+# Build the sherpa-onnx AAR once (requires a Bash-compatible build environment).
+export ANDROID_NDK="$ANDROID_HOME/ndk/28.2.13676358"
+./build-sherpa-onnx-aar.sh
 
-# Build debug APK
+# Prepare the pinned CrispASR/ggml sources and build Utterlane.
 python tools/prepare_native.py
 ./gradlew assembleDebug
 
-# Install on connected device
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+# Optional: install on your selected Android target.
+adb -s YOUR_DEVICE_SERIAL install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Native source revisions and MIT attribution are packaged in
-`app/src/main/assets/native-licenses.txt`. The Python preparation command is
-cross-platform; it is preferable to introducing another shell build script.
-The existing sherpa-onnx AAR source-build prerequisite still applies.
+On Windows, use `gradlew.bat` after providing the source-built
+`app/libs/sherpa-onnx-1.12.23.aar` and running the Python preparation command.
+Converting the existing Bash AAR builder to a portable Python tool is a useful
+future contribution; it is currently still required for a fresh AAR source build.
 
-For fast iteration, use focused JVM tests and normal incremental Gradle builds.
-After installing the application and test APK once, rerun a specific Android
-test directly without a Gradle build/install cycle:
+### Tests
+
+```bash
+./gradlew testDebugUnitTest assembleDebug assembleDebugAndroidTest
+
+# After installing the app and instrumentation APK, run a focused device test.
+adb -s YOUR_DEVICE_SERIAL shell am instrument -w \
+  -e class io.github.lrq3000.utterlane.CapturePanelAndroidTest \
+  io.github.lrq3000.utterlane.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Integration tests involving recognition require the appropriate local models
+and speech fixtures; see the [QA notes](docs/qa/README.md). Use normal incremental
+builds rather than clearing build caches for every test run.
+
+### Architecture
 
 ```text
-adb -s emulator-5554 shell am instrument -w -e class com.translander.CapturePanelAndroidTest at.webformat.translander.test/androidx.test.runner.AndroidJUnitRunner
+Microphone / shared file / watched folder
+                  ↓
+        PCM capture or audio decoding
+                  ↓
+    Bounded transcription windows → private recognition worker
+                  ↓                    (sherpa-onnx / CrispASR)
+        Custom word corrections
+                  ↓
+   Keyboard / focused field / transcript preview and export
 ```
 
-## Permissions
+First-party code lives in `app/src/main/java/io/github/lrq3000/utterlane/`:
+`asr/` handles models and recognition, `service/` and `ime/` provide text-input
+surfaces, `transcribe/` handles files, `history/` manages optional recordings,
+and `settings/` and `ui/` provide the interface. Native glue is in
+`app/src/main/cpp/`; [native dependency notices](app/src/main/assets/native-licenses.txt)
+are also included in the APK.
 
-| Permission | Purpose |
-|------------|---------|
-| `RECORD_AUDIO` | Capture voice for transcription |
-| `SYSTEM_ALERT_WINDOW` | Display floating mic button overlay |
-| `FOREGROUND_SERVICE_MICROPHONE` | Keep recording while in background |
-| `FOREGROUND_SERVICE_DATA_SYNC` | Monitor folders for voice messages |
-| `BIND_ACCESSIBILITY_SERVICE` | Inject text into apps |
-| `POST_NOTIFICATIONS` | Show recording status and voice message alerts |
-| `INTERNET` | Download speech model (one-time) |
-| `READ_MEDIA_AUDIO` | Access audio files for transcription (Android 13+) |
-| `READ_EXTERNAL_STORAGE` | Access audio files for transcription (Android ≤12) |
-| `RECEIVE_BOOT_COMPLETED` | Auto-restart floating mic after device reboot |
-| `BIND_INPUT_METHOD` | Register as voice input method for keyboards |
+## Contributing
 
-## Project Structure
+Bug reports, translations, accessibility improvements, tests, and code are
+welcome. [Open an issue](https://github.com/lrq3000/Utterlane/issues) with your app
+version, Android/device details, selected model, and reproducible steps. Remove
+private speech or transcript content from shared logs.
 
-```
-app/src/main/java/com/translander/
-├── TranslanderApp.kt         # Application class, dependency injection
-├── asr/                      # Speech recognition
-│   ├── AudioRecorder.kt      # 16kHz PCM recording
-│   ├── DictionaryManager.kt  # Word correction rules
-│   ├── ModelManager.kt       # Model download and local import
-│   ├── ParakeetRecognizer.kt # ONNX inference wrapper
-│   └── RecognizerManager.kt  # Shared recognizer singleton
-├── ime/
-│   └── VoiceInputMethodService.kt # Voice IME for keyboard integration
-├── receiver/
-│   └── BootReceiver.kt       # Auto-restart service after reboot
-├── service/
-│   ├── FloatingMicService.kt      # Draggable overlay button
-│   ├── SpeechRecognitionService.kt # System RecognitionService API
-│   ├── TextInjectionService.kt    # Accessibility service
-│   └── VoiceInputActivity.kt      # RECOGNIZE_SPEECH intent handler
-├── settings/
-│   ├── SettingsActivity.kt   # Jetpack Compose UI
-│   └── SettingsRepository.kt # DataStore preferences
-├── transcribe/               # Voice message transcription
-│   ├── AudioDecoder.kt       # Decode audio to 16kHz PCM
-│   ├── AudioMonitorService.kt # Folder watching service
-│   ├── TranscribeActivity.kt # Transcription UI
-│   └── TranscribeManager.kt  # Extensible trigger system
-└── ui/                       # UI components
-    ├── RecordingOverlay.kt   # Recording state overlay
-    └── theme/                # Material 3 theming
-```
+Keep changes focused and explain how you verified them. **AI contributions are
+welcome as long as the outputs are sanity checked by humans.** The contributor
+remains responsible for understanding the change, checking its correctness and
+licensing, and testing relevant behavior. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Tech Stack
+Original brand artwork, generated exports, and regeneration instructions are in
+the [design document](docs/design/utterlane-branding.md).
 
-- **Language:** Kotlin
-- **UI:** Jetpack Compose, Material 3
-- **Speech Recognition:** sherpa-onnx (Parakeet TDT v3)
-- **Audio Processing:** Android MediaCodec, AudioRecord
-- **Persistence:** DataStore Preferences
-- **Build:** Gradle 8.12.1, AGP 8.7.2, Kotlin 2.0.21, Java 21
+## Roadmap and known limitations
 
-## Roadmap
+- Quick Settings tile, home-screen widget, and word-correction import/export.
+- Hotword boosting when the selected recognition backend/model supports it.
+- Broader physical-device performance measurements and Q4 inference coverage.
+- AOSP Keyboard does not offer this voice-input integration; try a compatible
+  keyboard such as HeliBoard. Upstream also reported voice-result integration
+  problems with Vanadium; compatibility depends on the receiving app.
 
-- [ ] Quick Settings tile for transcription
-- [ ] Home screen widget
-- [ ] Hotwords boosting (pending sherpa-onnx TDT support)
-- [ ] Export/import word correction rules
+Recognition accuracy depends on speech, background noise, language, and model.
+The app is provided under the warranty terms of its license.
 
-## Disclaimer
+## License and acknowledgments
 
-This app is provided as-is for personal use. Speech recognition accuracy depends on audio quality, accent, and background noise.
+Utterlane is licensed under [Apache-2.0](LICENSE). Copyright notices for upstream
+contributors are retained; Utterlane contributions are copyright 2026
+**Stephen Karl Larroque &lt;LRQ3000@GMAIL.COM&gt; and Utterlane contributors**.
 
-**Model Attribution:** Speech recognition uses [NVIDIA Parakeet TDT](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), licensed under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/). ONNX conversion by [csukuangfj/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
+Speech recognition builds on [NVIDIA Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3),
+[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx),
+[CrispASR](https://github.com/CrispStrobe/CrispASR), and ggml. Models and third-party
+libraries retain their own licenses. The default Parakeet model is CC-BY-4.0;
+the ONNX conversion is provided by
+[csukuangfj](https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8).
 
-**Privacy:** All speech processing happens locally on your device. No audio data is ever sent to any server. You can [download the model](https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8) directly or import it from a local folder, then revoke the Network permission in Android Settings to ensure the app can never access the internet.
+## Lineage and maintenance
 
----
+**Utterlane is a fork of [TranSlander](https://github.com/hatsch/TranSlander),
+originally developed by [hatsch](https://github.com/hatsch) and its contributors.**
+The upstream project began as a way to avoid touchscreen typing and transcribe
+voice messages, and credited development assistance from
+[Claude Code](https://claude.ai/claude-code).
 
-*This project was developed with the assistance of [Claude Code](https://claude.ai/claude-code), an AI coding assistant by Anthropic.*
+This fork is now maintained by **[Stephen Karl Larroque](https://github.com/lrq3000)
+([LRQ3000@GMAIL.COM](mailto:LRQ3000@GMAIL.COM))**, with a focus on responsive,
+local-first transcription, incremental output, and reliable long-session handling.
+The new name and application identity distinguish this independently maintained
+project from upstream. Historical release links and original copyright notices
+remain intact to preserve that lineage.
+
+Human-reviewed AI contributions are welcome here, just like other contributions;
+the requirement is that **humans sanity check the outputs before submission**.
