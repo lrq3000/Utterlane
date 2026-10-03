@@ -336,7 +336,7 @@ class FloatingMicService : Service() {
         return NotificationCompat.Builder(this, UtterlaneApp.NOTIFICATION_CHANNEL_ID)
             .setContentTitle(getString(R.string.service_notification_title))
             .setContentText(getString(R.string.service_notification_text))
-            .setSmallIcon(R.drawable.ic_mic_small)
+            .setSmallIcon(R.drawable.ic_utterlane_notification)
             .setContentIntent(openPendingIntent)
             .addAction(R.drawable.ic_close, getString(R.string.action_stop), stopPendingIntent)
             .setOngoing(true)

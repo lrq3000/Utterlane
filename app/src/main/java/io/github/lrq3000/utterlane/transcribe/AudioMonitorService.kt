@@ -148,7 +148,7 @@ class AudioMonitorService : Service() {
 
     private fun createServiceNotification(): Notification {
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_mic)
+            .setSmallIcon(R.drawable.ic_utterlane_notification)
             .setContentTitle(getString(R.string.monitor_notification_title))
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .build()
@@ -262,7 +262,7 @@ class AudioMonitorService : Service() {
         )
 
         val notification = NotificationCompat.Builder(this, "audio_detected")
-            .setSmallIcon(R.drawable.ic_mic)
+            .setSmallIcon(R.drawable.ic_utterlane_notification)
             .setContentTitle(getString(R.string.audio_detected_title))
             .setContentText(fileName)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)

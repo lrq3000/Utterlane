@@ -378,7 +378,17 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.app_name)) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.foundation.Image(
+                            painter = androidx.compose.ui.res.painterResource(R.drawable.utterlane_icon),
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(stringResource(R.string.app_name))
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer

@@ -1,0 +1,2 @@
+# Only required when regenerating brand PNGs, not for Android builds.
+Pillow==12.1.1

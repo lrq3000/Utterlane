@@ -29,7 +29,7 @@ object TranscriptRecovery {
             withContext(Dispatchers.Main) {
                 context.getSystemService(NotificationManager::class.java).notify(request,
                     NotificationCompat.Builder(context, UtterlaneApp.NOTIFICATION_CHANNEL_ID)
-                        .setSmallIcon(R.drawable.ic_mic_small).setContentTitle(context.getString(R.string.stream_recover))
+                        .setSmallIcon(R.drawable.ic_utterlane_notification).setContentTitle(context.getString(R.string.stream_recover))
                         .setContentText(context.getString(R.string.stream_preview)).setContentIntent(pending).setAutoCancel(true).build())
             }
         }
