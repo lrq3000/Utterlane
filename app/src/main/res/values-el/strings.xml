@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_title">Ρυθμίσεις</string>
-    <string name="service_notification_title">Το TranSlander είναι ενεργό</string>
+    <string name="service_notification_title">Το Utterlane είναι ενεργό</string>
     <string name="service_notification_text">Πατήστε το αιωρούμενο μικρόφωνο για μεταγραφή ομιλίας</string>
     <string name="service_alert_channel_name">Ειδοποιήσεις υπηρεσιών</string>
     <string name="service_alert_channel_description">Ειδοποιήσεις όταν οι υπηρεσίες αποτυγχάνουν να ξεκινήσουν</string>
     <string name="service_start_floating_mic">Πατήστε για εκκίνηση αιωρούμενου μικροφώνου</string>
     <string name="service_start_folder_monitor">Πατήστε για εκκίνηση παρακολούθησης φακέλων</string>
-    <string name="service_start_services">Πατήστε για να ξεκινήσετε τις υπηρεσίες TranSlander</string>
-    <string name="accessibility_service_label">Εισαγωγή κειμένου TranSlander</string>
-    <string name="accessibility_service_description">Επιτρέπει στο TranSlander να εισάγει μεταγεγραμμένο κείμενο απευθείας σε πεδία κειμένου. Ενεργοποιήστε το για απρόσκοπτη εισαγωγή ομιλίας-σε-κείμενο.</string>
+    <string name="service_start_services">Πατήστε για να ξεκινήσετε τις υπηρεσίες Utterlane</string>
+    <string name="accessibility_service_label">Εισαγωγή κειμένου Utterlane</string>
+    <string name="accessibility_service_description">Επιτρέπει στο Utterlane να εισάγει μεταγεγραμμένο κείμενο απευθείας σε πεδία κειμένου. Ενεργοποιήστε το για απρόσκοπτη εισαγωγή ομιλίας-σε-κείμενο.</string>
     <string name="section_speech_model">Μοντέλο ομιλίας</string>
     <string name="section_microphone">Μικρόφωνο</string>
     <string name="section_keyboard">Ενσωμάτωση πληκτρολογίου</string>
@@ -124,7 +124,7 @@
     <string name="toast_no_field_clipboard">Κανένα ενεργό πεδίο κειμένου. Αντιγράφηκε στο πρόχειρο.</string>
     <string name="toast_copied_clipboard_paste">Αντιγράφηκε στο πρόχειρο (επικολλήστε χειροκίνητα)</string>
     <string name="toast_copied">Αντιγράφηκε: %s</string>
-    <string name="toast_overlay_required">Απαιτείται άδεια επικάλυψης. Ενεργοποιήστε στις ρυθμίσεις του TranSlander.</string>
+    <string name="toast_overlay_required">Απαιτείται άδεια επικάλυψης. Ενεργοποιήστε στις ρυθμίσεις του Utterlane.</string>
     <string name="toast_voice_model_unavailable">Μοντέλο ομιλίας μη διαθέσιμο</string>
     <string name="toast_error_loading_model">Σφάλμα φόρτωσης μοντέλου ομιλίας</string>
     <string name="toast_recording_error">Σφάλμα εγγραφής</string>

@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_title">Ustawienia</string>
-    <string name="service_notification_title">TranSlander aktywny</string>
+    <string name="service_notification_title">Utterlane aktywny</string>
     <string name="service_notification_text">Dotknij pływającego mikrofonu, aby transkrybować mowę</string>
     <string name="service_alert_channel_name">Ostrzeżenia usług</string>
     <string name="service_alert_channel_description">Powiadomienia, gdy usługi nie mogą się uruchomić</string>
     <string name="service_start_floating_mic">Dotknij, aby uruchomić pływający mikrofon</string>
     <string name="service_start_folder_monitor">Dotknij, aby uruchomić monitor folderów</string>
-    <string name="service_start_services">Dotknij, aby uruchomić usługi TranSlander</string>
-    <string name="accessibility_service_label">TranSlander wprowadzanie tekstu</string>
-    <string name="accessibility_service_description">Umożliwia TranSlander wstawianie transkrybowanego tekstu bezpośrednio do pól tekstowych. Włącz tę opcję, aby płynnie zamieniać mowę na tekst.</string>
+    <string name="service_start_services">Dotknij, aby uruchomić usługi Utterlane</string>
+    <string name="accessibility_service_label">Utterlane wprowadzanie tekstu</string>
+    <string name="accessibility_service_description">Umożliwia Utterlane wstawianie transkrybowanego tekstu bezpośrednio do pól tekstowych. Włącz tę opcję, aby płynnie zamieniać mowę na tekst.</string>
     <string name="section_speech_model">Model mowy</string>
     <string name="section_microphone">Mikrofon</string>
     <string name="section_keyboard">Integracja z klawiaturą</string>
@@ -124,7 +124,7 @@
     <string name="toast_no_field_clipboard">Brak aktywnego pola tekstowego. Skopiowano do schowka.</string>
     <string name="toast_copied_clipboard_paste">Skopiowano do schowka (wklej ręcznie)</string>
     <string name="toast_copied">Skopiowano: %s</string>
-    <string name="toast_overlay_required">Wymagane uprawnienie nakładki. Włącz w ustawieniach TranSlander.</string>
+    <string name="toast_overlay_required">Wymagane uprawnienie nakładki. Włącz w ustawieniach Utterlane.</string>
     <string name="toast_voice_model_unavailable">Model mowy niedostępny</string>
     <string name="toast_error_loading_model">Błąd ładowania modelu mowy</string>
     <string name="toast_recording_error">Błąd nagrywania</string>

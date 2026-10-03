@@ -1,0 +1,180 @@
+package io.github.lrq3000.utterlane.asr
+
+import android.content.Context
+import android.net.Uri
+import android.util.Log
+import androidx.documentfile.provider.DocumentFile
+import io.github.lrq3000.utterlane.settings.SettingsRepository
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import okhttp3.Call
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.io.File
+import java.io.InputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
+
+/** Catalog-based private storage. Only verified, fully published artifacts are loadable. */
+class ModelManager(private val context: Context, private val client: OkHttpClient? = null) {
+    companion object { private const val TAG = "ModelManager" }
+    enum class ErrorType { NETWORK, CHECKSUM_MISMATCH, MISSING_FILE, FOLDER_ACCESS, STORAGE, UNKNOWN }
+    sealed class DownloadState {
+        data object NotStarted : DownloadState()
+        data class Downloading(val progress: Int) : DownloadState()
+        data class Copying(val progress: Int) : DownloadState()
+        data object Extracting : DownloadState()
+        data object Ready : DownloadState()
+        data class Error(val type: ErrorType, val details: String? = null) : DownloadState()
+    }
+    private val settings = SettingsRepository(context)
+    private val operation = Mutex()
+    private val _selected = MutableStateFlow(ModelCatalog.DEFAULT)
+    val selected: StateFlow<ModelDefinition> = _selected.asStateFlow()
+    private val _downloadState = MutableStateFlow<DownloadState>(DownloadState.NotStarted)
+    val downloadState: StateFlow<DownloadState> = _downloadState.asStateFlow()
+    @Volatile private var initialized = false
+    @Volatile private var transferJob: Job? = null
+    @Volatile private var activeCall: Call? = null
+    val isTransferring: Boolean get() = transferJob != null
+    private val httpClient by lazy { client ?: OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build() }
+    private val verified = mutableMapOf<String, List<Pair<Long, Long>>>()
+
+    init { checkModelStatus() }
+    suspend fun initializeSelection() {
+        if (initialized) return
+        operation.withLock {
+            if (!initialized) {
+                _selected.value = ModelCatalog.find(settings.selectedModelId.first())
+                initialized = true
+                checkModelStatus()
+            }
+        }
+    }
+    suspend fun select(model: ModelDefinition) = withContext(Dispatchers.IO) {
+        check(operation.tryLock()) { "A model transfer is already running" }
+        try { settings.setSelectedModelId(model.id); _selected.value = model; initialized = true; checkModelStatus() }
+        finally { operation.unlock() }
+    }
+    fun directory(model: ModelDefinition = selected.value): File = if (model.id == ModelCatalog.DEFAULT.id)
+        File(context.filesDir, "parakeet-v3") else File(context.filesDir, "models/${model.id}")
+    fun getModelPath(): String = directory().absolutePath
+    fun isModelReady(model: ModelDefinition = selected.value): Boolean = model.artifacts.all {
+        val file = File(directory(model), it.localName); file.isFile && file.length() == it.bytes
+    }
+    fun checkModelStatus() { _downloadState.value = if (isModelReady()) DownloadState.Ready else DownloadState.NotStarted }
+    suspend fun ensureVerified(): Boolean = withContext(Dispatchers.IO) {
+        initializeSelection()
+        if (!isModelReady()) return@withContext false
+        operation.withLock {
+            val model = selected.value
+            installedVerified(model).also { if (!it) _downloadState.value = DownloadState.Error(ErrorType.CHECKSUM_MISMATCH) }
+        }
+    }
+    private fun installedVerified(model: ModelDefinition): Boolean {
+        if (!isModelReady(model)) return false
+        val signature = model.artifacts.map { File(directory(model), it.localName).let { f -> f.length() to f.lastModified() } }
+        if (verified[model.id] != signature) {
+            if (!model.artifacts.all { ArtifactVerifier.valid(File(directory(model), it.localName), it) }) return false
+            verified[model.id] = signature
+        }
+        return true
+    }
+    suspend fun downloadModel(onProgress: (Int) -> Unit = {}) = transfer(false, onProgress) { artifact ->
+        val request = Request.Builder().url(artifact.url).build()
+        val call = httpClient.newCall(request)
+        activeCall = call
+        val response = call.execute()
+        if (!response.isSuccessful) { response.close(); error("Download failed: ${response.code}") }
+        val body = response.body ?: run { response.close(); error("Empty model response") }
+        object : java.io.FilterInputStream(body.byteStream()) { override fun close() { try { super.close() } finally { response.close() } } }
+    }
+    /** Imports accept the catalog's remote or local filename; unknown checkpoints are not silently substituted. */
+    suspend fun importFromFolder(uri: Uri) {
+        val folder = DocumentFile.fromTreeUri(context, uri) ?: error("Cannot access selected folder")
+        transfer(true) { artifact ->
+            val remote = artifact.url.substringAfterLast('/').substringBefore('?')
+            val source = folder.findFile(remote) ?: folder.findFile(artifact.localName) ?: throw java.io.FileNotFoundException(remote)
+            context.contentResolver.openInputStream(source.uri) ?: error("Cannot read ${source.name}")
+        }
+    }
+    private suspend fun transfer(importing: Boolean, onProgress: (Int) -> Unit = {}, open: (ModelArtifact) -> InputStream) = withContext(Dispatchers.IO) {
+        initializeSelection()
+        check(operation.tryLock()) { "A model transfer is already running" }
+        val model = selected.value
+        val target = directory(model)
+        var staging: File? = null
+        try {
+            // Size alone is insufficient: retry must replace same-sized corrupt files.
+            if (installedVerified(model)) { _downloadState.value = DownloadState.Ready; return@withContext }
+            transferJob = currentCoroutineContext()[Job]
+            _downloadState.value = if (importing) DownloadState.Copying(0) else DownloadState.Downloading(0)
+            check(target.parentFile!!.mkdirs() || target.parentFile!!.isDirectory) { "Cannot create model storage" }
+            val temporary = File(target.parentFile, ".${model.id}-${java.util.UUID.randomUUID()}")
+            staging = temporary
+            check(temporary.mkdir()) { "Cannot create model staging directory" }
+            var completedBytes = 0L
+            for (artifact in model.artifacts) {
+                Log.i(TAG, "${if (importing) "Importing" else "Downloading"} ${model.id}: ${artifact.localName}")
+                val digest = MessageDigest.getInstance("SHA-256")
+                var bytes = 0L
+                var last = -1
+                open(artifact).use { input -> File(temporary, artifact.localName).outputStream().use { output ->
+                    val buffer = ByteArray(65536)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        bytes += count
+                        check(bytes <= artifact.bytes) { "Unexpected model size" }
+                        digest.update(buffer, 0, count); output.write(buffer, 0, count)
+                        val percent = ((completedBytes + bytes) * 100 / model.downloadBytes).toInt().coerceIn(0, 99)
+                        if (percent != last) {
+                            last = percent
+                            _downloadState.value = if (importing) DownloadState.Copying(percent) else DownloadState.Downloading(percent)
+                            onProgress(percent)
+                        }
+                    }
+                } }
+                val actualHash = digest.digest().joinToString("") { "%02x".format(it) }
+                if (bytes != artifact.bytes || (artifact.sha256 != null && actualHash != artifact.sha256)) throw SecurityException("Model integrity verification failed: ${artifact.localName}")
+                completedBytes += bytes
+            }
+            currentCoroutineContext().ensureActive()
+            if (target.exists()) check(target.deleteRecursively()) { "Cannot replace incomplete model" }
+            Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+            staging = null
+            verified[model.id] = model.artifacts.map { File(target, it.localName).let { f -> f.length() to f.lastModified() } }
+            _downloadState.value = DownloadState.Ready
+            onProgress(100)
+            Log.i(TAG, "Verified model ready: ${model.id}")
+        } catch (e: CancellationException) { checkModelStatus(); throw e
+        } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            Log.e(TAG, "Model transfer failed", e)
+            _downloadState.value = DownloadState.Error(when (e) {
+                is SecurityException -> ErrorType.CHECKSUM_MISMATCH
+                is java.io.FileNotFoundException -> ErrorType.MISSING_FILE
+                is java.io.IOException -> if (importing) ErrorType.STORAGE else ErrorType.NETWORK
+                else -> ErrorType.UNKNOWN
+            }, e.message)
+        } finally {
+            // OkHttp cancellation commonly arrives as IOException; ensureActive()
+            // can then throw from the generic catch rather than the cancellation catch.
+            if (!currentCoroutineContext().isActive) checkModelStatus()
+            staging?.deleteRecursively(); activeCall = null; transferJob = null; operation.unlock()
+        }
+    }
+    fun cancelTransfer() { activeCall?.cancel(); transferJob?.cancel() }
+    suspend fun deleteModel() = withContext(Dispatchers.IO) {
+        check(operation.tryLock()) { "A model transfer is running" }
+        try { check(directory().deleteRecursively()) { "Cannot delete model" }; verified.remove(selected.value.id); checkModelStatus() }
+        finally { operation.unlock() }
+    }
+    fun getModelSize(): Long = selected.value.artifacts.sumOf { File(directory(), it.localName).length() }
+    fun getFormattedModelSize(): String = "%.0f MB".format(getModelSize() / 1000000.0)
+}

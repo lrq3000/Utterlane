@@ -20,12 +20,12 @@
 }
 
 # Keep services (referenced in AndroidManifest)
--keep class com.translander.service.TextInjectionService { *; }
--keep class com.translander.service.FloatingMicService { *; }
--keep class com.translander.transcribe.AudioMonitorService { *; }
+-keep class io.github.lrq3000.utterlane.service.TextInjectionService { *; }
+-keep class io.github.lrq3000.utterlane.service.FloatingMicService { *; }
+-keep class io.github.lrq3000.utterlane.transcribe.AudioMonitorService { *; }
 
 # Keep broadcast receivers
--keep class com.translander.receiver.BootReceiver { *; }
+-keep class io.github.lrq3000.utterlane.receiver.BootReceiver { *; }
 
 # Keep activities launched via intent
--keep class com.translander.transcribe.TranscribeActivity { *; }
+-keep class io.github.lrq3000.utterlane.transcribe.TranscribeActivity { *; }

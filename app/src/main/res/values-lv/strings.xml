@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_title">Iestatījumi</string>
-    <string name="service_notification_title">TranSlander aktīvs</string>
+    <string name="service_notification_title">Utterlane aktīvs</string>
     <string name="service_notification_text">Pieskarieties peldošajam mikrofonam, lai transkribētu runu</string>
     <string name="service_alert_channel_name">Pakalpojumu brīdinājumi</string>
     <string name="service_alert_channel_description">Paziņojumi, kad pakalpojumi neizdodas startēt</string>
     <string name="service_start_floating_mic">Pieskarieties, lai palaistu peldošo mikrofonu</string>
     <string name="service_start_folder_monitor">Pieskarieties, lai palaistu mapju uzraudzību</string>
-    <string name="service_start_services">Pieskarieties, lai palaistu TranSlander pakalpojumus</string>
-    <string name="accessibility_service_label">TranSlander teksta ievade</string>
-    <string name="accessibility_service_description">Ļauj TranSlander ievietot transkribētu tekstu tieši teksta laukos. Iespējojiet šo vienmērīgai runas-teksta ievadei.</string>
+    <string name="service_start_services">Pieskarieties, lai palaistu Utterlane pakalpojumus</string>
+    <string name="accessibility_service_label">Utterlane teksta ievade</string>
+    <string name="accessibility_service_description">Ļauj Utterlane ievietot transkribētu tekstu tieši teksta laukos. Iespējojiet šo vienmērīgai runas-teksta ievadei.</string>
     <string name="section_speech_model">Runas modelis</string>
     <string name="section_microphone">Mikrofons</string>
     <string name="section_keyboard">Tastatūras integrācija</string>
@@ -124,7 +124,7 @@
     <string name="toast_no_field_clipboard">Nav aktīva teksta lauka. Nokopēts starpliktuvē.</string>
     <string name="toast_copied_clipboard_paste">Nokopēts starpliktuvē (ielīmējiet manuāli)</string>
     <string name="toast_copied">Nokopēts: %s</string>
-    <string name="toast_overlay_required">Nepieciešama pārklājuma atļauja. Iespējojiet TranSlander iestatījumos.</string>
+    <string name="toast_overlay_required">Nepieciešama pārklājuma atļauja. Iespējojiet Utterlane iestatījumos.</string>
     <string name="toast_voice_model_unavailable">Runas modelis nav pieejams</string>
     <string name="toast_error_loading_model">Kļūda ielādējot runas modeli</string>
     <string name="toast_recording_error">Ierakstīšanas kļūda</string>

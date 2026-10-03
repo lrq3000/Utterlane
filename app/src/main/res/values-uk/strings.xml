@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_title">Налаштування</string>
-    <string name="service_notification_title">TranSlander активний</string>
+    <string name="service_notification_title">Utterlane активний</string>
     <string name="service_notification_text">Натисніть плаваючий мікрофон для транскрибування мовлення</string>
     <string name="service_alert_channel_name">Сповіщення служб</string>
     <string name="service_alert_channel_description">Сповіщення, коли служби не можуть запуститися</string>
     <string name="service_start_floating_mic">Натисніть, щоб запустити плаваючий мікрофон</string>
     <string name="service_start_folder_monitor">Натисніть, щоб запустити моніторинг тек</string>
-    <string name="service_start_services">Торкніться, щоб запустити служби TranSlander</string>
-    <string name="accessibility_service_label">Введення тексту TranSlander</string>
-    <string name="accessibility_service_description">Дозволяє TranSlander вставляти транскрибований текст безпосередньо в текстові поля. Увімкніть для безперебійного введення мовлення-в-текст.</string>
+    <string name="service_start_services">Торкніться, щоб запустити служби Utterlane</string>
+    <string name="accessibility_service_label">Введення тексту Utterlane</string>
+    <string name="accessibility_service_description">Дозволяє Utterlane вставляти транскрибований текст безпосередньо в текстові поля. Увімкніть для безперебійного введення мовлення-в-текст.</string>
     <string name="section_speech_model">Модель мовлення</string>
     <string name="section_microphone">Мікрофон</string>
     <string name="section_keyboard">Інтеграція з клавіатурою</string>
@@ -124,7 +124,7 @@
     <string name="toast_no_field_clipboard">Немає активного текстового поля. Скопійовано в буфер обміну.</string>
     <string name="toast_copied_clipboard_paste">Скопійовано в буфер обміну (вставте вручну)</string>
     <string name="toast_copied">Скопійовано: %s</string>
-    <string name="toast_overlay_required">Потрібен дозвіл на накладання. Увімкніть у налаштуваннях TranSlander.</string>
+    <string name="toast_overlay_required">Потрібен дозвіл на накладання. Увімкніть у налаштуваннях Utterlane.</string>
     <string name="toast_voice_model_unavailable">Модель мовлення недоступна</string>
     <string name="toast_error_loading_model">Помилка завантаження моделі мовлення</string>
     <string name="toast_recording_error">Помилка запису</string>

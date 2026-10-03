@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_title">Asetukset</string>
-    <string name="service_notification_title">TranSlander aktiivinen</string>
+    <string name="service_notification_title">Utterlane aktiivinen</string>
     <string name="service_notification_text">Napauta kelluvaa mikrofonia puheentunnistusta varten</string>
     <string name="service_alert_channel_name">Palveluhälytykset</string>
     <string name="service_alert_channel_description">Ilmoitukset kun palvelut eivät käynnisty</string>
     <string name="service_start_floating_mic">Napauta käynnistääksesi kelluvan mikrofonin</string>
     <string name="service_start_folder_monitor">Napauta käynnistääksesi kansioseurannan</string>
-    <string name="service_start_services">Napauta käynnistääksesi TranSlander-palvelut</string>
-    <string name="accessibility_service_label">TranSlander-tekstinsyöttö</string>
-    <string name="accessibility_service_description">Sallii TranSlanderin lisätä tunnistetun tekstin suoraan tekstikenttiin. Ota käyttöön saumattomaan puheesta tekstiksi -syöttöön.</string>
+    <string name="service_start_services">Napauta käynnistääksesi Utterlane-palvelut</string>
+    <string name="accessibility_service_label">Utterlane-tekstinsyöttö</string>
+    <string name="accessibility_service_description">Sallii Utterlanen lisätä tunnistetun tekstin suoraan tekstikenttiin. Ota käyttöön saumattomaan puheesta tekstiksi -syöttöön.</string>
     <string name="section_speech_model">Puhemalli</string>
     <string name="section_microphone">Mikrofoni</string>
     <string name="section_keyboard">Näppäimistöintegraatio</string>
@@ -124,7 +124,7 @@
     <string name="toast_no_field_clipboard">Ei aktiivista tekstikenttää. Kopioitu leikepöydälle.</string>
     <string name="toast_copied_clipboard_paste">Kopioitu leikepöydälle (liitä manuaalisesti)</string>
     <string name="toast_copied">Kopioitu: %s</string>
-    <string name="toast_overlay_required">Päällyskerrosoikeus tarvitaan. Ota käyttöön TranSlander-asetuksista.</string>
+    <string name="toast_overlay_required">Päällyskerrosoikeus tarvitaan. Ota käyttöön Utterlane-asetuksista.</string>
     <string name="toast_voice_model_unavailable">Puhemalli ei saatavilla</string>
     <string name="toast_error_loading_model">Virhe puhemallin latauksessa</string>
     <string name="toast_recording_error">Nauhoitusvirhe</string>

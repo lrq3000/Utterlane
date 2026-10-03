@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_title">Instellingen</string>
-    <string name="service_notification_title">TranSlander actief</string>
+    <string name="service_notification_title">Utterlane actief</string>
     <string name="service_notification_text">Tik op de zwevende microfoon om spraak te transcriberen</string>
     <string name="service_alert_channel_name">Servicewaarschuwingen</string>
     <string name="service_alert_channel_description">Meldingen wanneer services niet kunnen starten</string>
     <string name="service_start_floating_mic">Tik om zwevende microfoon te starten</string>
     <string name="service_start_folder_monitor">Tik om mapbewaking te starten</string>
-    <string name="service_start_services">Tik om TranSlander-services te starten</string>
-    <string name="accessibility_service_label">TranSlander tekstinvoer</string>
-    <string name="accessibility_service_description">Hiermee kan TranSlander getranscribeerde tekst rechtstreeks in tekstvelden invoegen. Schakel dit in voor naadloze spraak-naar-tekst invoer.</string>
+    <string name="service_start_services">Tik om Utterlane-services te starten</string>
+    <string name="accessibility_service_label">Utterlane tekstinvoer</string>
+    <string name="accessibility_service_description">Hiermee kan Utterlane getranscribeerde tekst rechtstreeks in tekstvelden invoegen. Schakel dit in voor naadloze spraak-naar-tekst invoer.</string>
     <string name="section_speech_model">Spraakmodel</string>
     <string name="section_microphone">Microfoon</string>
     <string name="section_keyboard">Toetsenbordintegratie</string>
@@ -124,7 +124,7 @@
     <string name="toast_no_field_clipboard">Geen tekstveld gefocust. Gekopieerd naar klembord.</string>
     <string name="toast_copied_clipboard_paste">Gekopieerd naar klembord (handmatig plakken)</string>
     <string name="toast_copied">Gekopieerd: %s</string>
-    <string name="toast_overlay_required">Overlay-toestemming vereist. Schakel in via TranSlander-instellingen.</string>
+    <string name="toast_overlay_required">Overlay-toestemming vereist. Schakel in via Utterlane-instellingen.</string>
     <string name="toast_voice_model_unavailable">Spraakmodel niet beschikbaar</string>
     <string name="toast_error_loading_model">Fout bij laden van spraakmodel</string>
     <string name="toast_recording_error">Opnamefout</string>

@@ -7,4 +7,4 @@
     android:canRetrieveWindowContent="true"
     android:canPerformGestures="false"
     android:accessibilityFlags="flagRequestAccessibilityButton"
-    android:settingsActivity="com.translander.settings.SettingsActivity" />
+    android:settingsActivity="io.github.lrq3000.utterlane.settings.SettingsActivity" />

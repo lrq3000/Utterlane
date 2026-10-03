@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_title">Indstillinger</string>
-    <string name="service_notification_title">TranSlander aktiv</string>
+    <string name="service_notification_title">Utterlane aktiv</string>
     <string name="service_notification_text">Tryk på den flydende mikrofon for at transskribere tale</string>
     <string name="service_alert_channel_name">Serviceadvarsler</string>
     <string name="service_alert_channel_description">Notifikationer når tjenester ikke kan starte</string>
     <string name="service_start_floating_mic">Tryk for at starte flydende mikrofon</string>
     <string name="service_start_folder_monitor">Tryk for at starte mappeovervågning</string>
-    <string name="service_start_services">Tryk for at starte TranSlander-tjenester</string>
-    <string name="accessibility_service_label">TranSlander tekstinput</string>
-    <string name="accessibility_service_description">Giver TranSlander mulighed for at indsætte transskriberet tekst direkte i tekstfelter. Aktivér dette for problemfri tale-til-tekst-input.</string>
+    <string name="service_start_services">Tryk for at starte Utterlane-tjenester</string>
+    <string name="accessibility_service_label">Utterlane tekstinput</string>
+    <string name="accessibility_service_description">Giver Utterlane mulighed for at indsætte transskriberet tekst direkte i tekstfelter. Aktivér dette for problemfri tale-til-tekst-input.</string>
     <string name="section_speech_model">Talemodel</string>
     <string name="section_microphone">Mikrofon</string>
     <string name="section_keyboard">Tastaturintegration</string>
@@ -124,7 +124,7 @@
     <string name="toast_no_field_clipboard">Intet tekstfelt fokuseret. Kopieret til udklipsholder.</string>
     <string name="toast_copied_clipboard_paste">Kopieret til udklipsholder (indsæt manuelt)</string>
     <string name="toast_copied">Kopieret: %s</string>
-    <string name="toast_overlay_required">Overlejringstilladelse påkrævet. Aktivér i TranSlander-indstillinger.</string>
+    <string name="toast_overlay_required">Overlejringstilladelse påkrævet. Aktivér i Utterlane-indstillinger.</string>
     <string name="toast_voice_model_unavailable">Talemodel ikke tilgængelig</string>
     <string name="toast_error_loading_model">Fejl ved indlæsning af talemodel</string>
     <string name="toast_recording_error">Optagelsesfejl</string>
