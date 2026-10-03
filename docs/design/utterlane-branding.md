@@ -17,6 +17,33 @@ launcher and store icons use the supplied U-and-waveform symbol. Adaptive icons
 must leave the foreground within Android's mask-safe area. Notification and
 themed-launcher icons use a monochrome silhouette rather than a color bitmap.
 
+## Regenerating and inspecting derivatives
+
+```text
+python -m pip install -r tools/branding-requirements.txt
+python tools/generate_brand_assets.py
+```
+
+The generator validates the original image SHA-256 before using its documented
+crop coordinates. It crops the wordmark directly, extracts the white symbol
+from the blue tile, and recreates a full-bleed cyan-to-blue background for
+Android masks. The original raster resolution limits detail in larger exports.
+Generic microphone action controls remain recognizable microphone controls;
+launcher, Settings header and notification branding use the Utterlane mark.
+
+| Output | Purpose |
+| --- | --- |
+| `assets/utterlane-banner.png` | README wordmark and original tagline |
+| `assets/utterlane-icon.png` | Rounded standalone documentation icon |
+| `app/src/main/res/drawable-nodpi/utterlane_icon.png` | Settings header |
+| `app/src/main/res/drawable-nodpi/utterlane_foreground.png` | Mask-safe adaptive and monochrome layer |
+| `app/src/main/res/drawable-nodpi/utterlane_background.png` | Full-bleed launcher gradient |
+| `app/src/main/res/drawable-nodpi/ic_utterlane_notification.png` | Alpha-only white notification mark |
+| `fastlane/metadata/android/en-US/images/icon.png` | 512px square store icon |
+| `fastlane/metadata/android/en-US/images/featureGraphic.png` | 1024 × 500 store banner |
+
+![Launcher mask and themed-icon previews](utterlane-icon-preview.png)
+
 ## Application identity
 
 - Public name and Gradle project: `Utterlane`.

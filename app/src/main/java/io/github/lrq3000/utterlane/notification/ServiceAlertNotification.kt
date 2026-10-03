@@ -34,7 +34,7 @@ class ServiceAlertNotification(private val context: Context) {
         )
 
         val notification = NotificationCompat.Builder(context, UtterlaneApp.SERVICE_ALERT_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_mic)
+            .setSmallIcon(R.drawable.ic_utterlane_notification)
             .setContentTitle(context.getString(R.string.app_name))
             .setContentText(context.getString(messageResId))
             .setContentIntent(pendingIntent)
