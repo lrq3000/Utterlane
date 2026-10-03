@@ -7,6 +7,7 @@ import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.FeatureConfig
+import com.k2fsa.sherpa.onnx.OfflineRecognizerResult
 import java.io.File
 
 class ParakeetRecognizer(
@@ -72,11 +73,10 @@ class ParakeetRecognizer(
         }
     }
 
-    fun transcribe(audioData: ShortArray): String? {
-        val rec = recognizer ?: return null
-
-        if (audioData.isEmpty()) {
-            return null
+    fun transcribeWindow(audioData: ShortArray): OfflineRecognizerResult {
+        val rec = checkNotNull(recognizer) { "Recognizer not initialized" }
+        require(audioData.isNotEmpty() && audioData.size <= 12 * AudioRecorder.SAMPLE_RATE) {
+            "Inference must use a bounded, nonempty window"
         }
 
         var stream: com.k2fsa.sherpa.onnx.OfflineStream? = null
@@ -91,12 +91,11 @@ class ParakeetRecognizer(
 
             rec.decode(stream)
 
-            val result = rec.getResult(stream)
-            result.text.trim().ifEmpty { null }
+            rec.getResult(stream)
 
         } catch (e: Exception) {
             Log.e(TAG, "Transcription failed", e)
-            null
+            throw e
         } finally {
             stream?.release()
         }

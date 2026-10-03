@@ -47,6 +47,7 @@ object RecordingUIBuilder {
         }
 
         statusText = TextView(context).apply {
+            id = R.id.recording_status
             text = context.getString(R.string.state_listening)
             textSize = 16f
             setTextColor(textColor)
@@ -55,6 +56,7 @@ object RecordingUIBuilder {
         layout.addView(statusText)
 
         val doneButton = Button(context).apply {
+            id = R.id.recording_done
             text = context.getString(R.string.overlay_done)
             setOnClickListener { onDoneClick() }
         }

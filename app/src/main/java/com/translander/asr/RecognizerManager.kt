@@ -2,6 +2,7 @@ package com.translander.asr
 
 import android.content.Context
 import android.util.Log
+import com.translander.TranslanderApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -9,135 +10,60 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
-import com.translander.TranslanderApp
-import java.util.concurrent.locks.ReentrantReadWriteLock
-import kotlin.concurrent.read
-import kotlin.concurrent.write
+import kotlinx.coroutines.CancellationException
+import java.io.File
 
-/**
- * Manages a shared ParakeetRecognizer instance across services.
- * Ensures the model is loaded only once and shared between TextInjectionService and FloatingMicService.
- */
+/** One shared model; initialization, decoding and release have the same exclusion boundary. */
 class RecognizerManager(private val context: Context, private val modelManager: ModelManager) {
-
-    companion object {
-        private const val TAG = "RecognizerManager"
-    }
-
-    private var recognizer: ParakeetRecognizer? = null
+    companion object { private const val TAG = "RecognizerManager" }
+    @Volatile private var recognizer: ParakeetRecognizer? = null
     private val mutex = Mutex()
-    // Protects recognizer access: read lock for transcribe(), write lock for release()
-    private val recognizerLock = ReentrantReadWriteLock()
-
     private val _isReady = MutableStateFlow(false)
     val isReady: StateFlow<Boolean> = _isReady
-
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
-    /**
-     * Initialize the recognizer if model is ready.
-     * Safe to call multiple times - will only initialize once.
-     * If already loading, waits for completion.
-     */
-    suspend fun initialize(): Boolean {
-        return mutex.withLock {
-            if (recognizer != null) {
-                Log.i(TAG, "Recognizer already initialized")
-                return true
-            }
-
-            if (!modelManager.isModelReady()) {
-                Log.i(TAG, "Model not ready")
-                return false
-            }
-
+    suspend fun initialize(): Boolean = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            if (recognizer?.isReady() == true) return@withLock true
+            if (!modelManager.isModelReady()) return@withLock false
             _isLoading.value = true
             try {
-                withContext(Dispatchers.IO) {
-                    recognizer = ParakeetRecognizer(context, modelManager.getModelPath())
-                    val ready = recognizer?.isReady() == true
-                    _isReady.value = ready
-                    Log.i(TAG, "Recognizer initialized: $ready")
-                    ready
-                }
-            } catch (e: Throwable) {
+                val candidate = ParakeetRecognizer(context, modelManager.getModelPath())
+                if (!candidate.isReady()) { candidate.release(); return@withLock false }
+                recognizer = candidate
+                _isReady.value = true
+                Log.i(TAG, "Recognizer initialized: true")
+                true
+            } catch (e: CancellationException) { throw e
+            } catch (e: Exception) {
                 Log.e(TAG, "Failed to initialize recognizer", e)
                 false
-            } finally {
-                _isLoading.value = false
-            }
+            } finally { _isLoading.value = false }
         }
     }
 
-    /**
-     * Wait for an ongoing initialization to complete.
-     * Returns true if model is ready after waiting.
-     */
-    private suspend fun waitForInitialization(timeoutMs: Long = 30000): Boolean {
-        return withTimeoutOrNull(timeoutMs) {
-            while (_isLoading.value) {
-                kotlinx.coroutines.delay(100)
-            }
-            recognizer != null
-        } ?: false
-    }
+    suspend fun ensureInitialized(): Boolean = initialize()
+    fun isInitialized(): Boolean = _isReady.value
 
-    /**
-     * Ensure recognizer is initialized, waiting if necessary.
-     * Use this from external integrations that need the model ready.
-     */
-    suspend fun ensureInitialized(): Boolean {
-        if (recognizer != null) return true
-        if (_isLoading.value) return waitForInitialization()
-        return initialize()
-    }
-
-    /**
-     * Transcribe audio data using the shared recognizer.
-     * Applies dictionary replacements if enabled.
-     * Uses read lock to prevent release() from freeing native resources mid-transcription.
-     */
-    suspend fun transcribe(audioData: ShortArray): String? {
-        return withContext(Dispatchers.IO) {
-            recognizerLock.read {
-                val rec = recognizer
-                if (rec == null) {
-                    Log.w(TAG, "Recognizer not initialized")
-                    return@withContext null
-                }
-
-                val rawResult = rec.transcribe(audioData)
-
-                // Apply dictionary replacements if enabled
-                if (rawResult != null) {
-                    val app = TranslanderApp.instance
-                    val dictionaryEnabled = app.settingsRepository.dictionaryEnabled.first()
-                    if (dictionaryEnabled) {
-                        val corrected = app.dictionaryManager.applyReplacements(rawResult)
-                        if (corrected != rawResult) {
-                            Log.i(TAG, "Applied corrections: '$rawResult' -> '$corrected'")
-                        }
-                        corrected
-                    } else {
-                        rawResult
-                    }
-                } else {
-                    null
+    suspend fun createSession(onSegment: suspend (String) -> Unit = {}): TranscriptionSession {
+        check(ensureInitialized()) { context.getString(com.translander.R.string.toast_model_load_failed) }
+        val app = TranslanderApp.instance
+        val rules = if (app.settingsRepository.dictionaryEnabled.first()) app.dictionaryManager.rules.value else emptyList()
+        val directory = File(context.cacheDir, "transcripts").apply { mkdirs() }
+        val store = TranscriptStore(File.createTempFile("transcript-", ".txt", directory))
+        return TranscriptionSession(store, StreamingCorrections(rules), onSegment) { window ->
+            withContext(Dispatchers.IO) {
+                mutex.withLock {
+                    val result = checkNotNull(recognizer) { "Speech model was unloaded" }.transcribeWindow(window.samples)
+                    WindowText.select(result.tokens, result.timestamps, window)
                 }
             }
         }
     }
 
-    fun isInitialized(): Boolean = recognizer != null
-
-    /**
-     * Release the recognizer and free native resources.
-     * Uses write lock to wait for any in-flight transcribe() calls to finish.
-     */
-    fun release() {
-        recognizerLock.write {
+    suspend fun release() = withContext(Dispatchers.IO) {
+        mutex.withLock {
             recognizer?.release()
             recognizer = null
             _isReady.value = false

@@ -417,7 +417,7 @@ fun SettingsScreen(
                         }
                     },
                     onUnloadModel = {
-                        recognizerManager.release()
+                        scope.launch { recognizerManager.release() }
                         // Stop floating service when model is unloaded
                         if (serviceEnabled) {
                             scope.launch {
@@ -467,6 +467,7 @@ fun SettingsScreen(
                     onClick = { if (hasMicPermission.value) onOpenAppSettings() else onRequestMicPermission() },
                     onRevokeClick = { onOpenAppSettings() }
                 )
+                com.translander.history.HistorySettings()
             }
 
             // Keyboard Integration Section

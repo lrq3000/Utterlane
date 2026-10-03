@@ -1,6 +1,6 @@
 # Privacy Policy for Translander
 
-**Last updated:** January 2026
+**Last updated:** October 2026
 
 ## Overview
 
@@ -10,8 +10,9 @@ Translander is a voice-to-text application that performs all speech recognition 
 
 **We do not collect any personal data.**
 
-- No audio recordings are stored or transmitted
-- No transcribed text is stored or transmitted
+- Audio and text are processed locally and are not automatically uploaded
+- Microphone audio is saved locally only when you enable recording history
+- Transcription uses temporary local text files for bounded-memory display, recovery, and export
 - No usage analytics or telemetry
 - No account required
 - No advertisements
@@ -33,7 +34,8 @@ The app requires the following permissions:
 
 - The speech recognition model (Parakeet TDT v3) is downloaded once from HuggingFace
 - After download, all processing happens offline on your device
-- No audio or text is ever sent to any server
+- No audio or text is sent to a speech recognition server
+- If you explicitly share audio or text, the receiving app controls what happens to that shared data
 
 ## Third-Party Services
 
@@ -46,6 +48,10 @@ All data remains on your device:
 - Speech recognition model stored in app's private storage
 - User preferences stored locally
 - Word correction rules stored locally
+- Optional microphone history stored in private files and excluded from Android cloud backup and device transfer. Retention is configurable from No history to Forever; imported/shared audio is not duplicated
+- Successful delivered/dismissed transcripts are removed once active readers finish. Recoverable temporary transcripts expire after seven days, with best-effort scheduled and startup cleanup
+- User-requested audio and text export snapshots remain temporarily available for the receiving app and expire after one day. These copies are separate from recording-history retention
+- Android may defer background deletion while asleep or force-stopped. Active capture, playback, transcription, and export readers are protected from cleanup
 
 ## Children's Privacy
 

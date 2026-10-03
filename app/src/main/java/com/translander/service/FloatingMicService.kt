@@ -23,17 +23,14 @@ import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import com.translander.R
 import com.translander.TranslanderApp
-import com.translander.asr.AudioRecorder
+import com.translander.asr.MicrophoneSession
 import com.translander.settings.SettingsActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import com.translander.settings.SettingsRepository
 import java.util.concurrent.atomic.AtomicBoolean
@@ -46,15 +43,13 @@ class FloatingMicService : Service() {
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val recorderMutex = Mutex()
 
     private lateinit var windowManager: WindowManager
     private lateinit var floatingView: View
     private lateinit var micButton: ImageView
     private lateinit var layoutParams: WindowManager.LayoutParams
 
-    private var audioRecorder: AudioRecorder? = null
-    private var recordingJob: Job? = null
+    private var microphoneSession: MicrophoneSession? = null
 
     private val isRecording = AtomicBoolean(false)
     private var isIntentionalStop = false
@@ -135,10 +130,8 @@ class FloatingMicService : Service() {
                 TranslanderApp.instance.settingsRepository.setServiceEnabled(false)
             }
         }
-        recordingJob?.cancel()
-        // Note: Not using mutex here since we're shutting down and coroutine scope is being cancelled
-        audioRecorder?.release()
-        audioRecorder = null
+        microphoneSession?.cancel()
+        microphoneSession = null
         if (::floatingView.isInitialized) {
             windowManager.removeView(floatingView)
         }
@@ -261,6 +254,8 @@ class FloatingMicService : Service() {
     }
 
     private fun startRecording() {
+        if (microphoneSession != null) { showToast(getString(R.string.state_processing)); return }
+        if (MicrophoneSession.isBusy()) { showToast(getString(R.string.stream_busy)); return }
         // Check mic permission first
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             Log.w(TAG, "Microphone permission not granted")
@@ -282,13 +277,16 @@ class FloatingMicService : Service() {
         isRecording.set(true)
         updateMicButtonState()
 
-        recordingJob = serviceScope.launch(Dispatchers.IO) {
-            val recorder = recorderMutex.withLock {
-                AudioRecorder().also { audioRecorder = it }
-            }
-            Log.i(TAG, "Starting audio recording")
-            recorder.startRecording()
-        }
+        val target = TextInjectionService.instance?.captureStreamingTarget() ?: StreamingTextTarget(this) { false }
+        microphoneSession = TranslanderApp.instance.microphoneSessions.create(this, serviceScope,
+            onText = { delta, _ -> target.accept(delta) },
+            onComplete = { store, error ->
+                isRecording.set(false); microphoneSession = null; updateMicButtonState()
+                target.finish(store, preserve = error != null)
+                error?.let { showToast(it.message); store?.let { result -> TranscriptRecovery.show(this, result) } }
+            }, onCaptureEnded = { isRecording.set(false); updateMicButtonState() }, onWarning = { showToast(it) })
+        Log.i(TAG, "Starting incremental audio recording")
+        microphoneSession?.start()
     }
 
     private fun stopRecording() {
@@ -296,59 +294,7 @@ class FloatingMicService : Service() {
         isRecording.set(false)
         updateMicButtonState()
 
-        recordingJob?.cancel()
-
-        serviceScope.launch(Dispatchers.IO) {
-            val audioData = recorderMutex.withLock {
-                val data = audioRecorder?.stopRecording()
-                audioRecorder?.release()
-                audioRecorder = null
-                data
-            }
-
-            Log.i(TAG, "Audio data size: ${audioData?.size ?: 0}")
-            if (audioData != null && audioData.isNotEmpty()) {
-                transcribeAudio(audioData)
-            } else {
-                withContext(Dispatchers.Main) {
-                    showToast(getString(R.string.toast_no_speech))
-                }
-            }
-        }
-    }
-
-    private suspend fun transcribeAudio(audioData: ShortArray) {
-        Log.i(TAG, "transcribeAudio called with ${audioData.size} samples")
-        val result = TranslanderApp.instance.recognizerManager.transcribe(audioData)
-        Log.i(TAG, "Transcription result: '$result'")
-
-        withContext(Dispatchers.Main) {
-            if (!result.isNullOrBlank()) {
-                injectText(result)
-            } else {
-                showToast(getString(R.string.toast_no_speech))
-            }
-        }
-    }
-
-    private fun injectText(text: String) {
-        Log.i(TAG, "injectText called with: '$text'")
-        val injectionService = TextInjectionService.instance
-        Log.i(TAG, "TextInjectionService.instance is ${if (injectionService != null) "available" else "null"}")
-        if (injectionService != null) {
-            injectionService.injectText(text)
-        } else {
-            Log.w(TAG, "No injection service, falling back to clipboard")
-            copyToClipboard(text)
-        }
-    }
-
-    private fun copyToClipboard(text: String) {
-        val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        val clip = android.content.ClipData.newPlainText("Transcription", text)
-        clipboard.setPrimaryClip(clip)
-        TextInjectionService.instance?.showToast(getString(R.string.toast_copied, text))
-            ?: android.widget.Toast.makeText(this, getString(R.string.toast_copied, text), android.widget.Toast.LENGTH_SHORT).show()
+        microphoneSession?.stop()
     }
 
     private fun updateMicButtonState() {

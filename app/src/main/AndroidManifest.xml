@@ -16,6 +16,8 @@
     <application
         android:name=".TranslanderApp"
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -102,6 +104,12 @@
                 <data android:mimeType="audio/*" />
             </intent-filter>
         </activity>
+
+        <!-- Audio Monitor Service for folder watching -->
+        <service
+            android:name=".history.HistoryCleanupService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false" />
 
         <!-- Audio Monitor Service for folder watching -->
         <service

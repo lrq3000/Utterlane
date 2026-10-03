@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import com.translander.history.HistoryRetention
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -26,6 +27,7 @@ class SettingsRepository(private val context: Context) {
         private val AUDIO_MONITOR_ENABLED_KEY = booleanPreferencesKey("audio_monitor_enabled")
         private val MONITORED_FOLDERS_KEY = stringSetPreferencesKey("monitored_folders")
         private val FLOATING_BUTTON_SIZE_KEY = stringPreferencesKey("floating_button_size")
+        private val HISTORY_RETENTION_KEY = stringPreferencesKey("history_retention")
 
         const val BUTTON_SIZE_SMALL = "small"   // 44dp
         const val BUTTON_SIZE_MEDIUM = "medium" // 56dp (default)
@@ -37,6 +39,14 @@ class SettingsRepository(private val context: Context) {
 
     val serviceEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[SERVICE_ENABLED_KEY] ?: false
+    }
+
+    val historyRetention: Flow<HistoryRetention> = context.dataStore.data.map { preferences ->
+        HistoryRetention.fromKey(preferences[HISTORY_RETENTION_KEY])
+    }
+
+    suspend fun setHistoryRetention(retention: HistoryRetention) {
+        context.dataStore.edit { it[HISTORY_RETENTION_KEY] = retention.key }
     }
 
     val themeMode: Flow<String> = context.dataStore.data.map { preferences ->

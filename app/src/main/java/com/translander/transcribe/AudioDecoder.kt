@@ -1,276 +1,107 @@
 package com.translander.transcribe
 
 import android.content.Context
+import android.media.AudioFormat
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
-import com.translander.asr.AudioRecorder
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.roundToInt
+import kotlin.coroutines.coroutineContext
 
-/**
- * Decodes audio files (OPUS, AAC, OGG, M4A, MP3) to 16kHz mono PCM
- * using Android MediaCodec for use with speech recognition.
- */
+/** Incremental MediaCodec decoding: no list of file-long PCM, mono or resampled arrays. */
 class AudioDecoder(private val context: Context) {
+    suspend fun decode(uri: Uri, onSamples: suspend (ShortArray) -> Unit, onProgress: (Int?) -> Unit = {}) =
+        decodeSource({ extractor ->
+            context.contentResolver.openFileDescriptor(uri, "r")?.use { extractor.setDataSource(it.fileDescriptor) }
+                ?: error("Cannot open audio file")
+        }, onSamples, onProgress)
 
-    companion object {
-        private const val TARGET_SAMPLE_RATE = AudioRecorder.SAMPLE_RATE // 16000
-        private const val TIMEOUT_US = 10000L
-    }
+    suspend fun decode(path: String, onSamples: suspend (ShortArray) -> Unit, onProgress: (Int?) -> Unit = {}) =
+        decodeSource({ it.setDataSource(path) }, onSamples, onProgress)
 
-    sealed class DecodingState {
-        data class Progress(val percent: Int) : DecodingState()
-        data class Success(val audioData: ShortArray) : DecodingState()
-        data class Error(val message: String) : DecodingState()
-    }
-
-    /**
-     * Decodes audio from a content:// or file:// URI to 16kHz mono PCM.
-     * Reports progress via the onProgress callback.
-     */
-    suspend fun decode(
-        uri: Uri,
-        onProgress: (Int) -> Unit = {}
-    ): DecodingState = withContext(Dispatchers.IO) {
-        val extractor = MediaExtractor()
-
-        try {
-            // Open the audio source
-            context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                extractor.setDataSource(pfd.fileDescriptor)
-            } ?: return@withContext DecodingState.Error("Cannot open audio file")
-
-            decodeWithExtractor(extractor, onProgress)
-        } catch (e: Exception) {
-            DecodingState.Error(e.message ?: "Unknown decoding error")
-        } finally {
-            extractor.release()
-        }
-    }
-
-    /**
-     * Decodes audio from a file path to 16kHz mono PCM.
-     * Used for folder monitoring where we have direct file access.
-     */
-    suspend fun decode(
-        filePath: String,
-        onProgress: (Int) -> Unit = {}
-    ): DecodingState = withContext(Dispatchers.IO) {
-        val extractor = MediaExtractor()
-
-        try {
-            extractor.setDataSource(filePath)
-            decodeWithExtractor(extractor, onProgress)
-        } catch (e: Exception) {
-            DecodingState.Error(e.message ?: "Unknown decoding error")
-        } finally {
-            extractor.release()
-        }
-    }
-
-    private suspend fun decodeWithExtractor(
-        extractor: MediaExtractor,
-        onProgress: (Int) -> Unit
-    ): DecodingState = withContext(Dispatchers.IO) {
-        var codec: MediaCodec? = null
-
-        try {
-            // Find audio track
-            val audioTrackIndex = findAudioTrack(extractor)
-            if (audioTrackIndex < 0) {
-                return@withContext DecodingState.Error("No audio track found")
-            }
-
-            extractor.selectTrack(audioTrackIndex)
-            val format = extractor.getTrackFormat(audioTrackIndex)
-
-            val mimeType = format.getString(MediaFormat.KEY_MIME)
-                ?: return@withContext DecodingState.Error("Unknown audio format")
-
-            val sourceSampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-            val channelCount = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-            val durationUs = format.getLong(MediaFormat.KEY_DURATION)
-
-            // Create and configure decoder
-            codec = MediaCodec.createDecoderByType(mimeType)
-            codec.configure(format, null, null, 0)
-            codec.start()
-
-            // Decode audio
-            val rawPcm = decodeToRawPcm(
-                extractor = extractor,
-                codec = codec,
-                durationUs = durationUs,
-                onProgress = onProgress
-            )
-
-            if (!isActive) {
-                return@withContext DecodingState.Error("Decoding cancelled")
-            }
-
-            // Convert to mono if stereo
-            val monoData = if (channelCount > 1) {
-                stereoToMono(rawPcm, channelCount)
-            } else {
-                rawPcm
-            }
-
-            // Resample to target sample rate if needed
-            val resampledData = if (sourceSampleRate != TARGET_SAMPLE_RATE) {
-                resample(monoData, sourceSampleRate, TARGET_SAMPLE_RATE)
-            } else {
-                monoData
-            }
-
-            onProgress(100)
-            DecodingState.Success(resampledData)
-
-        } finally {
-            codec?.stop()
-            codec?.release()
-            // Note: extractor is not released here - caller is responsible
-        }
-    }
-
-    private fun findAudioTrack(extractor: MediaExtractor): Int {
-        for (i in 0 until extractor.trackCount) {
-            val format = extractor.getTrackFormat(i)
-            val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
-            if (mime.startsWith("audio/")) {
-                return i
-            }
-        }
-        return -1
-    }
-
-    private suspend fun decodeToRawPcm(
-        extractor: MediaExtractor,
-        codec: MediaCodec,
-        durationUs: Long,
-        onProgress: (Int) -> Unit
-    ): ShortArray = withContext(Dispatchers.IO) {
-        // Collect ShortArray chunks to avoid boxing overhead of MutableList<Short>
-        val chunks = mutableListOf<ShortArray>()
-        var totalSamples = 0
-        val bufferInfo = MediaCodec.BufferInfo()
-        var inputDone = false
-        var outputDone = false
-
-        while (!outputDone && isActive) {
-            // Feed input to decoder
-            if (!inputDone) {
-                val inputBufferIndex = codec.dequeueInputBuffer(TIMEOUT_US)
-                if (inputBufferIndex >= 0) {
-                    val inputBuffer = codec.getInputBuffer(inputBufferIndex) ?: continue
-                    val sampleSize = extractor.readSampleData(inputBuffer, 0)
-
-                    if (sampleSize < 0) {
-                        codec.queueInputBuffer(
-                            inputBufferIndex,
-                            0, 0, 0,
-                            MediaCodec.BUFFER_FLAG_END_OF_STREAM
-                        )
-                        inputDone = true
-                    } else {
-                        val presentationTimeUs = extractor.sampleTime
-                        codec.queueInputBuffer(
-                            inputBufferIndex,
-                            0, sampleSize, presentationTimeUs, 0
-                        )
-                        extractor.advance()
+    private suspend fun decodeSource(open: (MediaExtractor) -> Unit, onSamples: suspend (ShortArray) -> Unit, onProgress: (Int?) -> Unit) =
+        withContext(Dispatchers.IO) {
+            val extractor = MediaExtractor()
+            var codec: MediaCodec? = null
+            try {
+                open(extractor)
+                val track = (0 until extractor.trackCount).firstOrNull {
+                    extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
+                } ?: error("No audio track found")
+                extractor.selectTrack(track)
+                val inputFormat = extractor.getTrackFormat(track)
+                val duration = if (inputFormat.containsKey(MediaFormat.KEY_DURATION)) inputFormat.getLong(MediaFormat.KEY_DURATION) else 0L
+                val decoder = MediaCodec.createDecoderByType(checkNotNull(inputFormat.getString(MediaFormat.KEY_MIME)))
+                codec = decoder
+                decoder.configure(inputFormat, null, null, 0)
+                decoder.start()
+                var converter: StreamingResampler? = null
+                var encoding = AudioFormat.ENCODING_PCM_16BIT
+                var inputDone = false
+                var outputDone = false
+                var lastProgress: Int? = null
+                val info = MediaCodec.BufferInfo()
+                onProgress(if (duration > 0) 0 else null)
+                while (!outputDone) {
+                    coroutineContext.ensureActive()
+                    if (!inputDone) {
+                        val index = decoder.dequeueInputBuffer(10000)
+                        if (index >= 0) {
+                            val buffer = checkNotNull(decoder.getInputBuffer(index))
+                            val count = extractor.readSampleData(buffer, 0)
+                            if (count < 0) {
+                                decoder.queueInputBuffer(index, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                                inputDone = true
+                            } else {
+                                decoder.queueInputBuffer(index, 0, count, extractor.sampleTime, 0)
+                                extractor.advance()
+                            }
+                        }
+                    }
+                    val index = decoder.dequeueOutputBuffer(info, 10000)
+                    if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        converter?.finish()?.let { if (it.isNotEmpty()) onSamples(it) }
+                        val format = decoder.outputFormat
+                        converter = StreamingResampler(format.getInteger(MediaFormat.KEY_SAMPLE_RATE), format.getInteger(MediaFormat.KEY_CHANNEL_COUNT))
+                        encoding = if (format.containsKey(MediaFormat.KEY_PCM_ENCODING)) format.getInteger(MediaFormat.KEY_PCM_ENCODING) else AudioFormat.ENCODING_PCM_16BIT
+                        require(encoding == AudioFormat.ENCODING_PCM_16BIT || encoding == AudioFormat.ENCODING_PCM_FLOAT) { "Unsupported decoder PCM encoding: $encoding" }
+                    } else if (index >= 0) {
+                        var samples: ShortArray? = null
+                        try {
+                            val buffer = decoder.getOutputBuffer(index)
+                            if (buffer != null && info.size > 0) {
+                                buffer.position(info.offset)
+                                buffer.limit(info.offset + info.size)
+                                buffer.order(ByteOrder.nativeOrder())
+                                val normalized = if (encoding == AudioFormat.ENCODING_PCM_FLOAT) {
+                                    val floats = buffer.asFloatBuffer()
+                                    FloatArray(floats.remaining()).also { floats.get(it) }
+                                } else {
+                                    val shorts = buffer.asShortBuffer()
+                                    FloatArray(shorts.remaining()) { shorts.get() / 32768f }
+                                }
+                                // Some decoders do not announce the format before their first output.
+                                if (converter == null) converter = StreamingResampler(inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE), inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT))
+                                samples = converter!!.accept(normalized)
+                            }
+                            outputDone = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+                        } finally { decoder.releaseOutputBuffer(index, false) }
+                        // Release the codec buffer before recognition suspends this producer.
+                        samples?.let { if (it.isNotEmpty()) onSamples(it) }
+                        if (duration > 0) {
+                            val progress = (info.presentationTimeUs * 100 / duration).toInt().coerceIn(0, 99)
+                            if (progress != lastProgress) { lastProgress = progress; onProgress(progress) }
+                        }
                     }
                 }
-            }
-
-            // Get decoded output
-            val outputBufferIndex = codec.dequeueOutputBuffer(bufferInfo, TIMEOUT_US)
-            if (outputBufferIndex >= 0) {
-                if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
-                    outputDone = true
-                }
-
-                val outputBuffer = codec.getOutputBuffer(outputBufferIndex)
-                if (outputBuffer != null && bufferInfo.size > 0) {
-                    outputBuffer.position(bufferInfo.offset)
-                    outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
-
-                    // Read PCM samples (16-bit) directly into ShortArray
-                    val shortBuffer = outputBuffer.order(ByteOrder.nativeOrder()).asShortBuffer()
-                    val samples = ShortArray(shortBuffer.remaining())
-                    shortBuffer.get(samples)
-                    chunks.add(samples)
-                    totalSamples += samples.size
-
-                    // Report progress
-                    if (durationUs > 0) {
-                        val progress = ((bufferInfo.presentationTimeUs * 100) / durationUs).toInt()
-                            .coerceIn(0, 99)
-                        onProgress(progress)
-                    }
-                }
-                codec.releaseOutputBuffer(outputBufferIndex, false)
+                converter?.finish()?.let { if (it.isNotEmpty()) onSamples(it) }
+                onProgress(100)
+            } finally {
+                try { codec?.stop() } finally { codec?.release(); extractor.release() }
             }
         }
-
-        // Merge chunks into single ShortArray
-        val result = ShortArray(totalSamples)
-        var offset = 0
-        for (chunk in chunks) {
-            System.arraycopy(chunk, 0, result, offset, chunk.size)
-            offset += chunk.size
-        }
-        result
-    }
-
-    /**
-     * Convert multi-channel audio to mono by averaging channels.
-     */
-    private fun stereoToMono(input: ShortArray, channels: Int): ShortArray {
-        val monoLength = input.size / channels
-        val output = ShortArray(monoLength)
-
-        for (i in 0 until monoLength) {
-            var sum = 0
-            for (ch in 0 until channels) {
-                sum += input[i * channels + ch]
-            }
-            output[i] = (sum / channels).toShort()
-        }
-
-        return output
-    }
-
-    /**
-     * Resample audio using linear interpolation.
-     */
-    private fun resample(input: ShortArray, fromRate: Int, toRate: Int): ShortArray {
-        if (input.isEmpty()) return input
-
-        val ratio = fromRate.toDouble() / toRate
-        val outputLength = (input.size / ratio).roundToInt()
-        val output = ShortArray(outputLength)
-
-        for (i in 0 until outputLength) {
-            val srcPos = i * ratio
-            val srcIndex = srcPos.toInt()
-            val fraction = srcPos - srcIndex
-
-            if (srcIndex + 1 < input.size) {
-                // Linear interpolation between two samples
-                val sample1 = input[srcIndex]
-                val sample2 = input[srcIndex + 1]
-                output[i] = (sample1 + (sample2 - sample1) * fraction).roundToInt().toShort()
-            } else if (srcIndex < input.size) {
-                output[i] = input[srcIndex]
-            }
-        }
-
-        return output
-    }
 }

@@ -13,25 +13,20 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import com.translander.R
 import com.translander.TranslanderApp
-import com.translander.asr.AudioRecorder
+import com.translander.asr.MicrophoneSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
 class TextInjectionService : AccessibilityService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val recorderMutex = Mutex()
-    private var audioRecorder: AudioRecorder? = null
-    private var recordingJob: Job? = null
+    private var microphoneSession: MicrophoneSession? = null
     private val isRecording = AtomicBoolean(false)
 
     private var accessibilityButtonCallback: AccessibilityButtonController.AccessibilityButtonCallback? = null
@@ -96,6 +91,8 @@ class TextInjectionService : AccessibilityService() {
     }
 
     private fun startRecording() {
+        if (microphoneSession != null) { showToast(getString(R.string.state_processing)); return }
+        if (MicrophoneSession.isBusy()) { showToast(getString(R.string.stream_busy)); return }
         // Check mic permission first
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             Log.w(TAG, "Microphone permission not granted")
@@ -116,13 +113,16 @@ class TextInjectionService : AccessibilityService() {
         isRecording.set(true)
         showToast(getString(R.string.state_recording))
 
-        recordingJob = serviceScope.launch(Dispatchers.IO) {
-            val recorder = recorderMutex.withLock {
-                AudioRecorder().also { audioRecorder = it }
-            }
-            Log.i(TAG, "Starting audio recording")
-            recorder.startRecording()
-        }
+        val target = captureStreamingTarget()
+        microphoneSession = TranslanderApp.instance.microphoneSessions.create(this, serviceScope,
+            onText = { delta, _ -> target.accept(delta) },
+            onComplete = { store, error ->
+                isRecording.set(false); microphoneSession = null
+                target.finish(store, preserve = error != null)
+                error?.let { showToast(it.message); store?.let { result -> TranscriptRecovery.show(this, result) } }
+            }, onCaptureEnded = { isRecording.set(false) }, onWarning = { showToast(it) })
+        Log.i(TAG, "Starting incremental audio recording")
+        microphoneSession?.start()
     }
 
     private fun stopRecording() {
@@ -130,25 +130,7 @@ class TextInjectionService : AccessibilityService() {
         isRecording.set(false)
         showToast(getString(R.string.state_processing))
 
-        recordingJob?.cancel()
-
-        serviceScope.launch(Dispatchers.IO) {
-            val audioData = recorderMutex.withLock {
-                val data = audioRecorder?.stopRecording()
-                audioRecorder?.release()
-                audioRecorder = null
-                data
-            }
-
-            Log.i(TAG, "Audio data size: ${audioData?.size ?: 0}")
-            if (audioData != null && audioData.isNotEmpty()) {
-                transcribeAudio(audioData)
-            } else {
-                withContext(Dispatchers.Main) {
-                    showToast(getString(R.string.toast_no_speech))
-                }
-            }
-        }
+        microphoneSession?.stop()
     }
 
     companion object {
@@ -160,19 +142,13 @@ class TextInjectionService : AccessibilityService() {
         fun isEnabled(): Boolean = instance != null
     }
 
-    private suspend fun transcribeAudio(audioData: ShortArray) {
-        Log.i(TAG, "transcribeAudio called with ${audioData.size} samples")
-        val result = TranslanderApp.instance.recognizerManager.transcribe(audioData)
-        Log.i(TAG, "Transcription result: '$result'")
-
-        if (!result.isNullOrBlank()) {
-            withContext(Dispatchers.Main) {
-                injectText(result)
-            }
-        } else {
-            withContext(Dispatchers.Main) {
-                showToast(getString(R.string.toast_no_speech))
-            }
+    fun captureStreamingTarget(): StreamingTextTarget {
+        val node = findFocusedEditText()
+        return StreamingTextTarget(this) { delta ->
+            // A saved node may still report focus in a background window. Check
+            // the active window too, and never reacquire an unrelated text field.
+            node != null && rootInActiveWindow?.windowId == node.windowId &&
+                node.refresh() && node.isFocused && node.isEditable && insertTextIntoNode(node, delta)
         }
     }
 
@@ -191,10 +167,8 @@ class TextInjectionService : AccessibilityService() {
                 accessibilityButtonController.unregisterAccessibilityButtonCallback(callback)
             }
         }
-        recordingJob?.cancel()
-        // Note: Not using mutex here since we're shutting down and coroutine scope is being cancelled
-        audioRecorder?.release()
-        audioRecorder = null
+        microphoneSession?.cancel()
+        microphoneSession = null
         serviceScope.cancel()
         instance = null
     }
@@ -246,7 +220,7 @@ class TextInjectionService : AccessibilityService() {
         return null
     }
 
-    private fun insertTextIntoNode(node: AccessibilityNodeInfo, text: String) {
+    private fun insertTextIntoNode(node: AccessibilityNodeInfo, text: String): Boolean {
         // Get current text - but check if it's just placeholder/hint text
         val rawText = node.text?.toString() ?: ""
         val hintText = node.hintText?.toString() ?: ""
@@ -283,8 +257,7 @@ class TextInjectionService : AccessibilityService() {
         // If ACTION_SET_TEXT failed or isn't supported, try clipboard paste fallback
         if (!setTextSuccess) {
             Log.d(TAG, "ACTION_SET_TEXT failed, trying clipboard paste fallback")
-            tryClipboardPaste(node, text)
-            return
+            return tryClipboardPaste(node, text)
         }
 
         // Move cursor to end of inserted text
@@ -293,9 +266,10 @@ class TextInjectionService : AccessibilityService() {
         selectionArgs.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, newCursorPosition)
         selectionArgs.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, newCursorPosition)
         node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selectionArgs)
+        return true
     }
 
-    private fun tryClipboardPaste(node: AccessibilityNodeInfo, text: String) {
+    private fun tryClipboardPaste(node: AccessibilityNodeInfo, text: String): Boolean {
         // Save current clipboard content
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
         val oldClip = clipboard.primaryClip
@@ -319,6 +293,7 @@ class TextInjectionService : AccessibilityService() {
         if (!pasteSuccess) {
             showToast(getString(R.string.toast_copied_clipboard_paste))
         }
+        return pasteSuccess
     }
 
     private fun copyToClipboard(text: String) {

@@ -29,3 +29,7 @@ github-release.md
 
 # Local Claude instructions (not checked in)
 CLAUDE.local.md
+
+# Isolated local development workspaces
+.worktrees/
+qa-artifacts/

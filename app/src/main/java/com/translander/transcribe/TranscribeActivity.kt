@@ -32,9 +32,11 @@ import com.translander.TranslanderApp
 import com.translander.settings.SettingsRepository
 import com.translander.ui.theme.TranslanderTheme
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
+import com.translander.asr.TranscriptStore
+import androidx.core.content.FileProvider
 
 class TranscribeActivity : ComponentActivity() {
 
@@ -68,9 +70,10 @@ class TranscribeActivity : ComponentActivity() {
                 TranscribeScreen(
                     audioUri = audioUri,
                     filePath = filePath,
+                    historyId = intent.getStringExtra("history_id"),
+                    transcriptPath = intent.getStringExtra("transcript_path"),
                     onDismiss = { finish() },
-                    onCopy = { text -> copyToClipboard(text) },
-                    onShare = { text -> shareText(text) }
+                    onCopy = { text -> copyToClipboard(text) }
                 )
             }
         }
@@ -107,28 +110,12 @@ class TranscribeActivity : ComponentActivity() {
         clipboard.setPrimaryClip(clip)
     }
 
-    private fun shareText(text: String) {
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, text)
-        }
-        startActivity(Intent.createChooser(shareIntent, getString(R.string.transcribe_share_title)))
-    }
-
     override fun onDestroy() {
         super.onDestroy()
         // Dismiss the "audio detected" notification when activity closes
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(AudioMonitorService.AUDIO_DETECTED_NOTIFICATION_ID)
     }
-}
-
-sealed class TranscribeState {
-    data object CheckingModel : TranscribeState()
-    data class Decoding(val progress: Int) : TranscribeState()
-    data object Transcribing : TranscribeState()
-    data class Success(val text: String) : TranscribeState()
-    data class Error(val message: String) : TranscribeState()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -138,175 +125,165 @@ fun TranscribeScreen(
     filePath: String? = null,
     onDismiss: () -> Unit,
     onCopy: (String) -> Unit,
-    onShare: (String) -> Unit
+    historyId: String? = null,
+    transcriptPath: String? = null
 ) {
-    var state by remember { mutableStateOf<TranscribeState>(TranscribeState.CheckingModel) }
-    var showCopiedSnackbar by remember { mutableStateOf(false) }
-
-    val app = TranslanderApp.instance
-    val recognizerManager = app.recognizerManager
-    val modelManager = app.modelManager
-    val settingsRepository = app.settingsRepository
-
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var store by remember { mutableStateOf<TranscriptStore?>(null) }
+    var preview by remember { mutableStateOf("") }
+    var progress by remember { mutableStateOf<Int?>(null) }
+    var running by remember { mutableStateOf(true) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var pageOffset by remember { mutableStateOf<Long?>(null) }
+    var processingJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var preserveResult by remember { mutableStateOf(false) }
 
-    // Start transcription when URI or file path is available
-    LaunchedEffect(audioUri, filePath) {
-        if (audioUri == null && filePath == null) {
-            state = TranscribeState.Error(context.getString(R.string.transcribe_error_no_audio))
-            return@LaunchedEffect
-        }
-
-        // Check if model is ready
-        state = TranscribeState.CheckingModel
-        if (!modelManager.isModelReady()) {
-            state = TranscribeState.Error(context.getString(R.string.transcribe_error_no_model))
-            return@LaunchedEffect
-        }
-
-        // Initialize recognizer if needed (run blocking operations off main thread)
-        val isReady = withContext(Dispatchers.IO) {
-            recognizerManager.isReady.first()
-        }
-        if (!isReady) {
-            recognizerManager.initialize()
-            // Wait for initialization
-            withContext(Dispatchers.IO) {
-                recognizerManager.isReady.first { it }
-            }
-        }
-
-        // Decode audio - prefer file path if available (from folder monitor)
-        state = TranscribeState.Decoding(0)
-        val decoder = AudioDecoder(app)
-        val decodeResult = withContext(Dispatchers.IO) {
-            if (filePath != null) {
-                decoder.decode(filePath) { progress ->
-                    state = TranscribeState.Decoding(progress)
-                }
-            } else {
-                decoder.decode(audioUri!!) { progress ->
-                    state = TranscribeState.Decoding(progress)
-                }
-            }
-        }
-
-        when (decodeResult) {
-            is AudioDecoder.DecodingState.Error -> {
-                state = TranscribeState.Error(decodeResult.message)
-                return@LaunchedEffect
-            }
-            is AudioDecoder.DecodingState.Success -> {
-                // Transcribe audio
-                state = TranscribeState.Transcribing
-                val result = withContext(Dispatchers.IO) {
-                    recognizerManager.transcribe(decodeResult.audioData)
-                }
-                if (result != null) {
-                    state = TranscribeState.Success(result)
-                } else {
-                    state = TranscribeState.Error(context.getString(R.string.transcribe_error_failed))
-                }
-            }
-            else -> {
-                state = TranscribeState.Error(context.getString(R.string.transcribe_error_decoding))
+    DisposableEffect(store) {
+        val result = store
+        val ownerJob = processingJob
+        onDispose {
+            if (result != null) TranslanderApp.instance.applicationScope.launch {
+                // Wait for a cancelled native call to leave the session before
+                // disposing its file. Outstanding export leases also defer deletion.
+                ownerJob?.join()
+                if (preserveResult && result.file.length() > 0) com.translander.service.TranscriptRecovery.show(context, result)
+                else withContext(Dispatchers.IO) { result.dispose() }
             }
         }
     }
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f)
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth(0.9f)
-                    .wrapContentHeight(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    // Header
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.transcribe_title),
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                        IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = "Close")
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Content based on state
-                    when (val currentState = state) {
-                        is TranscribeState.CheckingModel -> {
-                            LoadingContent(stringResource(R.string.transcribe_checking_model))
-                        }
-                        is TranscribeState.Decoding -> {
-                            LoadingContent(
-                                stringResource(R.string.transcribe_decoding, currentState.progress)
-                            )
-                            LinearProgressIndicator(
-                                progress = { currentState.progress / 100f },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp)
-                            )
-                        }
-                        is TranscribeState.Transcribing -> {
-                            LoadingContent(stringResource(R.string.transcribe_transcribing))
-                            LinearProgressIndicator(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp)
-                            )
-                        }
-                        is TranscribeState.Success -> {
-                            SuccessContent(
-                                text = currentState.text,
-                                onCopy = {
-                                    onCopy(currentState.text)
-                                    showCopiedSnackbar = true
-                                },
-                                onShare = { onShare(currentState.text) }
-                            )
-                        }
-                        is TranscribeState.Error -> {
-                            ErrorContent(
-                                message = currentState.message,
-                                onDismiss = onDismiss
-                            )
-                        }
-                    }
+    // Decoding and inference interleave. Only a bounded tail enters Compose state.
+    LaunchedEffect(audioUri, filePath, historyId, transcriptPath) {
+        processingJob = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+        var activeSession: com.translander.asr.TranscriptionSession? = null
+        try {
+            if (transcriptPath != null) {
+                val recovered = withContext(Dispatchers.IO) {
+                    val file = java.io.File(transcriptPath).canonicalFile
+                    require(file.parentFile == java.io.File(context.cacheDir, "transcripts").canonicalFile && file.isFile) { "Transcript is unavailable" }
+                    TranscriptStore(file)
                 }
+                store = recovered
+                preview = withContext(Dispatchers.IO) { recovered.page((recovered.file.length() - 8000).coerceAtLeast(0)) }
+                return@LaunchedEffect
             }
-
-            // Snackbar for copy confirmation
-            if (showCopiedSnackbar) {
-                LaunchedEffect(Unit) {
-                    kotlinx.coroutines.delay(2000)
-                    showCopiedSnackbar = false
+            require(audioUri != null || filePath != null || historyId != null) { context.getString(R.string.transcribe_error_no_audio) }
+            withContext(Dispatchers.IO) {
+                val app = TranslanderApp.instance
+                check(app.modelManager.isModelReady()) { context.getString(R.string.transcribe_error_no_model) }
+                var session: com.translander.asr.TranscriptionSession? = null
+                session = app.recognizerManager.createSession {
+                    val tail = session!!.store.preview()
+                    withContext(Dispatchers.Main) { if (pageOffset == null) preview = tail }
                 }
-                Snackbar(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp)
-                ) {
-                    Text(stringResource(R.string.transcribe_copied))
+                activeSession = session
+                withContext(Dispatchers.Main) { store = session.store }
+                val decoder = AudioDecoder(app)
+                val onProgress: (Int?) -> Unit = { value -> scope.launch { progress = value } }
+                if (historyId != null) {
+                    app.recordingHistory.acquire(historyId).use {
+                        val entry = app.recordingHistory.get(historyId)
+                        var offset = 0L
+                        while (offset < entry.samples) {
+                            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                            val samples = app.recordingHistory.read(historyId, offset, 3200)
+                            session.accept(samples)
+                            offset += samples.size
+                            onProgress((offset * 100 / entry.samples).toInt())
+                        }
+                        session.finish()
+                    }
+                } else if (filePath != null) decoder.decode(filePath, { session.accept(it) }, onProgress)
+                else decoder.decode(audioUri!!, { session.accept(it) }, onProgress)
+                session.finish()
+                if (session.store.segments == 0) withContext(Dispatchers.Main) { message = context.getString(R.string.toast_no_speech) }
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            preserveResult = true
+            message = context.getString(R.string.stream_cancelled)
+            throw e
+        } catch (e: Exception) {
+            preserveResult = true
+            android.util.Log.e("TranscribeActivity", "Incremental transcription failed", e)
+            message = e.message ?: context.getString(R.string.transcribe_error_failed)
+        } finally {
+            // Cancellation can happen between file creation and the first UI
+            // publication. Such an unexposed empty store still has an owner.
+            if (store == null) withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { activeSession?.store?.dispose() }
+            running = false
+        }
+    }
+
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f)) {
+        Box(contentAlignment = Alignment.Center) {
+            Card(modifier = Modifier.fillMaxWidth(0.9f).padding(vertical = 24.dp)) {
+                Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.transcribe_title), style = MaterialTheme.typography.titleLarge)
+                        IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, stringResource(R.string.overlay_cancel)) }
+                    }
+                    if (running) {
+                        Text(if (progress == null) stringResource(R.string.transcribe_transcribing) else stringResource(R.string.transcribe_decoding, progress!!))
+                        if (progress == null) LinearProgressIndicator(Modifier.fillMaxWidth())
+                        else LinearProgressIndicator(progress = { progress!! / 100f }, modifier = Modifier.fillMaxWidth())
+                        TextButton(onClick = { processingJob?.cancel() }) { Text(stringResource(R.string.overlay_cancel)) }
+                    }
+                    message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (preview.isNotEmpty()) {
+                        SuccessContent(preview, onCopy = {
+                            scope.launch {
+                                val text = withContext(Dispatchers.IO) { store?.readForTransfer() }
+                                if (text != null) { onCopy(text); message = context.getString(R.string.transcribe_copied) }
+                                else message = context.getString(R.string.stream_use_export)
+                            }
+                        }, onShare = { store?.let { shareTranscript(context, it) } })
+                        Text(stringResource(R.string.stream_preview), style = MaterialTheme.typography.bodySmall)
+                        Row {
+                            TextButton(onClick = {
+                                scope.launch {
+                                    val current = store ?: return@launch
+                                    val offset = ((pageOffset ?: current.file.length()) - 7980).coerceAtLeast(0)
+                                    val text = withContext(Dispatchers.IO) { current.page(offset) }
+                                    pageOffset = offset; preview = text
+                                }
+                            }) { Text(stringResource(R.string.stream_previous)) }
+                            TextButton(onClick = {
+                                scope.launch {
+                                    val current = store ?: return@launch
+                                    val offset = (pageOffset ?: 0) + 7980
+                                    if (offset >= current.file.length()) { pageOffset = null; preview = current.preview() }
+                                    else { preview = withContext(Dispatchers.IO) { current.page(offset) }; pageOffset = offset }
+                                }
+                            }) { Text(stringResource(R.string.stream_next)) }
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+fun shareTranscript(context: Context, store: TranscriptStore) {
+    val lease = store.acquire()
+    TranslanderApp.instance.applicationScope.launch {
+        try {
+            // Snapshot only completed text. Sharing never races subsequent appends
+            // or forces the native inference worker to wait for a disk copy.
+            val file = withContext(Dispatchers.IO) { store.snapshot() }
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                clipData = ClipData.newRawUri("Transcript", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, context.getString(R.string.transcribe_share_title)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e
+        } catch (e: Exception) {
+            android.util.Log.e("TranscribeActivity", "Transcript export failed", e)
+            android.widget.Toast.makeText(context, e.message ?: context.getString(R.string.transcribe_error_failed), android.widget.Toast.LENGTH_LONG).show()
+        } finally { withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { lease.close() } }
     }
 }
 

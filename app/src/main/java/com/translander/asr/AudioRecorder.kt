@@ -7,7 +7,7 @@ import android.media.MediaRecorder
 import android.util.Log
 import java.util.concurrent.atomic.AtomicBoolean
 
-class AudioRecorder {
+class AudioRecorder : AudioCapture {
 
     companion object {
         private const val TAG = "AudioRecorder"
@@ -18,9 +18,7 @@ class AudioRecorder {
 
     private var audioRecord: AudioRecord? = null
     private val isRecording = AtomicBoolean(false)
-    // Collect ShortArray chunks to avoid boxing overhead of MutableList<Short>
-    private val audioChunks = mutableListOf<ShortArray>()
-    private var totalSamples = 0
+    private val stopRequested = AtomicBoolean(false)
 
     private val bufferSize = AudioRecord.getMinBufferSize(
         SAMPLE_RATE,
@@ -29,13 +27,9 @@ class AudioRecorder {
     ).coerceAtLeast(SAMPLE_RATE * 2) // At least 1 second buffer
 
     @SuppressLint("MissingPermission")
-    fun startRecording() {
+    override fun startRecording(onSamples: (ShortArray) -> Unit, shouldContinue: () -> Boolean) {
+        if (stopRequested.get()) return
         if (!isRecording.compareAndSet(false, true)) return
-
-        synchronized(audioChunks) {
-            audioChunks.clear()
-            totalSamples = 0
-        }
 
         try {
             audioRecord = AudioRecord(
@@ -50,79 +44,54 @@ class AudioRecorder {
                 Log.e(TAG, "AudioRecord failed to initialize")
                 audioRecord?.release()
                 audioRecord = null
-                return
+                error("AudioRecord failed to initialize")
             }
 
             audioRecord?.startRecording()
 
-            val buffer = ShortArray(bufferSize / 2)
+            // Capture and publish 200 ms at a time; no recording-long audio list.
+            val buffer = ShortArray(SAMPLE_RATE / 5)
 
-            while (isRecording.get()) {
+            while (isRecording.get() && shouldContinue()) {
                 val readCount = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                 if (readCount > 0) {
-                    val chunk = buffer.copyOfRange(0, readCount)
-                    synchronized(audioChunks) {
-                        audioChunks.add(chunk)
-                        totalSamples += readCount
-                    }
+                    onSamples(buffer.copyOfRange(0, readCount))
                 } else if (readCount < 0) {
                     Log.e(TAG, "AudioRecord read error: $readCount")
-                    break
+                    error("AudioRecord read error: $readCount")
                 }
             }
         } catch (e: IllegalArgumentException) {
             Log.e(TAG, "Failed to create AudioRecord", e)
             audioRecord?.release()
             audioRecord = null
+            throw e
         } catch (e: IllegalStateException) {
             Log.e(TAG, "AudioRecord illegal state", e)
             audioRecord?.release()
             audioRecord = null
+            throw e
         } catch (e: SecurityException) {
             Log.e(TAG, "AudioRecord permission denied", e)
             audioRecord?.release()
             audioRecord = null
+            throw e
         } finally {
             isRecording.set(false)
+            // Only the capture worker owns release. A concurrent stop never frees
+            // AudioRecord while its blocking read is using native resources.
+            try { audioRecord?.stop() } catch (e: IllegalStateException) { Log.e(TAG, "Error stopping AudioRecord", e) }
+            audioRecord?.release()
+            audioRecord = null
         }
     }
 
-    fun stopRecording(): ShortArray {
+    override fun stop() {
+        stopRequested.set(true)
         isRecording.set(false)
-
-        try {
-            audioRecord?.stop()
-        } catch (e: IllegalStateException) {
-            Log.e(TAG, "Error stopping AudioRecord", e)
-        }
-        audioRecord?.release()
-        audioRecord = null
-
-        synchronized(audioChunks) {
-            val result = ShortArray(totalSamples)
-            var offset = 0
-            for (chunk in audioChunks) {
-                System.arraycopy(chunk, 0, result, offset, chunk.size)
-                offset += chunk.size
-            }
-            return result
-        }
     }
 
-    fun release() {
-        isRecording.set(false)
-        try {
-            audioRecord?.stop()
-        } catch (e: IllegalStateException) {
-            Log.e(TAG, "Error stopping AudioRecord in release", e)
-        }
-        audioRecord?.release()
-        audioRecord = null
-        synchronized(audioChunks) {
-            audioChunks.clear()
-            totalSamples = 0
-        }
-    }
+    fun release() = stop()
 
     fun isRecording(): Boolean = isRecording.get()
 }

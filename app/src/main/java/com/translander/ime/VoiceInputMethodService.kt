@@ -8,198 +8,90 @@ import android.widget.TextView
 import android.widget.Toast
 import com.translander.R
 import com.translander.TranslanderApp
-import com.translander.asr.AudioRecorder
+import com.translander.asr.MicrophoneSession
+import com.translander.service.StreamingTextTarget
+import com.translander.service.TranscriptRecovery
 import com.translander.ui.RecordingUIBuilder
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.*
 
-/**
- * Voice Input Method Service - registers as an auxiliary/voice IME.
- * Uses the same UI as VoiceInputActivity via RecordingUIBuilder.
- */
+/** Auxiliary voice IME. Shared recording UI and bounded microphone pipeline. */
 class VoiceInputMethodService : InputMethodService() {
-
-    companion object {
-        private const val TAG = "VoiceInputMethodService"
-    }
-
+    companion object { private const val TAG = "VoiceInputMethodService" }
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var audioRecorder: AudioRecorder? = null
-    private var recordingJob: Job? = null
+    private var microphoneSession: MicrophoneSession? = null
     private var isRecording = false
+    private var editorActive = false
+    private var targetEditor: Pair<String?, Int>? = null
     private var statusText: TextView? = null
 
-    override fun onCreate() {
-        super.onCreate()
-        Log.i(TAG, "VoiceInputMethodService created")
-    }
-
+    override fun onCreate() { super.onCreate(); Log.i(TAG, "VoiceInputMethodService created") }
     override fun onDestroy() {
         super.onDestroy()
         Log.i(TAG, "VoiceInputMethodService destroyed")
-        cleanup()
-        serviceScope.cancel()
+        cleanup(); serviceScope.cancel()
     }
-
     override fun onCreateInputView(): View {
         Log.i(TAG, "onCreateInputView")
-
-        // Use shared UI builder - identical to VoiceInputActivity
-        val ui = RecordingUIBuilder.createRecordingBar(
-            context = this,
-            onDoneClick = {
-                if (isRecording) {
-                    stopRecordingAndTranscribe()
-                } else {
-                    switchBackToPreviousKeyboard()
-                }
-            },
-            onCancelClick = {
-                cleanup()
-                switchBackToPreviousKeyboard()
-            }
-        )
-
+        // Same recording bar as VoiceInputActivity.
+        val ui = RecordingUIBuilder.createRecordingBar(this,
+            onDoneClick = { if (isRecording) stopRecordingAndTranscribe() else if (microphoneSession == null) switchBackToPreviousKeyboard() },
+            onCancelClick = { cleanup(); switchBackToPreviousKeyboard() })
         statusText = ui.statusText
         return ui.view
     }
-
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         Log.i(TAG, "onStartInputView, restarting=$restarting")
-
-        if (!restarting) {
-            startRecording()
-        }
+        if (!restarting && microphoneSession == null) startRecording()
     }
-
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
         Log.i(TAG, "onFinishInputView")
-
-        if (isRecording) {
-            stopRecordingAndTranscribe()
+        // A new editor must not receive the previous editor's delayed results.
+        editorActive = false
+        if (isRecording) stopRecordingAndTranscribe()
+    }
+    override fun onFinishInput() {
+        editorActive = false
+        if (isRecording) stopRecordingAndTranscribe()
+        super.onFinishInput()
+    }
+    override fun onStartInput(info: EditorInfo?, restarting: Boolean) {
+        super.onStartInput(info, restarting)
+        // Same-keyboard focus changes need not close the input view. Field/package
+        // identity supplements onFinishInputView so late text cannot migrate.
+        if (microphoneSession != null && targetEditor != Pair(info?.packageName, info?.fieldId ?: 0)) {
+            editorActive = false
+            if (isRecording) stopRecordingAndTranscribe()
         }
     }
-
     private fun startRecording() {
-        val recognizerManager = TranslanderApp.instance.recognizerManager
-
-        if (!recognizerManager.isInitialized()) {
-            Log.i(TAG, "Recognizer not initialized, attempting to initialize")
-            statusText?.text = getString(R.string.model_loading)
-
-            serviceScope.launch {
-                try {
-                    // Timeout after 10 seconds to avoid hanging indefinitely
-                    val success = withTimeoutOrNull(10000L) {
-                        recognizerManager.ensureInitialized()
-                    } ?: false
-                    if (success) {
-                        Log.i(TAG, "Model initialized successfully")
-                        // Start actual recording after successful init (non-recursive)
-                        doStartRecording()
-                    } else {
-                        Log.w(TAG, "Failed to initialize model")
-                        statusText?.text = getString(R.string.ime_model_not_available)
-                        kotlinx.coroutines.delay(1500)
-                        switchBackToPreviousKeyboard()
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error initializing model", e)
-                    statusText?.text = getString(R.string.ime_error_loading)
-                    kotlinx.coroutines.delay(1500)
-                    switchBackToPreviousKeyboard()
-                }
-            }
-            return
-        }
-
-        doStartRecording()
+        Log.i(TAG, "Starting incremental recording")
+        isRecording = true; editorActive = true
+        statusText?.text = getString(R.string.model_loading)
+        val connection = currentInputConnection
+        targetEditor = Pair(currentInputEditorInfo?.packageName, currentInputEditorInfo?.fieldId ?: 0)
+        val target = StreamingTextTarget(this) { text -> editorActive && connection?.commitText(text, 1) == true }
+        microphoneSession = TranslanderApp.instance.microphoneSessions.create(this, serviceScope,
+            onText = { delta, _ -> target.accept(delta); statusText?.text = delta.takeLast(100) },
+            onComplete = { store, error ->
+                isRecording = false; microphoneSession = null
+                target.finish(store, preserve = error != null)
+                error?.let { Toast.makeText(this, it.message, Toast.LENGTH_LONG).show(); store?.let { result -> TranscriptRecovery.show(this, result) } }
+                if (editorActive) switchBackToPreviousKeyboard()
+            }, onCaptureEnded = { isRecording = false; statusText?.text = getString(R.string.state_processing) },
+            onWarning = { Toast.makeText(this, it, Toast.LENGTH_LONG).show() },
+            onReady = { statusText?.text = getString(R.string.state_listening) })
+        microphoneSession?.start()
     }
-
-    private fun doStartRecording() {
-        Log.i(TAG, "Starting recording")
-        isRecording = true
-        statusText?.text = getString(R.string.state_listening)
-
-        audioRecorder = AudioRecorder()
-        recordingJob = serviceScope.launch(Dispatchers.IO) {
-            try {
-                audioRecorder?.startRecording()
-            } catch (e: Exception) {
-                Log.e(TAG, "Recording error", e)
-                withContext(Dispatchers.Main) {
-                    statusText?.text = getString(R.string.toast_recording_error)
-                    switchBackToPreviousKeyboard()
-                }
-            }
-        }
-    }
-
     private fun stopRecordingAndTranscribe() {
-        if (!isRecording) return
-
         Log.i(TAG, "Stopping recording")
-        isRecording = false
-        recordingJob?.cancel()
-        statusText?.text = getString(R.string.state_processing)
-
-        serviceScope.launch(Dispatchers.IO) {
-            try {
-                val audioData = audioRecorder?.stopRecording()
-                audioRecorder?.release()
-                audioRecorder = null
-
-                if (audioData == null || audioData.isEmpty()) {
-                    Log.w(TAG, "No audio data")
-                    withContext(Dispatchers.Main) {
-                        switchBackToPreviousKeyboard()
-                    }
-                    return@launch
-                }
-
-                Log.i(TAG, "Audio data: ${audioData.size} samples")
-
-                val result = TranslanderApp.instance.recognizerManager.transcribe(audioData)
-
-                withContext(Dispatchers.Main) {
-                    if (!result.isNullOrBlank()) {
-                        Log.i(TAG, "Result: $result")
-                        currentInputConnection?.commitText(result, 1)
-                    } else {
-                        Log.w(TAG, "No speech detected")
-                        Toast.makeText(this@VoiceInputMethodService, getString(R.string.toast_no_speech), Toast.LENGTH_SHORT).show()
-                    }
-                    switchBackToPreviousKeyboard()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Transcription error", e)
-                withContext(Dispatchers.Main) {
-                    switchBackToPreviousKeyboard()
-                }
-            }
-        }
+        isRecording = false; statusText?.text = getString(R.string.state_processing)
+        microphoneSession?.stop()
     }
-
     private fun switchBackToPreviousKeyboard() {
-        try {
-            @Suppress("DEPRECATION")
-            switchToPreviousInputMethod()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to switch back", e)
-        }
+        try { @Suppress("DEPRECATION") switchToPreviousInputMethod() }
+        catch (e: Exception) { Log.e(TAG, "Failed to switch back", e) }
     }
-
-    private fun cleanup() {
-        recordingJob?.cancel()
-        audioRecorder?.release()
-        audioRecorder = null
-    }
+    private fun cleanup() { editorActive = false; isRecording = false; microphoneSession?.cancel(); microphoneSession = null }
 }

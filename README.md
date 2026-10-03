@@ -43,6 +43,26 @@ A fully offline voice typing app for Android. Speak into your phone and text app
 - Whole-word matching with case-insensitive option
 - Manage rules easily in Settings
 
+### Microphone Recording History
+- **Off by default** — Settings → Microphone → Keep microphone audio
+- Retention options: **No history, 1 hour, 6 hours, 1 day, 7 days, 30 days, 90 days, Forever**
+- Only microphone recordings are saved; shared/opened audio is not duplicated
+- Browse, play, share, delete, and retranscribe saved recordings from Settings
+- Audio is private, offline PCM16 WAV (~115 MB/hour), split into hourly parts for long sessions
+- Expired recordings are pruned automatically. Android can defer scheduled deletion while asleep; active readers/recordings are protected
+- An interrupted recording can be recovered from its saved audio after restarting the app
+
+### Long Audio and Incremental Results
+- Files are decoded, downmixed, and resampled incrementally instead of loaded completely into memory
+- Parakeet v3 runs through bounded offline windows with boundary context: **at most 12 seconds per inference call**
+- Microphone recognition runs while capture continues; the IME and accessibility/floating input emit completed text segments
+- File transcription shows completed text before the whole file has finished, with cancellation, bounded preview pages, Copy, and full text-file Share
+- Single-result activity/API and clipboard transfers have a safe size limit; Settings → Recover transcript provides text-file export when delivery fails
+- With No history, microphone audio stays in bounded memory queues and no audio file is created. If recognition cannot keep up, capture stops visibly and accepted audio finishes processing
+- With history enabled, the saved recording also serves as the disk-backed audio backlog. History writing uses a separate bounded worker; a write failure warns and falls back to the bounded live queue
+
+Parakeet v3 here uses **simulated streaming** over the existing offline ONNX model, not a native online model. Results arrive in segments rather than individual keystrokes; timing depends on pauses and device speed. Chunked recognition can differ from whole-utterance recognition near boundaries.
+
 ### Modern UI
 - Material 3 design with Jetpack Compose
 - Dark and Light theme support

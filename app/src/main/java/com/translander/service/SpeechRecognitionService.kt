@@ -6,191 +6,52 @@ import android.speech.RecognitionService
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
+import com.translander.R
+import com.translander.asr.MicrophoneSession
 import com.translander.TranslanderApp
-import com.translander.asr.AudioRecorder
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.*
 
-/**
- * Android Speech Recognition Service that integrates with system voice input.
- *
- * When registered, this allows keyboards and other apps to use Translander's
- * offline speech recognition through the standard Android SpeechRecognizer API.
- *
- * Users can select Translander as their default voice input in:
- * Settings > System > Language & Input > Voice Input
- */
+/** Standard offline SpeechRecognizer integration with requested cumulative partial results. */
 class SpeechRecognitionService : RecognitionService() {
-
-    companion object {
-        private const val TAG = "SpeechRecognitionService"
-    }
-
+    companion object { private const val TAG = "SpeechRecognitionService" }
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var audioRecorder: AudioRecorder? = null
-    private var recordingJob: Job? = null
-    private var currentCallback: Callback? = null
+    private var microphoneSession: MicrophoneSession? = null
 
-    override fun onCreate() {
-        super.onCreate()
-        Log.i(TAG, "SpeechRecognitionService created")
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        Log.i(TAG, "SpeechRecognitionService destroyed")
-        cleanup()
-        serviceScope.cancel()
-    }
-
+    override fun onCreate() { super.onCreate(); Log.i(TAG, "SpeechRecognitionService created") }
+    override fun onDestroy() { super.onDestroy(); Log.i(TAG, "SpeechRecognitionService destroyed"); cleanup(); serviceScope.cancel() }
     override fun onStartListening(recognizerIntent: Intent?, listener: Callback?) {
-        Log.i(TAG, "onStartListening called")
-
-        if (listener == null) {
-            Log.e(TAG, "Callback is null")
-            return
-        }
-
-        currentCallback = listener
-
-        // Extract language hint from intent if provided
-        val languageHint = recognizerIntent?.getStringExtra(RecognizerIntent.EXTRA_LANGUAGE)
-        Log.i(TAG, "Language hint: $languageHint")
-
-        // Check if recognizer is ready, or wait for it to initialize
-        val recognizerManager = TranslanderApp.instance.recognizerManager
-        if (!recognizerManager.isInitialized()) {
-            Log.i(TAG, "Recognizer not initialized, attempting to initialize")
-
-            serviceScope.launch {
-                try {
-                    // Timeout after 10 seconds to avoid hanging indefinitely
-                    val success = withTimeoutOrNull(10000L) {
-                        recognizerManager.ensureInitialized()
-                    } ?: false
-                    if (success) {
-                        Log.i(TAG, "Model initialized successfully")
-                        startRecording(listener, languageHint)
-                    } else {
-                        Log.w(TAG, "Failed to initialize model (timeout or error)")
-                        listener.error(SpeechRecognizer.ERROR_SERVER)
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error initializing model", e)
-                    listener.error(SpeechRecognizer.ERROR_SERVER)
-                }
-            }
-            return
-        }
-
-        // Start recording
-        startRecording(listener, languageHint)
-    }
-
-    override fun onStopListening(listener: Callback?) {
-        Log.i(TAG, "onStopListening called")
-        stopRecordingAndTranscribe(listener ?: currentCallback)
-    }
-
-    override fun onCancel(listener: Callback?) {
-        Log.i(TAG, "onCancel called")
-        cleanup()
-    }
-
-    private fun startRecording(listener: Callback, languageHint: String?) {
-        // Signal that we're ready to receive audio
-        listener.readyForSpeech(Bundle())
-
-        // Signal beginning of speech before starting recording
-        listener.beginningOfSpeech()
-
-        audioRecorder = AudioRecorder()
-        recordingJob = serviceScope.launch(Dispatchers.IO) {
-            try {
-                Log.i(TAG, "Starting audio recording")
-                audioRecorder?.startRecording()
-            } catch (e: Exception) {
-                Log.e(TAG, "Recording error", e)
-                withContext(Dispatchers.Main) {
-                    listener.error(SpeechRecognizer.ERROR_AUDIO)
-                }
-            }
-        }
-    }
-
-    private fun stopRecordingAndTranscribe(listener: Callback?) {
-        if (listener == null) {
-            Log.w(TAG, "No callback for transcription")
-            cleanup()
-            return
-        }
-
-        recordingJob?.cancel()
-
-        serviceScope.launch(Dispatchers.IO) {
-            try {
-                val audioData = audioRecorder?.stopRecording()
-                audioRecorder?.release()
-                audioRecorder = null
-
-                withContext(Dispatchers.Main) {
-                    listener.endOfSpeech()
-                }
-
-                if (audioData == null || audioData.isEmpty()) {
-                    Log.w(TAG, "No audio data captured")
-                    withContext(Dispatchers.Main) {
-                        listener.error(SpeechRecognizer.ERROR_NO_MATCH)
-                    }
-                    return@launch
-                }
-
-                Log.i(TAG, "Audio data size: ${audioData.size} samples")
-
-                // Transcribe
-                val result = TranslanderApp.instance.recognizerManager.transcribe(audioData)
-
-                withContext(Dispatchers.Main) {
-                    if (!result.isNullOrBlank()) {
-                        Log.i(TAG, "Transcription result: $result")
-
-                        // Build results bundle
-                        val results = Bundle().apply {
-                            putStringArrayList(
-                                SpeechRecognizer.RESULTS_RECOGNITION,
-                                arrayListOf(result)
-                            )
-                            putFloatArray(
-                                SpeechRecognizer.CONFIDENCE_SCORES,
-                                floatArrayOf(1.0f)
-                            )
-                        }
-                        listener.results(results)
-                    } else {
-                        Log.w(TAG, "No speech detected")
-                        listener.error(SpeechRecognizer.ERROR_NO_MATCH)
+        Log.i(TAG, "onStartListening called; language hint=${recognizerIntent?.getStringExtra(RecognizerIntent.EXTRA_LANGUAGE)}")
+        if (listener == null) return
+        if (microphoneSession != null) { deliver { listener.error(SpeechRecognizer.ERROR_RECOGNIZER_BUSY) }; return }
+        val partial = recognizerIntent?.getBooleanExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false) == true
+        microphoneSession = TranslanderApp.instance.microphoneSessions.create(this, serviceScope,
+            onText = { _, store ->
+                if (partial) {
+                    val text = withContext(Dispatchers.IO) { store.readForTransfer() }
+                    if (text != null && !deliver { listener.partialResults(results(text)) }) {
+                        microphoneSession?.stop()
+                        // Stop and drain first. Publishing a live recovery file
+                        // would let its viewer delete audio-session output in flight.
                     }
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Transcription error", e)
-                withContext(Dispatchers.Main) {
-                    listener.error(SpeechRecognizer.ERROR_SERVER)
+            }, onComplete = { store, error ->
+                microphoneSession = null
+                TranscriptFinalization.deliver(this, store) {
+                    val text = withContext(Dispatchers.IO) { store?.readForTransfer() }
+                    if (error != null) { deliver { listener.error(error.recognitionError()) }; false }
+                    else if (text == null) { deliver { listener.error(SpeechRecognizer.ERROR_CLIENT) }; false }
+                    else if (text.isBlank()) { deliver { listener.error(SpeechRecognizer.ERROR_NO_MATCH) }; false }
+                    else deliver { listener.results(results(text)) }
                 }
-            }
-        }
+            }, onCaptureEnded = { deliver { listener.endOfSpeech() } },
+            onWarning = { Log.w(TAG, it) },
+            onReady = { if (!deliver { listener.readyForSpeech(Bundle()); listener.beginningOfSpeech() }) microphoneSession?.stop() })
+        microphoneSession?.start()
     }
-
-    private fun cleanup() {
-        recordingJob?.cancel()
-        recordingJob = null
-        audioRecorder?.release()
-        audioRecorder = null
-        currentCallback = null
-    }
+    override fun onStopListening(listener: Callback?) { Log.i(TAG, "onStopListening called"); microphoneSession?.stop() }
+    override fun onCancel(listener: Callback?) { Log.i(TAG, "onCancel called"); cleanup() }
+    private fun results(text: String) = Bundle().apply { putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf(text)) }
+    private fun cleanup() { microphoneSession?.cancel(); microphoneSession = null }
+    private fun deliver(action: () -> Unit): Boolean = try { action(); true }
+        catch (e: android.os.RemoteException) { Log.w(TAG, "Voice-input client disconnected", e); false }
 }

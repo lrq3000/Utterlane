@@ -32,6 +32,7 @@ android {
         targetSdk = 35
         versionCode = 10
         versionName = "1.2.4"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Only include arm64-v8a for modern phones (~50% smaller APK)
         // Remove this filter if you need to support older 32-bit devices or emulators
@@ -105,4 +106,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+    testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }

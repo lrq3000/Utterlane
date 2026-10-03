@@ -231,4 +231,36 @@
     <string name="audio_detected_title">Voice message detected</string>
     <string name="audio_detected_text">Tap to transcribe</string>
     <string name="audio_detected_action">Transcribe</string>
+    <!-- Incremental transcription and optional microphone history. Translations are
+         deferred until the feature is stable, as required by the project workflow. -->
+    <string name="stream_cancelled">Transcription cancelled. Completed text is still available.</string>
+    <string name="stream_use_export">This transcript is too large to copy or return in one result. Share the complete text file instead.</string>
+    <string name="stream_preview">Bounded transcript preview. Share exports the complete text file.</string>
+    <string name="stream_previous">Previous page</string>
+    <string name="stream_next">Next page</string>
+    <string name="stream_overload">Recognition cannot keep up. Recording stopped; completed audio and text remain available.</string>
+    <string name="stream_busy">Another microphone session is active.</string>
+    <string name="history_title">Microphone recording history</string>
+    <string name="history_change">Change</string>
+    <string name="history_retention">Keep microphone audio</string>
+    <string name="history_description">Only microphone audio is saved. Changes apply to new recordings and completed history; active recordings keep their starting policy.</string>
+    <string name="history_none">No history</string>
+    <string name="history_hour">1 hour</string>
+    <string name="history_six_hours">6 hours</string>
+    <string name="history_day">1 day</string>
+    <string name="history_week">7 days</string>
+    <string name="history_month">30 days</string>
+    <string name="history_three_months">90 days</string>
+    <string name="history_forever">Forever</string>
+    <string name="history_empty">No saved microphone recordings</string>
+    <string name="history_play">Play / stop</string>
+    <string name="history_delete">Delete recording</string>
+    <string name="history_retranscribe">Transcribe again</string>
+    <string name="history_saved">Saved</string>
+    <string name="history_interrupted">Interrupted</string>
+    <string name="history_failed">Recording or recognition failed</string>
+    <string name="history_save_failed">Could not save audio history: %1$s</string>
+    <string name="history_duration">%1$d seconds</string>
+    <string name="stream_recover">Recover transcript</string>
+    <string name="stream_recover_none">No recoverable transcript. Text is kept temporarily when delivery fails.</string>
 </resources>
