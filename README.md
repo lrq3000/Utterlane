@@ -27,6 +27,10 @@ Android**, built around responsive capture and incremental output. Dictate into
 other apps, use your keyboard's microphone button, or turn a shared voice message
 into text. No account, subscription, or speech-recognition server is required.
 
+**Automatically multilingual:** Utterlane detects the language you speak and can
+transcribe **multiple languages in the same recording**, with no manual language
+switching—all offline.
+
 ## Get started
 
 ### Install
@@ -72,7 +76,7 @@ saved voice messages.
 | **Incremental text** | Receive completed speech segments while microphone capture continues; see file-transcription results before the whole file finishes. |
 | **System-wide input** | Use a keyboard microphone, accessibility button, or draggable floating microphone. |
 | **Voice-message transcription** | Share, open, or monitor audio files including OPUS, AAC, OGG, M4A, MP3, and WAV, subject to device codec support. |
-| **25 recognition languages** | Automatic language detection; a multilingual user interface. |
+| **Automatic multilingual transcription** | Recognize 25 languages automatically and mix supported languages in the same recording without changing settings. A multilingual user interface is also available. |
 | **Word corrections** | Fix recurring names and recognition mistakes with your own whole-word replacement rules. |
 | **Optional local history** | Replay, share, delete, or retranscribe saved microphone recordings with configurable retention. Off by default. |
 | **Long-session handling** | Bounded audio queues, chunked decoding, cancellation, and recoverable completed transcripts. |
@@ -104,6 +108,12 @@ PCM16 WAV parts. Retention ranges from one hour to forever; Android can delay
 background cleanup while asleep or force-stopped.
 
 ### Models and languages
+
+Speak naturally in any of the 25 supported languages—Utterlane detects the
+language automatically. You can even **switch languages within a single
+recording**: start speaking **English**, continue in **French**, then switch to
+**Spanish**. Utterlane transcribes each part in its spoken language without
+requiring you to select a language or restart the recording.
 
 | Model | Runtime | Approximate model download |
 | --- | --- | --- |
