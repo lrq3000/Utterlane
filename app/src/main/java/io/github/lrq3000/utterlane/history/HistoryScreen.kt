@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.MediaPlayer
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -92,7 +93,9 @@ fun HistoryDialog(onDismiss: () -> Unit) {
                 if (entries.isEmpty()) Text(stringResource(R.string.history_empty))
                 LazyColumn(Modifier.heightIn(max = 420.dp)) {
                     items(entries, key = { it.id }) { entry ->
-                        Column(Modifier.padding(vertical = 8.dp)) {
+                        Column(Modifier.padding(vertical = 6.dp)
+                            .background(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.shapes.medium)
+                            .padding(12.dp)) {
                             Text(DateFormat.getDateTimeInstance().format(Date(entry.started)))
                             Text(stringResource(R.string.history_duration, entry.seconds))
                             Text(stringResource(when (entry.status) { "saved" -> R.string.history_saved; "failed" -> R.string.history_failed; else -> R.string.history_interrupted }))
@@ -119,7 +122,6 @@ fun HistoryDialog(onDismiss: () -> Unit) {
                                 TextButton(onClick = { context.startActivity(Intent(context, TranscribeActivity::class.java).putExtra("history_id", entry.id)) }) { Text(stringResource(R.string.history_retranscribe)) }
                                 TextButton(onClick = { scope.launch { withContext(Dispatchers.IO) { history.delete(entry.id) }; refresh++ } }) { Text(stringResource(R.string.history_delete)) }
                             }
-                            HorizontalDivider()
                         }
                     }
                 }

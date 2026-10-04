@@ -2,6 +2,7 @@ package io.github.lrq3000.utterlane.ui
 
 import android.content.Context
 import android.content.res.Configuration
+import android.content.res.ColorStateList
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -12,7 +13,12 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.compose.ui.graphics.toArgb
 import io.github.lrq3000.utterlane.R
+import io.github.lrq3000.utterlane.UtterlaneApp
+import io.github.lrq3000.utterlane.settings.SettingsRepository
+import io.github.lrq3000.utterlane.ui.theme.BrandPalette
+import io.github.lrq3000.utterlane.ui.theme.NativeBrandStyle
 import io.github.lrq3000.utterlane.asr.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -22,12 +28,13 @@ import kotlinx.coroutines.flow.collect
 
 /** One bottom-panel presentation for IME and system/accessibility overlays. */
 class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit) : LinearLayout(context) {
-    private val night = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-    private val foreground = if (night) Color.WHITE else Color.rgb(30, 28, 40)
-    private val secondary = if (night) Color.rgb(200, 190, 215) else Color.rgb(95, 85, 112)
+    private var themeMode = SettingsRepository.THEME_SYSTEM
+    private val initialPalette = NativeBrandStyle.palette(context)
+    private val foreground = initialPalette.text.toArgb()
+    private val secondary = initialPalette.muted.toArgb()
     private val title = label(20f, foreground)
     private val details = label(13f, secondary)
-    private val signal = label(14f, Color.rgb(218, 123, 38))
+    private val signal = label(14f, initialPalette.warning.toArgb())
     val statusText = label(15f, foreground).apply { id = R.id.recording_status; maxLines = 3; ellipsize = android.text.TextUtils.TruncateAt.END }
     private val waveform = WaveformButton(context).apply {
         id = R.id.recording_done
@@ -38,13 +45,19 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
     private val processing = LinearLayout(context).apply { orientation = VERTICAL; gravity = Gravity.CENTER }
     private val bar = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100 }
     private val percent = label(19f, foreground)
+    private val cancelButton = Button(context).apply {
+        text = context.getString(R.string.overlay_cancel)
+        isAllCaps = false
+        setOnClickListener { onCancel() }
+    }
     private var observer: Job? = null
+    private var themeObserver: Job? = null
 
     init {
         orientation = VERTICAL
         setPadding(dp(20), dp(16), dp(20), dp(12))
         background = GradientDrawable().apply {
-            setColor(if (night) Color.rgb(30, 26, 40) else Color.rgb(247, 243, 255))
+            setColor(initialPalette.surface.toArgb())
             cornerRadii = floatArrayOf(dp(26).toFloat(), dp(26).toFloat(), dp(26).toFloat(), dp(26).toFloat(), 0f, 0f, 0f, 0f)
         }
         elevation = dp(12).toFloat()
@@ -54,15 +67,46 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         processing.addView(bar, LayoutParams(LayoutParams.MATCH_PARENT, dp(16)).apply { topMargin = dp(16) })
         addView(processing, LayoutParams(LayoutParams.MATCH_PARENT, dp(136)).apply { topMargin = dp(12) })
         addView(statusText, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
-        addView(Button(context).apply { text = context.getString(R.string.overlay_cancel); setOnClickListener { onCancel() } }, LayoutParams(LayoutParams.MATCH_PARENT, dp(48)))
+        addView(cancelButton, LayoutParams(LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(12) })
+        applyPalette(initialPalette)
         render(CaptureSnapshot())
     }
     fun bind(scope: CoroutineScope, state: StateFlow<CaptureSnapshot>) {
         observer?.cancel()
         observer = scope.launch { state.collect { render(it) } }
+        // Native IME/accessibility contexts do not inherit Compose's explicit
+        // light/dark preference. Observe it without blocking the main thread.
+        themeObserver?.cancel()
+        themeObserver = scope.launch {
+            UtterlaneApp.instance.settingsRepository.themeMode.collect { mode ->
+                themeMode = mode
+                applyPalette(NativeBrandStyle.palette(context, mode))
+            }
+        }
     }
     fun preview(text: String) { statusText.text = text.takeLast(300) }
-    fun release() { observer?.cancel(); observer = null }
+    fun release() { observer?.cancel(); observer = null; themeObserver?.cancel(); themeObserver = null }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyPalette(NativeBrandStyle.palette(context, themeMode))
+    }
+
+    private fun applyPalette(palette: BrandPalette) {
+        (background as GradientDrawable).setColor(palette.surface.toArgb())
+        title.setTextColor(palette.text.toArgb())
+        details.setTextColor(palette.muted.toArgb())
+        signal.setTextColor(palette.warning.toArgb())
+        statusText.setTextColor(palette.text.toArgb())
+        percent.setTextColor(palette.text.toArgb())
+        bar.progressTintList = ColorStateList.valueOf(palette.primary.toArgb())
+        bar.indeterminateTintList = bar.progressTintList
+        bar.progressBackgroundTintList = ColorStateList.valueOf(palette.container.toArgb())
+        cancelButton.backgroundTintList = null
+        cancelButton.background = NativeBrandStyle.tonalButton(palette, dp(12).toFloat())
+        cancelButton.setTextColor(palette.onContainer.toArgb())
+        waveform.applyPalette(palette)
+    }
 
     private fun render(snapshot: CaptureSnapshot) {
         val capturing = snapshot.phase == CapturePhase.CAPTURING
@@ -109,11 +153,15 @@ private class WaveformButton(context: Context) : Button(context) {
         set(value) { field = value; invalidate() }
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; strokeCap = Paint.Cap.ROUND }
     init {
-        background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(Color.rgb(97, 67, 170), Color.rgb(49, 106, 162))).apply { cornerRadius = 24 * resources.displayMetrics.density }
+        applyPalette(NativeBrandStyle.palette(context))
         setTextColor(Color.WHITE); textSize = 16f
         gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
         setPadding(12, 12, 12, (16 * resources.displayMetrics.density).toInt())
         isAllCaps = false
+    }
+    fun applyPalette(palette: BrandPalette) {
+        backgroundTintList = null
+        background = NativeBrandStyle.waveform(palette, 24 * resources.displayMetrics.density)
     }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)

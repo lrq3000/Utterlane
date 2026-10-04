@@ -17,6 +17,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -49,6 +51,8 @@ import io.github.lrq3000.utterlane.transcribe.TranscribeManager
 import android.content.ActivityNotFoundException
 import android.widget.Toast
 import io.github.lrq3000.utterlane.ui.theme.UtterlaneTheme
+import io.github.lrq3000.utterlane.ui.BrandHeader
+import io.github.lrq3000.utterlane.ui.BrandSection
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -378,31 +382,15 @@ fun SettingsScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        androidx.compose.foundation.Image(
-                            painter = androidx.compose.ui.res.painterResource(R.drawable.utterlane_icon),
-                            contentDescription = null,
-                            modifier = Modifier.size(32.dp)
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Text(stringResource(R.string.app_name))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            )
-        }
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = { BrandHeader() }
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
+                .padding(vertical = 8.dp)
         ) {
             // Speech Model (required for all voice input)
             SettingsSection(title = stringResource(R.string.section_speech_model)) {
@@ -828,15 +816,7 @@ fun SettingsSection(
     title: String,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(modifier = Modifier.padding(vertical = 8.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
-        content()
-    }
+    BrandSection(title, content)
 }
 
 @Composable
@@ -890,6 +870,7 @@ fun PermissionItem(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun ModelSettingItem(
     modelName: String,
     modelBytes: Long,
@@ -932,65 +913,59 @@ fun ModelSettingItem(
                     downloadState is ModelManager.DownloadState.Ready -> Text(stringResource(R.string.model_downloaded))
                 }
             },
-            leadingContent = { Icon(Icons.Default.RecordVoiceOver, contentDescription = null) },
-            trailingContent = {
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    when {
-                        downloadState is ModelManager.DownloadState.NotStarted ||
-                        downloadState is ModelManager.DownloadState.Error -> {
-                            Column(horizontalAlignment = Alignment.End) {
-                                Button(onClick = onDownload) {
-                                    Text(stringResource(R.string.action_download))
-                                }
-                                TextButton(onClick = { showImportDialog = true }) {
-                                    Text(stringResource(R.string.action_load_local))
-                                }
-                            }
-                        }
-                        downloadState is ModelManager.DownloadState.Downloading ||
-                        downloadState is ModelManager.DownloadState.Copying -> {
-                            val progress = when (downloadState) {
-                                is ModelManager.DownloadState.Downloading -> downloadState.progress
-                                is ModelManager.DownloadState.Copying -> downloadState.progress
-                                else -> 0
-                            }
-                            CircularProgressIndicator(
-                                progress = { progress / 100f },
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                        downloadState is ModelManager.DownloadState.Extracting || isRecognizerLoading -> {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                        }
-                        isRecognizerReady -> {
-                            TextButton(onClick = onUnloadModel) {
-                                Text(stringResource(R.string.model_unload))
-                            }
-                        }
-                        downloadState is ModelManager.DownloadState.Ready -> {
-                            Button(onClick = onLoadModel) {
-                                Text(stringResource(R.string.model_load))
-                            }
-                        }
+            leadingContent = { Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
+        )
+        // Long model names and translated labels need the full row width. Actions
+        // wrap below the details instead of squeezing them beside a button stack.
+        FlowRow(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            when {
+                downloadState is ModelManager.DownloadState.NotStarted ||
+                downloadState is ModelManager.DownloadState.Error -> {
+                    Button(onClick = onDownload, shape = MaterialTheme.shapes.small) {
+                        Text(stringResource(R.string.action_download))
                     }
-                    if (canDeleteModel) {
-                        // Same filled, rounded Material button as Download/Load;
-                        // only the destructive-action colors differ.
-                        Button(
-                            onClick = onDeleteModel,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.error,
-                                contentColor = MaterialTheme.colorScheme.onError
-                            )
-                        ) { Text(stringResource(R.string.model_delete_button)) }
+                    TextButton(onClick = { showImportDialog = true }) {
+                        Text(stringResource(R.string.action_load_local))
+                    }
+                }
+                downloadState is ModelManager.DownloadState.Downloading ||
+                downloadState is ModelManager.DownloadState.Copying -> {
+                    val progress = when (downloadState) {
+                        is ModelManager.DownloadState.Downloading -> downloadState.progress
+                        is ModelManager.DownloadState.Copying -> downloadState.progress
+                        else -> 0
+                    }
+                    CircularProgressIndicator(progress = { progress / 100f }, modifier = Modifier.size(24.dp))
+                }
+                downloadState is ModelManager.DownloadState.Extracting || isRecognizerLoading -> {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                }
+                isRecognizerReady -> {
+                    TextButton(onClick = onUnloadModel) { Text(stringResource(R.string.model_unload)) }
+                }
+                downloadState is ModelManager.DownloadState.Ready -> {
+                    Button(onClick = onLoadModel, shape = MaterialTheme.shapes.small) {
+                        Text(stringResource(R.string.model_load))
                     }
                 }
             }
-        )
-
+            if (canDeleteModel) {
+                // Same filled, rounded button as Download/Load;
+                // only the destructive-action colors differ.
+                Button(
+                    onClick = onDeleteModel,
+                    shape = MaterialTheme.shapes.small,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) { Text(stringResource(R.string.model_delete_button)) }
+            }
+        }
     }
 
     if (showImportDialog) {
@@ -1015,7 +990,7 @@ fun ModelSettingItem(
                 }
             },
             confirmButton = {
-                Button(onClick = {
+                Button(shape = MaterialTheme.shapes.small, onClick = {
                     showImportDialog = false
                     onLoadLocal()
                 }) {
@@ -1047,7 +1022,7 @@ fun ThemeSettingItem(
     ListItem(
         headlineContent = { Text(stringResource(R.string.setting_theme)) },
         supportingContent = { Text(selectedThemeName) },
-        leadingContent = { Icon(Icons.Default.Palette, contentDescription = null) },
+        leadingContent = { Icon(Icons.Default.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
         modifier = Modifier.clickable { expanded = true }
     )
 
@@ -1086,7 +1061,7 @@ fun ButtonSizeSettingItem(
     ListItem(
         headlineContent = { Text(stringResource(R.string.floating_button_size)) },
         supportingContent = { Text(selectedSizeName) },
-        leadingContent = { Icon(Icons.Default.PhotoSizeSelectLarge, contentDescription = null) },
+        leadingContent = { Icon(Icons.Default.PhotoSizeSelectLarge, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
         modifier = Modifier.clickable { expanded = true }
     )
 
@@ -1118,6 +1093,11 @@ fun DictionaryDialog(
 ) {
     var fromText by remember { mutableStateOf("") }
     var toText by remember { mutableStateOf("") }
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+        unfocusedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+    )
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1143,6 +1123,8 @@ fun DictionaryDialog(
                         value = fromText,
                         onValueChange = { fromText = it },
                         label = { Text(stringResource(R.string.corrections_from)) },
+                        colors = fieldColors,
+                        shape = MaterialTheme.shapes.small,
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
@@ -1150,6 +1132,8 @@ fun DictionaryDialog(
                         value = toText,
                         onValueChange = { toText = it },
                         label = { Text(stringResource(R.string.corrections_to)) },
+                        colors = fieldColors,
+                        shape = MaterialTheme.shapes.small,
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )

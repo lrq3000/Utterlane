@@ -11,6 +11,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
@@ -216,12 +218,21 @@ fun TranscribeScreen(
         }
     }
 
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f)) {
+    // The floating Activity already dims the host window. A second Compose scrim
+    // would draw a dark rectangular strip inside that window, around the card.
+    Surface(modifier = Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color.Transparent) {
         Box(contentAlignment = Alignment.Center) {
-            Card(modifier = Modifier.fillMaxWidth(0.9f).padding(vertical = 24.dp)) {
-                Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
+            Card(
+                modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth(0.94f).padding(vertical = 24.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(Modifier.padding(20.dp).verticalScroll(rememberScrollState())) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.transcribe_title), style = MaterialTheme.typography.titleLarge)
+                        Icon(Icons.Default.Description, null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Text(stringResource(R.string.transcribe_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                         IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, stringResource(R.string.overlay_cancel)) }
                     }
                     if (running) {
@@ -337,8 +348,9 @@ fun SuccessContent(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
         ) {
-            OutlinedButton(
-                onClick = onCopy
+            Button(
+                onClick = onCopy,
+                shape = MaterialTheme.shapes.small
             ) {
                 Icon(
                     Icons.Default.ContentCopy,
@@ -349,7 +361,7 @@ fun SuccessContent(
                 Text(stringResource(R.string.transcribe_copy))
             }
 
-            Button(onClick = onShare) {
+            FilledTonalButton(onClick = onShare, shape = MaterialTheme.shapes.small) {
                 Icon(
                     Icons.Default.Share,
                     contentDescription = null,
@@ -382,7 +394,7 @@ fun ErrorContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Button(onClick = onDismiss) {
+        Button(onClick = onDismiss, shape = MaterialTheme.shapes.small) {
             Text(stringResource(R.string.transcribe_close))
         }
     }

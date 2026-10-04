@@ -40,6 +40,27 @@ class BrandAssets:
         result.putalpha(alpha)
         return result.crop(alpha.getbbox())
 
+    def wordmarks(self):
+        """Remove the white design-board matte without redrawing the lettering."""
+        source = self.design.crop(self.BANNER_BOX)
+        pixels = source.load()
+        light = Image.new("RGBA", source.size)
+        dark = Image.new("RGBA", source.size)
+        light_pixels, dark_pixels = light.load(), dark.load()
+        for y in range(source.height):
+            for x in range(source.width):
+                rgb = pixels[x, y]
+                alpha = 255 - min(rgb)
+                # Suppress near-white raster texture, while retaining antialiased
+                # letter edges. Undo the white matte before applying transparency.
+                if alpha < 14:
+                    continue
+                color = tuple(round((value - (255 - alpha)) * 255 / alpha) for value in rgb)
+                light_pixels[x, y] = (*color, alpha)
+                dark_pixels[x, y] = (244, 248, 255, alpha)
+        self.save(light, self.res / "utterlane_wordmark.png")
+        self.save(dark, self.res / "utterlane_wordmark_dark.png")
+
     @staticmethod
     def centered(mark, size, width):
         canvas = Image.new("RGBA", (size, size))
@@ -64,6 +85,7 @@ class BrandAssets:
     def generate(self):
         banner = self.design.crop(self.BANNER_BOX)
         self.save(banner, Path("assets/utterlane-banner.png"))
+        self.wordmarks()
         mark = self.mark()
 
         # 56dp wide in a 108dp layer: the complete mark fits inside the centered

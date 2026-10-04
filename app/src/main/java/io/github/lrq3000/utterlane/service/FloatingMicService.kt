@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.util.Log
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.os.Build
@@ -30,9 +31,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import io.github.lrq3000.utterlane.settings.SettingsRepository
+import io.github.lrq3000.utterlane.ui.theme.NativeBrandStyle
 import java.util.concurrent.atomic.AtomicBoolean
 
 class FloatingMicService : Service() {
@@ -53,6 +56,7 @@ class FloatingMicService : Service() {
     private var recordingOverlay: io.github.lrq3000.utterlane.ui.RecordingOverlay? = null
 
     private val isRecording = AtomicBoolean(false)
+    private var themeMode = SettingsRepository.THEME_SYSTEM
     private var isIntentionalStop = false
     private var initialX = 0
     private var initialY = 0
@@ -144,6 +148,13 @@ class FloatingMicService : Service() {
     private fun setupFloatingView() {
         floatingView = LayoutInflater.from(this).inflate(R.layout.floating_mic, null)
         micButton = floatingView.findViewById(R.id.floating_mic_button)
+        updateMicButtonState()
+        serviceScope.launch {
+            UtterlaneApp.instance.settingsRepository.themeMode.collect { mode ->
+                themeMode = mode
+                updateMicButtonState()
+            }
+        }
 
         // Apply button size from settings
         serviceScope.launch {
@@ -309,9 +320,14 @@ class FloatingMicService : Service() {
         micButton.setImageResource(
             if (recording) R.drawable.ic_mic_recording else R.drawable.ic_mic
         )
-        micButton.setBackgroundResource(
-            if (recording) R.drawable.mic_button_recording_bg else R.drawable.mic_button_bg
-        )
+        if (recording) micButton.setBackgroundResource(R.drawable.mic_button_recording_bg)
+        else micButton.background = NativeBrandStyle.waveform(
+            NativeBrandStyle.palette(this, themeMode), 0f, oval = true)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (::micButton.isInitialized) updateMicButtonState()
     }
 
     private fun showFailureNotification() {

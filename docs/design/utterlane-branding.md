@@ -36,6 +36,8 @@ launcher, Settings header and notification branding use the Utterlane mark.
 | `assets/utterlane-banner.png` | README wordmark and original tagline |
 | `assets/utterlane-icon.png` | Rounded standalone documentation icon |
 | `app/src/main/res/drawable-nodpi/utterlane_icon.png` | Settings header |
+| `app/src/main/res/drawable-nodpi/utterlane_wordmark.png` | Transparent original lettering for light Settings |
+| `app/src/main/res/drawable-nodpi/utterlane_wordmark_dark.png` | White source-derived lettering for dark Settings |
 | `app/src/main/res/drawable-nodpi/utterlane_foreground.png` | Mask-safe adaptive and monochrome layer |
 | `app/src/main/res/drawable-nodpi/utterlane_background.png` | Full-bleed launcher gradient |
 | `app/src/main/res/drawable-nodpi/ic_utterlane_notification.png` | Alpha-only white notification mark |
@@ -43,6 +45,13 @@ launcher, Settings header and notification branding use the Utterlane mark.
 | `fastlane/metadata/android/en-US/images/featureGraphic.png` | 1024 × 500 store banner |
 
 ![Launcher mask and themed-icon previews](utterlane-icon-preview.png)
+
+The application UI uses the approved **Blue harmony** design: blue actions, clean
+icons, rounded white/navy section cards, a subtle violet/blue header, and
+violet-to-blue recording controls. `ui/theme/Color.kt` supplies the shared Compose
+and native-view palette. Wallpaper-derived colors do not replace it. The wordmark
+exports remove the design-board white matte offline; no runtime tracing or font
+substitution is involved. See the [approved UI specification](../superpowers/specs/2026-10-04-blue-harmony-design.md).
 
 ## Application identity
 
