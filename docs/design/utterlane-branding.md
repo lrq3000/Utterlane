@@ -1,5 +1,9 @@
 # Utterlane brand specification
 
+See the [design-kit index](README.md) for the full
+[Blue harmony UI specification](blue-harmony-spec.md), editable visual reference,
+and GitHub repository-card exports.
+
 Approved by Stephen Karl Larroque on 2026-10-04.
 
 ![Original Utterlane wordmark and app icon](utterlane-logo-and-icon.png)

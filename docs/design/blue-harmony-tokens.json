@@ -1,0 +1,63 @@
+{
+  "source": "app/src/main/java/io/github/lrq3000/utterlane/ui/theme/Color.kt",
+  "gradientDirection": "left-to-right",
+  "gradientStops": [
+    0,
+    0.5,
+    1
+  ],
+  "themes": {
+    "light": {
+      "background": "#F1F5FB",
+      "text": "#15263F",
+      "muted": "#617088",
+      "outline": "#748198",
+      "outlineVariant": "#E5EAF3",
+      "primary": "#155ECC",
+      "container": "#EAF1FF",
+      "onContainer": "#233E61",
+      "violet": "#7750BC",
+      "violetContainer": "#EDE9FC",
+      "onVioletContainer": "#39265D",
+      "warning": "#8A4B0B",
+      "surface": "#FFFFFF",
+      "onPrimary": "#FFFFFF",
+      "header": [
+        "#EDE9FC",
+        "#E4EFFF",
+        "#E3F6FF"
+      ],
+      "waveform": [
+        "#7750BC",
+        "#365ECD",
+        "#067BC9"
+      ]
+    },
+    "dark": {
+      "background": "#0E1727",
+      "surface": "#182438",
+      "text": "#E9EFFC",
+      "muted": "#ADBAD0",
+      "outline": "#8393AA",
+      "outlineVariant": "#29374D",
+      "primary": "#A4C7FF",
+      "onPrimary": "#082957",
+      "container": "#233954",
+      "onContainer": "#D6E5FF",
+      "violet": "#D0B7FF",
+      "violetContainer": "#33284C",
+      "onVioletContainer": "#EBDDFF",
+      "warning": "#FFBF7A",
+      "header": [
+        "#292043",
+        "#1C3051",
+        "#153349"
+      ],
+      "waveform": [
+        "#6542AA",
+        "#3459B4",
+        "#086FAC"
+      ]
+    }
+  }
+}
