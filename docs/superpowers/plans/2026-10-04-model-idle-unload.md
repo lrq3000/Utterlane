@@ -57,13 +57,16 @@ Application-scoped preference and wake observers update the timer.
   cases, restoring settings afterward; inspect selector and readiness states.
 - [x] Review the diff for unsafe reset calls, stale timer races, leaks and
   accidental service shutdown. Run `git diff --check`. Leave changes in the
-  isolated feature worktree for review; commits were not requested.
+  isolated feature worktree for review. The subsequent user-approved integration
+  commits and replays the feature onto latest main before a local squash merge.
 
 ## Integration findings
 
 - The existing Settings resume/toggle checks required a resident recognizer.
   A new device test reproduced the resulting floating-microphone disablement.
   These checks now require installed model files, preserving on-demand loading.
-- Another concurrent APK installation killed the first full device run. Added
-  `tools/qa/isolated_app.gradle` for a unique QA package without modifying the
-  production application identity, then completed device tests under `idleqa`.
+- Another concurrent APK installation killed the first full device run. The
+  original feature used a local Gradle init script to isolate the QA package.
+  Latest main now provides `qaApplicationIdSuffix`; the integration replay uses
+  that canonical option and removes the redundant script. Both feature and
+  replay device tests passed under `idleqa`.

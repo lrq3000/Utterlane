@@ -31,7 +31,7 @@ application ID was killed by a concurrent install (`ActivityManager` logged
 Subsequent runs used the isolated package `io.github.lrq3000.utterlane.idleqa`.
 
 ```text
-gradlew.bat -I tools/qa/isolated_app.gradle "-PqaApplicationId=io.github.lrq3000.utterlane.idleqa" assembleDebug assembleDebugAndroidTest --console=plain -q
+gradlew.bat "-PqaApplicationIdSuffix=.idleqa" assembleDebug assembleDebugAndroidTest --console=plain -q
 adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
 adb -s emulator-5554 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb -s emulator-5554 shell appops set io.github.lrq3000.utterlane.idleqa SYSTEM_ALERT_WINDOW allow
@@ -41,7 +41,7 @@ adb -s emulator-5554 shell am instrument -w -e class io.github.lrq3000.utterlane
 
 Fixtures follow `docs/qa/README.md`. The idle suite needs the catalog-verified
 Ultra Q8 GGUF and overlay permission; the recovery suite also uses Redux and
-the speech fixture. The isolated init script changes only that build invocation;
+the speech fixture. The QA suffix changes only that debug build invocation;
 run normal Gradle commands again to produce the regular application APK.
 
 ## UI/startup checks
@@ -63,3 +63,23 @@ by deterministic and instrumentation tests.
 
 New English resources follow the project policy of deferring translations until
 release preparation.
+
+## Replay onto latest main
+
+The original feature commit `69da86b` was replayed as `2009434` on main's
+`70601d2` (native ternary Redux support). There were no conflicts. Stable patch
+IDs with zero context matched, confirming all original feature hunks applied.
+README, settings UI, and resources retain main's newer backend additions.
+
+Main already provides debug-only `qaApplicationIdSuffix`, so the replay uses
+that canonical mechanism and drops the redundant feature-local Gradle init
+script. The commands above reflect this adaptation.
+
+Verification on the combined tree:
+
+- `gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest "-PqaApplicationIdSuffix=.idleqa" --console=plain -q` passed.
+- All 49 JVM tests passed, including main's new ternary catalog test; a normal
+  `gradlew.bat :app:assembleDebug --console=plain -q` also passed afterward.
+- All 11 `ModelIdleAndroidTest` cases passed again on `emulator-5554` in 16.595 s.
+- The replay introduced no changes to main's native source pins, native modules,
+  backend implementation, or model catalog.
