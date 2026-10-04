@@ -1,0 +1,4 @@
+{
+    global: Java_io_github_lrq3000_utterlane_asr_TranscribeCppBackend_*;
+    local: *;
+};

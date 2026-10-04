@@ -117,14 +117,23 @@ requiring you to select a language or restart the recording.
 
 | Model | Runtime | Approximate model download |
 | --- | --- | --- |
-| NVIDIA Parakeet TDT v3 — default | sherpa-onnx / ONNX INT8 | 670 MB |
-| Moondream Parakeet Ultra | CrispASR / GGUF Q8_0 or Q4_K | 674 MB or 402 MB |
+| NVIDIA Parakeet TDT v3 | sherpa-onnx / ONNX INT8 | 670 MB |
+| Moondream Parakeet Ultra — Q8_0 is the first-launch default | CrispASR / GGUF Q8_0 or Q4_K | 674 MB or 402 MB |
 | Moondream Parakeet Redux | CrispASR / GGUF Q8_0 or Q4_K | 674 MB or 402 MB |
+| Moondream Parakeet Redux — compact native ternary | transcribe.cpp / TQ1_Q8_0 | **159.1 MB** |
 
-These Redux GGUF conversions are not the original 178 MB Photon packing, and
+The CrispASR Redux GGUF conversions are not the original 178 MB Photon packing, and
 published Photon benchmarks do not establish their performance on your phone.
 The Q8 alternatives have on-emulator inference coverage; Q4 variants share the
 backend but have not received a separate on-device inference run.
+
+The additional **Redux TQ1_Q8_0** option retains its ternary encoder in RAM using
+transcribe.cpp's native ternary kernels. Q8_0 applies only to the remaining dense
+parameters. This prioritizes compact memory over the engine's faster expanded
+CPU layout. Its download is pinned and verified; it has separate storage and
+does not replace the existing Redux options. Total process RAM is greater than
+the download size because decoding, activations and application state also use
+memory. See [native ternary QA](docs/qa/redux-native-ternary.md) for measurements.
 
 <details>
 <summary>Supported recognition languages</summary>
@@ -177,7 +186,7 @@ The first build needs network access to retrieve dependencies and source code.
 export ANDROID_NDK="$ANDROID_HOME/ndk/28.2.13676358"
 ./build-sherpa-onnx-aar.sh
 
-# Prepare the pinned CrispASR/ggml sources and build Utterlane.
+# Prepare pinned CrispASR and transcribe.cpp sources (each with its own ggml).
 python tools/prepare_native.py
 ./gradlew assembleDebug
 

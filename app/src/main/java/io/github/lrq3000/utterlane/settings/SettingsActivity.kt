@@ -488,7 +488,11 @@ fun SettingsScreen(
 
                 val context = LocalContext.current
                 Text(
-                    text = if (selectedModel.id == "parakeet-v3") stringResource(R.string.model_attribution) else stringResource(R.string.model_moondream_attribution),
+                    text = when {
+                        selectedModel.id == "parakeet-v3" -> stringResource(R.string.model_attribution)
+                        selectedModel.backend == io.github.lrq3000.utterlane.asr.ModelBackend.TRANSCRIBE_CPP -> stringResource(R.string.model_ternary_attribution)
+                        else -> stringResource(R.string.model_moondream_attribution)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier

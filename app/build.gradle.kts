@@ -46,6 +46,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Optional local QA identity prevents parallel emulator runs replacing
+            // each other's data. A persisted QA property cannot rename releases.
+            applicationIdSuffix = providers.gradleProperty("qaApplicationIdSuffix").getOrElse("")
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(
@@ -83,6 +88,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":transcribe-native"))
     // sherpa-onnx AAR (built from source via build-sherpa-onnx-aar.sh)
     implementation(files(aarFile))
 

@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Utterlane"
 include(":app")
+include(":transcribe-native")

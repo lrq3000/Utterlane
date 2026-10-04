@@ -286,4 +286,6 @@
     <string name="model_delete_button">Delete</string>
     <string name="model_delete_confirm_message">Delete the downloaded weights for %1$s? You will need to download or import them again to use this model.</string>
     <string name="model_delete_selection_changed">The selected model changed. Please confirm deletion again.</string>
+    <string name="model_native_ternary_description">159.1 MB download · Native ternary kernels prioritize lower RAM over speed. Total RAM also includes inference buffers.</string>
+    <string name="model_ternary_attribution">Moondream / NVIDIA · CC-BY-4.0 · Nairod785 ternary conversion · transcribe.cpp native runtime</string>
 </resources>
