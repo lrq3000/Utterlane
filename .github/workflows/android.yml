@@ -7,6 +7,7 @@ on:
       - 'v*'
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -24,6 +25,14 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
         cache: gradle
+
+    # Runner images do not guarantee sdkmanager is on PATH. Bootstrap the SDK
+    # and accept licenses before installing the pinned native build packages.
+    - name: Set up Android SDK tools
+      uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      with:
+        packages: ''
+        log-accepted-android-sdk-licenses: false
 
     - name: Setup Android NDK
       uses: nttld/setup-ndk@v1
@@ -81,6 +90,12 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
         cache: gradle
+
+    - name: Set up Android SDK tools
+      uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      with:
+        packages: ''
+        log-accepted-android-sdk-licenses: false
 
     - name: Setup Android NDK
       uses: nttld/setup-ndk@v1
