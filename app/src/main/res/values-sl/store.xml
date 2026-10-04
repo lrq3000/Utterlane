@@ -1,0 +1,4 @@
+<resources>
+    <string name="privacy_policy">Pravilnik o zasebnosti</string>
+    <string name="accessibility_data_use">Utterlane uporablja dostopnost Androida za iskanje aktivnega besedilnega polja v drugi aplikaciji, branje besedila in položaja kazalca ter vstavljanje prepisa. To poteka v vaši napravi; Utterlane vsebine polja ne pošilja strežniku in je ne shranjuje v zgodovino posnetkov. Prejemna aplikacija obdeluje vstavljeno besedilo po svojem pravilniku o zasebnosti.\n\nTo dovoljenje ni obvezno. Če ga zavrnete, lahko še vedno uporabljate glasovni vnos tipkovnice, prepis zvočnih datotek in odložišče.</string>
+</resources>

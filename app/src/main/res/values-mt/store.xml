@@ -1,0 +1,4 @@
+<resources>
+    <string name="privacy_policy">Politika tal-privatezza</string>
+    <string name="accessibility_data_use">Utterlane juża l-aċċessibbiltà ta\' Android biex isib il-qasam tat-test attiv f\'app oħra, jaqra t-test u l-pożizzjoni tal-kursur, u jdaħħal it-traskrizzjoni. Dan iseħħ fuq l-apparat tiegħek; Utterlane ma jibgħatx il-kontenut tal-qasam lil server u ma jżommux fl-istorja tar-reġistrazzjonijiet. L-app li tirċievi t-test tittrattah skont il-politika tal-privatezza tagħha.\n\nDan il-permess huwa fakultattiv. Jekk tirrifjuta, xorta tista\' tuża d-dħul bil-vuċi tat-tastiera, it-traskrizzjoni tal-fajls awdjo u l-clipboard.</string>
+</resources>

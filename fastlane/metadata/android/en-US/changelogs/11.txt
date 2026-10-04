@@ -1,0 +1,8 @@
+Utterlane 2.0: a new app identity and refreshed interface.
+• Incremental on-device dictation and audio-file transcription.
+• Optional local recording history, replay and export.
+• Additional Parakeet Ultra/Redux models.
+• Better recovery, progress feedback and device-sleep handling.
+• Android 16 targeting and 16 KB-aligned native libraries.
+• Clearer accessibility disclosure and privacy-policy access.
+Installs separately from TranSlander; settings and models do not migrate automatically.

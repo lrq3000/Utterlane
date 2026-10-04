@@ -1,0 +1,4 @@
+<resources>
+    <string name="privacy_policy">Privatumo politika</string>
+    <string name="accessibility_data_use">Utterlane naudoja Android pritaikymą neįgaliesiems, kad rastų aktyvų teksto lauką kitoje programoje, perskaitytų tekstą ir žymeklio padėtį bei įterptų transkripciją. Tai vyksta jūsų įrenginyje; Utterlane nesiunčia lauko turinio į serverį ir neišsaugo jo įrašų istorijoje. Gavėjo programa tvarko įterptą tekstą pagal savo privatumo politiką.\n\nŠis leidimas neprivalomas. Atsisakę vis tiek galite naudoti klaviatūros balso įvestį, garso failų transkripciją ir iškarpinę.</string>
+</resources>

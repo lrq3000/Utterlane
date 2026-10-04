@@ -1,0 +1,4 @@
+<resources>
+    <string name="privacy_policy">Privaatsuspoliitika</string>
+    <string name="accessibility_data_use">Utterlane kasutab Androidi juurdepääsetavust teise rakenduse aktiivse tekstivälja leidmiseks, teksti ja kursori asukoha lugemiseks ning transkriptsiooni sisestamiseks. See toimub teie seadmes; Utterlane ei saada välja sisu serverisse ega salvesta seda salvestusajalukku. Vastuvõttev rakendus töötleb teksti oma privaatsuspoliitika järgi.\n\nSee luba on vabatahtlik. Keeldumise korral saate endiselt kasutada klaviatuuri häälsisestust, helifailide transkriptsiooni ja lõikelauda.</string>
+</resources>

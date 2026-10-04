@@ -5,7 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased — Utterlane
+## [2.0.0] - 2026-10-04
+
+### Added
+- Incremental microphone and file transcription with bounded audio queues,
+  recoverable completed text, and processing feedback.
+- Optional local recording history, replay, export, and configurable retention.
+- Moondream Parakeet Ultra/Redux recognition through the pinned CrispASR backend.
+- Compact native ternary Redux, custom CrispASR model imports, streaming speaker
+  labels, persistent app-language selection, and configurable idle model unloading.
+- F-Droid packaging preparation and free Google Play release-bundle workflow.
+- GitHub Releases, Obtainium, and Komi Store installation instructions.
 
 ### Changed
 - Rebrand the application, first-party source packages, JNI library, localized
@@ -16,6 +26,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notifications, README and store artwork; archive the original design.
 - Document maintenance by Stephen Karl Larroque, upstream lineage, and the
   policy welcoming AI contributions sanity checked by humans.
+- Target Android 16 / API 36 while retaining Android 8 / ARM64 support.
+- Build sherpa JNI and bindings with a portable Python tool; use the verified
+  official ONNX Runtime 1.23.2 Maven artifact and check 16 KB native alignment.
+- Publish release-signed APKs and Play bundles instead of debug APK releases.
+- Refresh English Settings/transcription screenshots and clarify the optional
+  accessibility service disclosure, with an in-app privacy-policy link.
+
+### Fixed
+- Preserve active transcription sessions across device sleep and allow completed
+  audio to drain after capture stops.
+
+Store publication is pending maintainer submission and store review. This entry
+describes the prepared release, not an already available store listing.
 
 Earlier entries and release links below belong to the upstream TranSlander
 history and are retained as historical records.
@@ -131,6 +154,7 @@ history and are retained as historical records.
 - Model integrity verification with SHA256 checksums
 
 [1.2.2]: https://github.com/hatsch/TranSlander/compare/v1.2.1...v1.2.2
+[2.0.0]: https://github.com/lrq3000/Utterlane/releases/tag/v2.0.0
 [1.2.1]: https://github.com/hatsch/TranSlander/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/hatsch/TranSlander/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/hatsch/TranSlander/compare/v1.1.0...v1.1.1

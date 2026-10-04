@@ -1,0 +1,4 @@
+<resources>
+    <string name="privacy_policy">Política de privacidad</string>
+    <string name="accessibility_data_use">Utterlane usa la accesibilidad de Android para encontrar el campo de texto activo de otra aplicación, leer su texto y la posición del cursor e insertar la transcripción. Esto ocurre en tu dispositivo; Utterlane no envía el contenido del campo a un servidor ni lo guarda en el historial de grabaciones. La aplicación receptora trata el texto insertado según su propia política de privacidad.\n\nEste permiso es opcional. Si lo rechazas, puedes seguir usando la entrada de voz del teclado, la transcripción de archivos de audio y el portapapeles.</string>
+</resources>

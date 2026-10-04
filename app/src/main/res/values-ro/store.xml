@@ -1,0 +1,4 @@
+<resources>
+    <string name="privacy_policy">Politica de confidențialitate</string>
+    <string name="accessibility_data_use">Utterlane folosește accesibilitatea Android pentru a găsi câmpul de text activ din altă aplicație, a citi textul și poziția cursorului și a insera transcrierea. Totul se întâmplă pe dispozitiv; Utterlane nu trimite conținutul câmpului către un server și nu îl păstrează în istoricul înregistrărilor. Aplicația destinatară prelucrează textul inserat conform propriei politici de confidențialitate.\n\nAceastă permisiune este opțională. Dacă refuzați, puteți folosi în continuare introducerea vocală a tastaturii, transcrierea fișierelor audio și clipboardul.</string>
+</resources>

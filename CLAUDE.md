@@ -31,9 +31,13 @@ An Android voice typing app that works **completely offline**. Speak into your p
 
 ## Build
 
-**Requirements:** JDK 21+, Android SDK, Gradle 8.12.1 (via wrapper)
+**Requirements:** OpenJDK 21, Android SDK platform 36, Python 3.11.8+, Gradle 8.12.1 (via wrapper)
 
-**Build stack:** Kotlin 2.0.21, AGP 8.7.2, Compose compiler plugin (Kotlin 2.0+)
+**Build stack:** Kotlin 2.0.21, AGP 8.10.1, Compose compiler plugin (Kotlin 2.0+)
+
+Current F-Droid/free Google Play preparation and signing steps are in
+`docs/distribution/README.md`. Use that guide for the new Utterlane listing;
+historical upstream publishing milestones below are not Utterlane approvals.
 
 ```bash
 # IMPORTANT: Use absolute paths, not ~ (tilde doesn't expand in all contexts)
@@ -72,9 +76,13 @@ rm -rf /home/hatsch/claude/transcript/fdroiddata/build/io.github.lrq3000.utterla
 ```
 
 ### sherpa-onnx AAR
-The sherpa-onnx native library is built from source and placed at `app/libs/sherpa-onnx-<version>.aar`.
-Run `./build-sherpa-onnx-aar.sh` to build it. This location is outside the gradle `build/` directory
-so it survives `gradle clean` (required for F-Droid builds).
+The sherpa-onnx JNI library and Kotlin bindings are built from pinned source and
+placed at `app/libs/sherpa-onnx-<version>.aar`. ONNX Runtime 1.23.2 is an official,
+SHA-256-verified MIT-licensed Maven Central dependency, not compiled by this tool.
+Run `python tools/build_sherpa.py` on Windows or Linux; the Bash entry point is a
+compatibility wrapper. The AAR location survives `gradle clean` for F-Droid builds.
+Use `--sources-only` before F-Droid scanning, then `--build-only --gradle gradle`
+after scanning, as specified in `docs/distribution/fdroid/`.
 
 ### NDK
 F-Droid build requires NDK. The current Gradle build pins `28.2.13676358`;

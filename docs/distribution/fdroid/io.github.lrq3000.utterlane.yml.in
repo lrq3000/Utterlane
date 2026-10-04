@@ -1,0 +1,54 @@
+Categories:
+  - Speech Recognizer
+  - Keyboard & IME
+  - Recorder
+License: Apache-2.0
+AuthorName: Stephen Karl Larroque
+AuthorEmail: LRQ3000@GMAIL.COM
+SourceCode: https://github.com/lrq3000/Utterlane
+IssueTracker: https://github.com/lrq3000/Utterlane/issues
+Changelog: https://github.com/lrq3000/Utterlane/blob/HEAD/CHANGELOG.md
+
+AutoName: Utterlane
+
+RepoType: git
+Repo: https://github.com/lrq3000/Utterlane.git
+
+Builds:
+  - versionName: 2.0.0
+    versionCode: 11
+    commit: '@RELEASE_COMMIT@'
+    subdir: app
+    sudo:
+      - apt-get update
+      - apt-get install -y openjdk-21-jdk-headless python3
+    gradle:
+      - yes
+    prebuild:
+      - sdkmanager 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'cmake;3.22.1'
+      - cd ..
+      - python3 tools/prepare_native.py
+      - python3 tools/build_sherpa.py --sources-only
+      - python3 tools/prepare_fdroid.py
+      - echo 'org.gradle.java.home=/usr/lib/jvm/java-21-openjdk-amd64' >> gradle.properties
+    build:
+      - export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+      - export PATH=$JAVA_HOME/bin:$PATH
+      - cd .. && python3 tools/build_sherpa.py --build-only --gradle gradle
+    ndk: 28.2.13676358
+
+MaintainerNotes: |-
+  Independent TranSlander fork with new identity and artwork, bounded streaming,
+  optional local history, and CrispASR model support. Models are downloaded only
+  on user request or imported locally; weights are CC-BY-4.0 data, not executable
+  updates. Inference works without a network connection.
+  Native sources (including transcribe.cpp) are pinned in tools/prepare_native.py and tools/build_sherpa.py
+  and downloaded before the source scanner. CMake downloads are disabled during
+  compilation. ONNX Runtime 1.23.2 is MIT-licensed, fetched from Maven Central
+  after scanning, and verified by SHA-256. No GitHub-release binary dependencies.
+  Ordinary F-Droid signing; reproducibility with developer APKs is not claimed.
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^v[0-9]+\.[0-9]+\.[0-9]+$
+CurrentVersion: 2.0.0
+CurrentVersionCode: 11

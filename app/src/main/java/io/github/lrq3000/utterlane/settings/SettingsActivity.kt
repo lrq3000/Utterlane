@@ -590,7 +590,7 @@ fun SettingsScreen(
                                 .fillMaxWidth()
                                 .verticalScroll(rememberScrollState())
                         ) {
-                            Text(stringResource(R.string.accessibility_disclosure_body))
+                            Text(stringResource(R.string.accessibility_data_use))
                         }
                     },
                     confirmButton = {
@@ -827,6 +827,21 @@ fun SettingsScreen(
                     }
                 )
             }
+
+            // A persistent in-app policy link is also required for Play's Data
+            // safety disclosure. Opening it is explicit and uses the user's browser.
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.privacy_policy)) },
+                leadingContent = { Icon(Icons.Default.PrivacyTip, contentDescription = null) },
+                modifier = Modifier.clickable {
+                    try {
+                        context.startActivity(Intent(Intent.ACTION_VIEW,
+                            Uri.parse("https://github.com/lrq3000/Utterlane/blob/main/PRIVACY_POLICY.md")))
+                    } catch (_: ActivityNotFoundException) {
+                        Toast.makeText(context, R.string.error_no_browser, Toast.LENGTH_LONG).show()
+                    }
+                }
+            )
         }
     }
 }

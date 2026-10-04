@@ -1,0 +1,4 @@
+<resources>
+    <string name="privacy_policy">Privatlivspolitik</string>
+    <string name="accessibility_data_use">Utterlane bruger Androids tilgængelighed til at finde det aktive tekstfelt i en anden app, læse teksten og markørens placering og indsætte din transskription. Dette sker på din enhed; Utterlane sender ikke feltets indhold til en server og gemmer det ikke i optagelseshistorikken. Den modtagende app behandler teksten efter sin egen privatlivspolitik.\n\nTilladelsen er valgfri. Hvis du afviser, kan du stadig bruge tastaturets stemmeinput, transskription af lydfiler og udklipsholderen.</string>
+</resources>

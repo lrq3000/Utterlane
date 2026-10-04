@@ -29,10 +29,9 @@ jobs:
 
       - name: Install Android build dependencies
         # The Ubuntu runner supplies the SDK tools and accepted SDK licenses.
-        # sherpa-onnx compiles against API 34; the app compiles against API 35.
+        # App/sherpa bindings use API 36; main's transcribe-native module uses 35.
         run: >-
-          sdkmanager "platforms;android-34" "platforms;android-35"
-          "build-tools;34.0.0" "build-tools;35.0.0"
+          sdkmanager "platforms;android-35" "platforms;android-36" "build-tools;35.0.0"
           "ndk;28.2.13676358" "cmake;3.22.1"
 
       - name: Cache sherpa-onnx AAR
@@ -41,11 +40,11 @@ jobs:
         with:
           path: app/libs/sherpa-onnx-*.aar
           # No fallback keys: native binaries must match the current build inputs.
-          key: ${{ runner.os }}-${{ runner.arch }}-sherpa-ndk28.2.13676358-java21-${{ hashFiles('build-sherpa-onnx-aar.sh', 'app/build.gradle.kts') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-sherpa-ndk28.2.13676358-java21-${{ hashFiles('tools/build_sherpa.py', 'tools/release_artifacts.py', 'tools/sherpa-android/**', 'gradle/wrapper/gradle-wrapper.properties') }}
 
       - name: Build sherpa-onnx AAR
         if: steps.sherpa-cache.outputs.cache-hit != 'true'
-        run: ANDROID_NDK="$ANDROID_HOME/ndk/28.2.13676358" bash build-sherpa-onnx-aar.sh
+        run: python3 tools/build_sherpa.py
 
       - name: Prepare pinned native sources
         run: python3 tools/prepare_native.py
@@ -53,8 +52,12 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --console=plain
+      - name: Test and build APKs and Play bundle
+        run: |
+          python3 -m unittest discover -s tools/tests
+          ./gradlew testDebugUnitTest assembleDebug assembleRelease bundleRelease --console=plain --quiet
+          python3 tools/release_artifacts.py app/build/outputs/apk/release/app-release-unsigned.apk app/build/outputs/bundle/release/app-release.aab
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 app/build/outputs/apk/release/app-release-unsigned.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v7.0.1
@@ -65,30 +68,60 @@ jobs:
           # APKs are already ZIP archives; compressing them again wastes CPU.
           compression-level: 0
 
+      - name: Upload unsigned release artifacts
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: Utterlane-release-unsigned
+          path: |
+            app/build/outputs/apk/release/app-release-unsigned.apk
+            app/build/outputs/bundle/release/app-release.aab
+            app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+          compression-level: 0
+
   release:
-    name: Attach APK to release
+    name: Sign and attach release APK and Play bundle
     if: github.event_name == 'release'
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    environment: release
     # Build PR code with read-only access; grant write access only for publishing.
     permissions:
       contents: write
 
     steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v6.0.1
+        with:
+          java-version: '21'
+          distribution: temurin
+
       - name: Download APK
         uses: actions/download-artifact@v8.0.1
         with:
-          name: Utterlane-debug
-          path: apk
+          name: Utterlane-release-unsigned
+          path: artifacts
 
-      - name: Attach debug APK
+      - name: Install signing tools
+        run: sdkmanager "build-tools;35.0.0"
+
+      - name: Sign release artifacts
+        env:
+          UTTERLANE_KEYSTORE_BASE64: ${{ secrets.UTTERLANE_KEYSTORE_BASE64 }}
+          UTTERLANE_STORE_PASSWORD: ${{ secrets.UTTERLANE_STORE_PASSWORD }}
+          UTTERLANE_KEY_ALIAS: ${{ secrets.UTTERLANE_KEY_ALIAS }}
+          UTTERLANE_KEY_PASSWORD: ${{ secrets.UTTERLANE_KEY_PASSWORD }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: python3 tools/sign_release.py --input artifacts --output dist
+
+      - name: Attach signed artifacts
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
-        # Environment variables keep release tags out of shell source code.
-        # Replacing the same asset makes a rerun of this job safe.
-        run: |
-          mv apk/app-debug.apk apk/Utterlane-debug.apk
-          gh release upload "$RELEASE_TAG" apk/Utterlane-debug.apk --clobber
+        # Signing failure stops publication; never fall back to a debug key.
+        run: gh release upload "$RELEASE_TAG" dist/*.apk dist/*.aab dist/SHA256SUMS --clobber

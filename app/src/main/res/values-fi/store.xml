@@ -1,0 +1,4 @@
+<resources>
+    <string name="privacy_policy">Tietosuojakäytäntö</string>
+    <string name="accessibility_data_use">Utterlane käyttää Androidin esteettömyystoimintoja toisen sovelluksen aktiivisen tekstikentän löytämiseen, tekstin ja kohdistimen sijainnin lukemiseen sekä litteroinnin lisäämiseen. Tämä tapahtuu laitteellasi; Utterlane ei lähetä kentän sisältöä palvelimelle eikä tallenna sitä tallennushistoriaan. Vastaanottava sovellus käsittelee tekstiä oman tietosuojakäytäntönsä mukaisesti.\n\nLupa on vapaaehtoinen. Jos kieltäydyt, voit silti käyttää näppäimistön puhesyöttöä, äänitiedostojen litterointia ja leikepöytää.</string>
+</resources>

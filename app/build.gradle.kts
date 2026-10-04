@@ -19,7 +19,7 @@ tasks.register("checkSherpaOnnxAar") {
         if (!aarFile.exists()) {
             throw GradleException(
                 "sherpa-onnx AAR not found at: $aarFile\n" +
-                "Run ./build-sherpa-onnx-aar.sh first to build it from source."
+                "Run python tools/build_sherpa.py first to build it from source."
             )
         }
     }
@@ -33,14 +33,14 @@ tasks.named("preBuild") {
 android {
     ndkVersion = "28.2.13676358"
     namespace = "io.github.lrq3000.utterlane"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "io.github.lrq3000.utterlane"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 10
-        versionName = "1.2.4"
+        targetSdk = 36
+        versionCode = 11
+        versionName = "2.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Only include arm64-v8a for modern phones (~50% smaller APK)
@@ -53,6 +53,23 @@ android {
         }
     }
 
+    // F-Droid supplies its own signature. Local/CI release signing is opt-in;
+    // partial credentials must fail rather than silently produce an unsigned APK.
+    val signingNames = listOf("UTTERLANE_KEYSTORE", "UTTERLANE_STORE_PASSWORD", "UTTERLANE_KEY_ALIAS", "UTTERLANE_KEY_PASSWORD")
+    val signingValues = signingNames.associateWith { System.getenv(it) }
+    val hasSigning = signingValues.values.any { !it.isNullOrBlank() }
+    if (hasSigning) {
+        require(signingValues.values.all { !it.isNullOrBlank() }) {
+            "Release signing requires all four UTTERLANE_* signing environment variables"
+        }
+        signingConfigs.create("release") {
+            storeFile = file(signingValues.getValue("UTTERLANE_KEYSTORE")!!)
+            storePassword = signingValues.getValue("UTTERLANE_STORE_PASSWORD")
+            keyAlias = signingValues.getValue("UTTERLANE_KEY_ALIAS")
+            keyPassword = signingValues.getValue("UTTERLANE_KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         debug {
             // Optional local QA identity prevents parallel emulator runs replacing
@@ -60,6 +77,7 @@ android {
             applicationIdSuffix = providers.gradleProperty("qaApplicationIdSuffix").getOrElse("")
         }
         release {
+            if (hasSigning) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -98,7 +116,7 @@ android {
 
 dependencies {
     implementation(project(":transcribe-native"))
-    // sherpa-onnx AAR (built from source via build-sherpa-onnx-aar.sh)
+    // Source-built sherpa JNI/bindings + official Maven Central ONNX Runtime.
     implementation(files(aarFile))
 
     // AndroidX Core
