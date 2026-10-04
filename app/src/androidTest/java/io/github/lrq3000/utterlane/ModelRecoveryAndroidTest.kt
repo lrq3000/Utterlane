@@ -80,7 +80,7 @@ class ModelRecoveryAndroidTest {
         assertTrue(closed.get())
         assertFalse(manager.isReady.value)
         assertFalse(manager.isLoading.value)
-        manager.selectModel(ModelCatalog.DEFAULT)
+        manager.selectModel(ModelCatalog.PARAKEET_V3)
     }
 
     @Test fun loadFailureIsVisibleAndResetLeavesSwitchingAvailable(): Unit = runBlocking {
@@ -90,7 +90,7 @@ class ModelRecoveryAndroidTest {
         assertTrue(manager.failure.value!!.contains("missing native dependency"))
         assertFalse(manager.isReady.value)
         manager.forceUnload()
-        manager.selectModel(ModelCatalog.DEFAULT)
+        manager.selectModel(ModelCatalog.PARAKEET_V3)
         assertNull(manager.failure.value)
     }
 

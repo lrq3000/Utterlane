@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import io.github.lrq3000.utterlane.asr.ModelCatalog
 import io.github.lrq3000.utterlane.history.HistoryRetention
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -46,7 +47,7 @@ class SettingsRepository(private val context: Context) {
         HistoryRetention.fromKey(preferences[HISTORY_RETENTION_KEY])
     }
 
-    val selectedModelId: Flow<String> = context.dataStore.data.map { it[SELECTED_MODEL_KEY] ?: "parakeet-v3" }
+    val selectedModelId: Flow<String> = context.dataStore.data.map { it[SELECTED_MODEL_KEY] ?: ModelCatalog.DEFAULT.id }
     suspend fun setSelectedModelId(id: String) { context.dataStore.edit { it[SELECTED_MODEL_KEY] = id } }
 
     suspend fun setHistoryRetention(retention: HistoryRetention) {

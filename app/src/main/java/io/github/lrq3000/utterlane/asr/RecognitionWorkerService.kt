@@ -51,7 +51,7 @@ class RecognitionWorkerService : Service() {
     private fun load(id: String?): Bundle {
         val model = ModelCatalog.find(id)
         require(model.id == id) { "Unknown recognition model" }
-        val directory = if (model == ModelCatalog.DEFAULT) File(filesDir, "parakeet-v3") else File(filesDir, "models/${model.id}")
+        val directory = File(filesDir, model.relativeDirectory)
         check(backend == null) { "Worker already owns a model" }
         val started = SystemClock.elapsedRealtime()
         val candidate = if (model.backend == ModelBackend.CRISP) {

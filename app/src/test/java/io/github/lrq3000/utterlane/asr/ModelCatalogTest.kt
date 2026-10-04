@@ -4,11 +4,25 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ModelCatalogTest {
-    @Test fun defaultAndUnknownSelectionKeepExistingModel() {
-        assertEquals("parakeet-v3", ModelCatalog.DEFAULT.id)
+    @Test fun defaultAndUnknownSelectionUseUltraQ8() {
+        assertEquals("parakeet-ultra-q8_0", ModelCatalog.DEFAULT.id)
+        assertEquals(ModelBackend.CRISP, ModelCatalog.DEFAULT.backend)
         assertEquals(ModelCatalog.DEFAULT, ModelCatalog.find(null))
         assertEquals(ModelCatalog.DEFAULT, ModelCatalog.find("unknown"))
         assertEquals(5, ModelCatalog.models.size)
+    }
+    @Test fun explicitSelectionsStillResolveToTheirOwnModels() {
+        for (model in ModelCatalog.models) {
+            assertSame(model, ModelCatalog.find(model.id))
+        }
+        assertEquals(ModelBackend.SHERPA, ModelCatalog.find("parakeet-v3").backend)
+    }
+    @Test fun storagePathsStayStableWhenTheDefaultChanges() {
+        assertEquals("parakeet-v3", ModelCatalog.find("parakeet-v3").relativeDirectory)
+        assertEquals("models/parakeet-ultra-q8_0", ModelCatalog.DEFAULT.relativeDirectory)
+        for (model in ModelCatalog.models.filter { it.backend == ModelBackend.CRISP }) {
+            assertEquals("models/${model.id}", model.relativeDirectory)
+        }
     }
     @Test fun alternativesHavePinnedArtifactsAndTruthfulSizes() {
         val alternatives = ModelCatalog.models.filter { it.backend == ModelBackend.CRISP }

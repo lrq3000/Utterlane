@@ -71,7 +71,7 @@ class AudioIntegrationAndroidTest {
         // slower than live audio and legitimately trigger the bounded backlog).
         oldModelId = app.settingsRepository.selectedModelId.first()
         app.recognizerManager.forceUnload()
-        app.recognizerManager.selectModel(ModelCatalog.DEFAULT)
+        app.recognizerManager.selectModel(ModelCatalog.PARAKEET_V3)
         assertTrue(app.recognizerManager.ensureInitialized())
         app.settingsRepository.setHistoryRetention(HistoryRetention.NONE)
         app.recordingHistory.prune(HistoryRetention.NONE)

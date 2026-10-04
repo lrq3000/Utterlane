@@ -60,8 +60,7 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
         try { settings.setSelectedModelId(model.id); _selected.value = model; initialized = true; checkModelStatus() }
         finally { operation.unlock() }
     }
-    fun directory(model: ModelDefinition = selected.value): File = if (model.id == ModelCatalog.DEFAULT.id)
-        File(context.filesDir, "parakeet-v3") else File(context.filesDir, "models/${model.id}")
+    fun directory(model: ModelDefinition = selected.value): File = File(context.filesDir, model.relativeDirectory)
     fun getModelPath(): String = directory().absolutePath
     fun isModelReady(model: ModelDefinition = selected.value): Boolean = model.artifacts.all {
         val file = File(directory(model), it.localName); file.isFile && file.length() == it.bytes
