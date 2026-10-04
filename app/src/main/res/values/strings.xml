@@ -61,6 +61,18 @@
     <string name="model_auto_load_title">Auto-load on startup</string>
     <string name="model_auto_load_on">Model loads when app starts</string>
     <string name="model_auto_load_off">Load model manually</string>
+    <string name="model_auto_load_skipped_immediate">Skipped while idle time is Immediate; loads when transcription starts</string>
+    <string name="model_idle_title">Idle time before unload</string>
+    <string name="model_idle_change">Change</string>
+    <string name="model_idle_description">Free model memory after transcription is idle. The next transcription reloads it automatically. Active recording and processing are never interrupted.</string>
+    <string name="model_idle_immediate">Immediate</string>
+    <string name="model_idle_five_minutes">5 min</string>
+    <string name="model_idle_twenty_minutes">20 min</string>
+    <string name="model_idle_hour">1 h</string>
+    <string name="model_idle_three_hours">3 h</string>
+    <string name="model_idle_day">24 h</string>
+    <string name="model_idle_never">Never</string>
+    <string name="floating_install_model_first">Download or import a model first</string>
     <string name="model_attribution" translatable="false">NVIDIA Parakeet TDT v3 · CC-BY-4.0</string>
     <string name="model_import_title">Load model from folder</string>
     <string name="model_import_instructions">Download the model files from the link below and place them in a folder on your device:\n\n • encoder.int8.onnx\n • decoder.int8.onnx\n • joiner.int8.onnx\n • tokens.txt\n\nThen select that folder.</string>
@@ -286,6 +298,8 @@
     <string name="model_delete_button">Delete</string>
     <string name="model_delete_confirm_message">Delete the downloaded weights for %1$s? You will need to download or import them again to use this model.</string>
     <string name="model_delete_selection_changed">The selected model changed. Please confirm deletion again.</string>
+    <string name="model_native_ternary_description">159.1 MB download · Native ternary kernels prioritize lower RAM over speed. Total RAM also includes inference buffers.</string>
+    <string name="model_ternary_attribution">Moondream / NVIDIA · CC-BY-4.0 · Nairod785 ternary conversion · transcribe.cpp native runtime</string>
     <string name="model_custom">Custom model…</string>
     <string name="model_custom_primary">Choose the main model file</string>
     <string name="model_custom_help">Select a CrispASR speech model (GGUF or Whisper GGML). Select its companion files together, then choose the main model below. Files are copied into the app. Compatibility and memory requirements depend on the model; use Load to validate it.</string>

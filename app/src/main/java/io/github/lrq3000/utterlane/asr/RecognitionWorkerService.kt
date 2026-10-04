@@ -64,11 +64,13 @@ class RecognitionWorkerService : Service() {
         val directory = File(filesDir, model.relativeDirectory)
         check(backend == null) { "Worker already owns a model" }
         val started = SystemClock.elapsedRealtime()
-        val candidate = if (model.isCustom) {
-            CrispGenericBackend(File(directory, model.primaryFile).absolutePath, model.codecFile?.let { File(directory, it).absolutePath })
-        } else if (model.backend == ModelBackend.CRISP) {
-            CrispParakeetBackend(File(directory, "model.gguf").absolutePath)
-        } else ParakeetRecognizer(this, directory.absolutePath).also { check(it.isReady()) { "ONNX initialization failed" } }
+        val candidate = when (model.backend) {
+            ModelBackend.CRISP -> if (model.isCustom) {
+                CrispGenericBackend(File(directory, model.primaryFile).absolutePath, model.codecFile?.let { File(directory, it).absolutePath })
+            } else CrispParakeetBackend(File(directory, "model.gguf").absolutePath)
+            ModelBackend.TRANSCRIBE_CPP -> TranscribeCppBackend(File(directory, "model.gguf").absolutePath)
+            ModelBackend.SHERPA -> ParakeetRecognizer(this, directory.absolutePath).also { check(it.isReady()) { "ONNX initialization failed" } }
+        }
         try {
             // mmap makes GGUF open very fast. Actually run both encoder and
             // decoder before announcing readiness; zero transcript is valid here.

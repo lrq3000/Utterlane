@@ -12,6 +12,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import io.github.lrq3000.utterlane.asr.ModelCatalog
+import io.github.lrq3000.utterlane.asr.ModelIdleTimeout
 import io.github.lrq3000.utterlane.history.HistoryRetention
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -24,6 +25,7 @@ class SettingsRepository(private val context: Context) {
         private val BUTTON_X_KEY = intPreferencesKey("button_x")
         private val BUTTON_Y_KEY = intPreferencesKey("button_y")
         private val AUTO_LOAD_MODEL_KEY = booleanPreferencesKey("auto_load_model")
+        private val MODEL_IDLE_TIMEOUT_KEY = stringPreferencesKey("model_idle_timeout")
         private val DICTIONARY_ENABLED_KEY = booleanPreferencesKey("dictionary_enabled")
         private val AUDIO_MONITOR_ENABLED_KEY = booleanPreferencesKey("audio_monitor_enabled")
         private val MONITORED_FOLDERS_KEY = stringSetPreferencesKey("monitored_folders")
@@ -72,6 +74,14 @@ class SettingsRepository(private val context: Context) {
 
     val autoLoadModel: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[AUTO_LOAD_MODEL_KEY] ?: false
+    }
+
+    val modelIdleTimeout: Flow<ModelIdleTimeout> = context.dataStore.data.map { preferences ->
+        ModelIdleTimeout.fromKey(preferences[MODEL_IDLE_TIMEOUT_KEY])
+    }
+
+    suspend fun setModelIdleTimeout(timeout: ModelIdleTimeout) {
+        context.dataStore.edit { it[MODEL_IDLE_TIMEOUT_KEY] = timeout.key }
     }
 
     val dictionaryEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->

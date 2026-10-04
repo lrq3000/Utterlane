@@ -64,3 +64,37 @@ Quantized GGUF conversions differ from the original weight packaging.
 NVIDIA Nemotron-3-Diarization (optional separate download):
 https://huggingface.co/nvidia/Nemotron-3-Diarization
 Model license: OpenMDW-1.1, https://github.com/OpenMDW/OpenMDW/blob/main/LICENSE.md
+
+transcribe.cpp (Parakeet-only native ternary runtime)
+https://github.com/NairoDorian/transcribe.cpp
+Revision: ba949120d60f29daaaa13eec65b9c28c2c2112a6
+Includes its vendored, patched ggml; ggml MIT copyright and terms above apply.
+
+MIT License
+
+Copyright (c) 2026 The transcribe.cpp authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Compact Redux TQ1_Q8_0 model (downloaded separately):
+https://huggingface.co/Nairod785/parakeet-redux-gguf
+Revision: 87cbc354ce32bc9fe144b5b7bcdd9c68538907a9
+Conversion by Nairod785 from Moondream Parakeet Redux, derived from NVIDIA
+Parakeet v3. CC-BY-4.0: https://creativecommons.org/licenses/by/4.0/
+The encoder remains ternary; only the dense parameters use Q8_0 quantization.

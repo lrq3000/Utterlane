@@ -26,7 +26,7 @@ The app requires the following permissions:
 | Microphone | Record speech for on-device transcription |
 | Accessibility Service | Inject transcribed text into other apps |
 | Display Over Other Apps | Show floating microphone button |
-| Internet | Requested downloads of speech recognition models (approximately 402–674 MB each) |
+| Internet | Requested downloads of speech recognition models (approximately 159–674 MB each) |
 | Storage/Media | Access audio files for voice message transcription |
 | Notifications | Show service status |
 

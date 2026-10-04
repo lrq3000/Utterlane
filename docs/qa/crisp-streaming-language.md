@@ -3,6 +3,9 @@
 Date: 2026-10-04. Worktree: `.worktrees/crisp-streaming-language`, branch
 `feat/crisp-streaming-language`, base `cad85a1`.
 
+Subsequently synchronized with main `b293212`: see the
+[main-first hunk checklist and combined regression results](crisp-streaming-main-first-integration.md).
+
 ## Implementation
 
 - Generic CrispASR C session/JNI loading for custom GGUF and Whisper GGML speech
@@ -78,7 +81,7 @@ The original LDPlayer instance is separate.
 Build the separate QA application identity:
 
 ```text
-gradlew.bat assembleDebug assembleDebugAndroidTest -PisolatedQa=true --console=plain -q
+gradlew.bat assembleDebug assembleDebugAndroidTest "-PqaApplicationIdSuffix=.crispqa" --console=plain -q
 adb -P 5038 connect 127.0.0.1:5557
 adb -P 5038 -s 127.0.0.1:5557 install -r app/build/outputs/apk/debug/app-debug.apk
 adb -P 5038 -s 127.0.0.1:5557 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk

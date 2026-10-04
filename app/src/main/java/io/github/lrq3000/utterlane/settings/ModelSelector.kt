@@ -13,6 +13,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.asr.ModelCatalog
+import io.github.lrq3000.utterlane.asr.ModelBackend
 import kotlinx.coroutines.launch
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -64,6 +65,7 @@ fun ModelSelector() {
                         Column {
                             Text((if (model == selected) "✓ " else "") + model.name)
                             Text("${model.downloadBytes / 1000000} MB · " + context.getString(if (app.modelManager.isModelReady(model)) R.string.model_downloaded else R.string.model_not_downloaded))
+                            if (model.backend == ModelBackend.TRANSCRIBE_CPP) Text(stringResource(R.string.model_native_ternary_description))
                         }
                     }
                 }

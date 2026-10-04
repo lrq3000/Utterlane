@@ -46,7 +46,7 @@ jobs:
       env:
         ANDROID_NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-    - name: Prepare pinned CrispASR native sources
+    - name: Prepare pinned CrispASR and transcribe.cpp native sources
       run: |
         sdkmanager "ndk;28.2.13676358" "cmake;3.22.1"
         python3 tools/prepare_native.py
@@ -102,7 +102,7 @@ jobs:
       env:
         ANDROID_NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-    - name: Prepare pinned CrispASR native sources
+    - name: Prepare pinned CrispASR and transcribe.cpp native sources
       run: |
         sdkmanager "ndk;28.2.13676358" "cmake;3.22.1"
         python3 tools/prepare_native.py

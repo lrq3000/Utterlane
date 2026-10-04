@@ -55,9 +55,9 @@ android {
 
     buildTypes {
         debug {
-            // Parallel emulator QA must not replace another worktree's installed
-            // app or kill its instrumentation. Shipping builds keep the normal ID.
-            if (providers.gradleProperty("isolatedQa").orNull == "true") applicationIdSuffix = ".crispqa"
+            // Optional local QA identity prevents parallel emulator runs replacing
+            // each other's data. A persisted QA property cannot rename releases.
+            applicationIdSuffix = providers.gradleProperty("qaApplicationIdSuffix").getOrElse("")
         }
         release {
             isMinifyEnabled = true
@@ -81,10 +81,10 @@ android {
         compose = true
         viewBinding = true
     }
-    sourceSets.getByName("main").assets.srcDir(crispNotices)
     externalNativeBuild {
         cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" }
     }
+    sourceSets.getByName("main").assets.srcDir(crispNotices)
 
     packaging {
         resources {
@@ -97,6 +97,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":transcribe-native"))
     // sherpa-onnx AAR (built from source via build-sherpa-onnx-aar.sh)
     implementation(files(aarFile))
 

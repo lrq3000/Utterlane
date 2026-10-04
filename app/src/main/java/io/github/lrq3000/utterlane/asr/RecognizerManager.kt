@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicLong
 class RecognizerManager(
     private val context: Context,
     private val modelManager: ModelManager,
+    elapsedMillis: () -> Long = { android.os.SystemClock.elapsedRealtime() },
     private val backendFactory: (ModelDefinition, String) -> RecognitionBackend = { model, _ -> WorkerRecognitionBackend(context, model) }
 ) {
     companion object { private const val TAG = "RecognizerManager" }
@@ -27,6 +28,14 @@ class RecognizerManager(
     private var generation = 0L
     private val sessionIds = AtomicLong(0)
     private val sessions = mutableMapOf<Long, Job?>()
+    private val idlePolicy = ModelIdlePolicy(elapsedMillis)
+    private val idleScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var idleJob: Job? = null
+    private var idleRevision = 0L
+    private var pendingOperations = 0
+    // DataStore loads asynchronously. Do not apply the default over a persisted
+    // Never/Immediate choice while its first application-scoped emission is pending.
+    private var idlePolicyConfigured = false
     private val _isReady = MutableStateFlow(false)
     val isReady: StateFlow<Boolean> = _isReady
     private val _isLoading = MutableStateFlow(false)
@@ -34,9 +43,67 @@ class RecognizerManager(
     private val _failure = MutableStateFlow<String?>(null)
     val failure: StateFlow<String?> = _failure
 
-    suspend fun initialize(): Boolean {
-        val expected = synchronized(stateLock) { generation }
-        return withContext(Dispatchers.IO) { mutex.withLock { initializeLocked(expected) } }
+    suspend fun initialize(): Boolean = withModelOperation { expected ->
+        withContext(Dispatchers.IO) { mutex.withLock { initializeLocked(expected) } }
+    }
+
+    /** Reserve before waiting for the inference mutex, including session creation. */
+    private suspend fun <T> withModelOperation(block: suspend (Long) -> T): T {
+        val expected = synchronized(stateLock) {
+            pendingOperations++
+            refreshIdleTimerLocked()
+            generation
+        }
+        return try { block(expected) }
+        finally {
+            synchronized(stateLock) {
+                pendingOperations--
+                refreshIdleTimerLocked()
+            }
+        }
+    }
+
+    fun setIdleTimeout(timeout: ModelIdleTimeout) = synchronized(stateLock) {
+        idlePolicy.timeout = timeout
+        idlePolicyConfigured = true
+        refreshIdleTimerLocked()
+    }
+
+    /** Coroutine delays may pause during deep sleep; re-evaluate elapsed time on wake. */
+    fun recheckIdleTimeout() = synchronized(stateLock) { refreshIdleTimerLocked() }
+
+    private fun cancelIdleTimerLocked() {
+        idleRevision++
+        idleJob?.cancel()
+        idleJob = null
+    }
+
+    private fun refreshIdleTimerLocked() {
+        cancelIdleTimerLocked()
+        idlePolicy.setIdle(recognizer != null && !_isLoading.value && pendingOperations == 0 && sessions.isEmpty())
+        if (!idlePolicyConfigured) return
+        val remaining = idlePolicy.remainingMillis() ?: return
+        val revision = idleRevision
+        idleJob = idleScope.launch {
+            delay(remaining)
+            mutex.withLock {
+                val backend = synchronized(stateLock) {
+                    // Cancellation alone is insufficient: an old callback may
+                    // already be waiting on the mutex when new work starts.
+                    if (revision != idleRevision || pendingOperations != 0 || sessions.isNotEmpty() || _isLoading.value) return@withLock
+                    if (idlePolicy.remainingMillis() != 0L) {
+                        refreshIdleTimerLocked()
+                        return@withLock
+                    }
+                    idleJob = null // Detaching must not cancel its own close operation.
+                    detachLocked(clearFailure = false)
+                }
+                // Keep close inside the inference mutex: a replacement binds the
+                // same worker service, so it must not start before the old PID exits.
+                backend?.close()
+                Log.i(TAG, "Recognition model unloaded after inactivity")
+            }
+        }
     }
 
     private suspend fun initializeLocked(expected: Long): Boolean {
@@ -117,11 +184,10 @@ class RecognizerManager(
     suspend fun ensureInitialized(): Boolean = initialize()
     fun isInitialized(): Boolean = _isReady.value
 
-    suspend fun createSession(onProcessed: (Long, Long) -> Unit = { _, _ -> }, onSegment: suspend (String) -> Unit = {}): TranscriptionSession {
+    suspend fun createSession(onProcessed: (Long, Long) -> Unit = { _, _ -> }, onSegment: suspend (String) -> Unit = {}): TranscriptionSession = withModelOperation { expected ->
         val owner = currentCoroutineContext()[Job]
-        val expected = synchronized(stateLock) { generation }
         var created: TranscriptionSession? = null
-        return try {
+        try {
             withContext(Dispatchers.IO) {
                 mutex.withLock {
                     check(initializeLocked(expected)) { _failure.value ?: context.getString(R.string.toast_model_load_failed) }
@@ -151,7 +217,13 @@ class RecognizerManager(
                         }
                     }, onClosed = {
                         sessionBackend.endSession(id)
-                        synchronized(stateLock) { sessions.remove(id) }
+                        synchronized(stateLock) {
+                            // A late close after reset belongs to the old generation.
+                            if (sessions.containsKey(id)) {
+                                sessions.remove(id)
+                                refreshIdleTimerLocked()
+                            }
+                        }
                     }, onProcessed = onProcessed,
                         decodeSpeakers = if (diarize) { window -> withSessionBackend(expected, id) { it.transcribeSpeakers(id, window, count) } } else null,
                         speakerLabel = { speaker -> speakerLabels.getOrElse(speaker) { unknownSpeaker } }
@@ -230,9 +302,12 @@ class RecognizerManager(
         Log.i(TAG, "Recognition worker and active sessions reset")
     }
     suspend fun release() { forceUnload() }
-    private fun detachLocked(): RecognitionBackend? {
+    private fun detachLocked(clearFailure: Boolean = true): RecognitionBackend? {
+        cancelIdleTimerLocked()
+        idlePolicy.setIdle(false)
         val old = recognizer
-        recognizer = null; loadedModelId = null; _isReady.value = false; _isLoading.value = false; _failure.value = null
+        recognizer = null; loadedModelId = null; _isReady.value = false; _isLoading.value = false
+        if (clearFailure) _failure.value = null
         return old
     }
 }

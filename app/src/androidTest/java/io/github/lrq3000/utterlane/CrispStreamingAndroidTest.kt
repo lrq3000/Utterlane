@@ -170,6 +170,47 @@ class CrispStreamingAndroidTest {
         }
     }
 
+    @Test fun ternaryDiarizationRespectsImmediateIdleUnload(): Unit = runBlocking {
+        app.modelManager.initializeSelection()
+        val previous = app.modelManager.selected.value
+        val oldEnabled = app.settingsRepository.diarizationEnabled.first()
+        val oldCount = app.settingsRepository.speakerCount.first()
+        val oldTimeout = app.settingsRepository.modelIdleTimeout.first()
+        try {
+            app.recognizerManager.forceUnload()
+            app.recognizerManager.selectModel(ModelCatalog.REDUX_TERNARY)
+            val target = File(app.modelManager.directory().apply { mkdirs() }, "model.gguf")
+            if (!target.exists()) File("/sdcard/Download/parakeet-redux-0.6b-TQ1_Q8_0.gguf").copyTo(target)
+            installDiarizer()
+            app.settingsRepository.setDiarizationEnabled(true)
+            app.settingsRepository.setSpeakerCount(2)
+            app.settingsRepository.setModelIdleTimeout(ModelIdleTimeout.IMMEDIATE)
+            app.recognizerManager.setIdleTimeout(ModelIdleTimeout.IMMEDIATE)
+            val session = app.recognizerManager.createSession()
+            try {
+                assertTrue("Immediate idle unloading interrupted session creation", app.recognizerManager.isReady.value)
+                val processes = app.getSystemService(android.app.ActivityManager::class.java)
+                val pid = processes.runningAppProcesses.single { it.processName == "${app.packageName}:recognition" }.pid
+                session.accept(audio("/sdcard/Download/speech-source.wav"))
+                assertTrue("Active speaker session was unloaded", app.recognizerManager.isReady.value)
+                session.finish()
+                val text = session.store.readForTransfer()!!
+                assertTrue(text, text.contains("country", true))
+                assertTrue(text, text.contains(context.getString(R.string.speaker_label, 1)))
+                kotlinx.coroutines.withTimeout(10000) {
+                    while (app.recognizerManager.isReady.value || processes.runningAppProcesses.any { it.pid == pid }) kotlinx.coroutines.delay(10)
+                }
+                android.util.Log.i("CrispStreamingTest", "Ternary + speakers + immediate idle unload: $text")
+            } finally { session.close(); session.store.dispose() }
+        } finally {
+            app.recognizerManager.forceUnload()
+            app.recognizerManager.selectModel(previous)
+            app.settingsRepository.setDiarizationEnabled(oldEnabled)
+            app.settingsRepository.setSpeakerCount(oldCount)
+            app.settingsRepository.setModelIdleTimeout(oldTimeout)
+        }
+    }
+
     @Test fun localeOverrideAndSystemFallback(): Unit {
         val old = AppLanguage.selected(context)
         try {
