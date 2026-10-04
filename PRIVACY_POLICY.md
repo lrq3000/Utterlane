@@ -40,7 +40,12 @@ The app requires the following permissions:
 ## Third-Party Services
 
 - **HuggingFace**: Used only for user-requested model downloads (NVIDIA Parakeet v3 and Moondream Ultra/Redux GGUF conversions)
-- No other third-party services are used
+- Download hosts and their delivery providers necessarily receive connection information such as your IP address and the requested model URL. Their own privacy policies govern their server logs. Utterlane does not send audio, transcripts, account identifiers, or advertising identifiers with these downloads. You can import model files locally instead.
+- Links you explicitly open, including this policy and model information, use your browser. The destination website and browser have their own privacy practices.
+
+## Accessibility and text insertion
+
+If you enable the optional Android accessibility service, Utterlane accesses the active window to find the focused editable field, reads that field's existing text and cursor position, and inserts the transcription you requested. This processing happens on your device. Utterlane does not send the field content to a server or retain it in recording history. The receiving app controls how it handles the text you insert. You can disable this permission in Android Settings; keyboard voice input, audio-file transcription, and clipboard use remain available without it.
 
 ## Data Storage
 

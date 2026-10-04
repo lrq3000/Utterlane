@@ -1,0 +1,4 @@
+<resources>
+    <string name="privacy_policy">Polityka prywatności</string>
+    <string name="accessibility_data_use">Utterlane używa ułatwień dostępu Androida, aby znaleźć aktywne pole tekstowe w innej aplikacji, odczytać jego tekst i pozycję kursora oraz wstawić transkrypcję. Odbywa się to na urządzeniu; Utterlane nie wysyła zawartości pola na serwer ani nie zapisuje jej w historii nagrań. Aplikacja odbierająca przetwarza wstawiony tekst zgodnie z własną polityką prywatności.\n\nTo uprawnienie jest opcjonalne. Po odmowie nadal można korzystać z wprowadzania głosowego klawiatury, transkrypcji plików audio i schowka.</string>
+</resources>

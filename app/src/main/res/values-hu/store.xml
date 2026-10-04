@@ -1,0 +1,4 @@
+<resources>
+    <string name="privacy_policy">Adatvédelmi tájékoztató</string>
+    <string name="accessibility_data_use">Az Utterlane az Android kisegítő lehetőségeivel megkeresi egy másik alkalmazás aktív szövegmezőjét, beolvassa annak szövegét és a kurzor helyét, majd beilleszti az átiratot. Ez az eszközön történik; az Utterlane nem küldi szerverre a mező tartalmát, és nem tárolja a felvételi előzményekben. A fogadó alkalmazás a saját adatvédelmi szabályai szerint kezeli a beillesztett szöveget.\n\nAz engedély nem kötelező. Elutasítás esetén továbbra is használható a billentyűzet hangbevitele, a hangfájlok átírása és a vágólap.</string>
+</resources>

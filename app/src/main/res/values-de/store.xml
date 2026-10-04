@@ -1,0 +1,4 @@
+<resources>
+    <string name="privacy_policy">Datenschutzerklärung</string>
+    <string name="accessibility_data_use">Utterlane nutzt die Android-Bedienungshilfen, um das aktive Textfeld einer anderen App zu finden, dessen Text und Cursorposition zu lesen und Ihre Transkription einzufügen. Dies geschieht auf Ihrem Gerät. Utterlane sendet den Feldinhalt nicht an einen Server und speichert ihn nicht im Aufnahmeverlauf. Die empfangende App verarbeitet den eingefügten Text nach ihrer eigenen Datenschutzerklärung.\n\nDiese Berechtigung ist optional. Bei Ablehnung können Sie weiterhin die Spracheingabe der Tastatur, die Transkription von Audiodateien und die Zwischenablage nutzen.</string>
+</resources>

@@ -14,6 +14,13 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/lrq3000/Utterlane/releases/latest"><img src="https://img.shields.io/badge/Download_APK-GitHub_Releases-18283B?style=for-the-badge&amp;logo=github&amp;logoColor=white" alt="Download APK from GitHub Releases"></a>
+  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/lrq3000/Utterlane"><img src="https://img.shields.io/badge/Track_updates-Obtainium-067A9B?style=for-the-badge" alt="Add Utterlane to Obtainium"></a>
+  <a href="#store-availability"><img src="https://img.shields.io/badge/F--Droid-Planned-1976D2?style=for-the-badge&amp;logo=fdroid&amp;logoColor=white" alt="F-Droid listing planned"></a>
+  <a href="#store-availability"><img src="https://img.shields.io/badge/Google_Play-Free_listing_planned-1976D2?style=for-the-badge&amp;logo=googleplay&amp;logoColor=white" alt="Free Google Play listing planned"></a>
+</p>
+
+<p align="center">
   <a href="#get-started">Get started</a> ·
   <a href="#features">Features</a> ·
   <a href="#privacy">Privacy</a> ·
@@ -31,10 +38,39 @@ into text. No account, subscription, or speech-recognition server is required.
 
 ### Install
 
-Get an APK from [GitHub Releases](https://github.com/lrq3000/Utterlane/releases)
-when an Utterlane release is available, or [build from source](#build-from-source).
 Use an **Android 8.0+ device with ARM64 support** and leave room for a speech model
 (approximately 402–674 MB, depending on your selection).
+
+**Direct APK:** open [GitHub Releases](https://github.com/lrq3000/Utterlane/releases/latest),
+download `Utterlane-<version>-arm64-v8a.apk` from **Assets**, and open it to install.
+If Android asks, allow installation from your browser/file manager. Use the APK;
+the `.aab` is a Google Play upload artifact and cannot be installed directly.
+The release APK becomes available after the maintainer publishes the first signed
+release; until then, you can [build from source](#build-from-source).
+
+**Automatic update tracking with [Obtainium](https://github.com/ImranR98/Obtainium):**
+tap the Obtainium button above, or open **Add app** and enter
+`https://github.com/lrq3000/Utterlane`. Select the ARM64 release APK if prompted,
+then add/install the app. Obtainium tracks new releases from this repository.
+
+**[Komi Store](https://github.com/komi-store/komi-store):** search for
+`lrq3000/Utterlane`, open the matching GitHub project, and select its Android APK
+release. The maintainer is **lrq3000** and the application ID is
+`io.github.lrq3000.utterlane`. A published release with an APK asset is needed
+before installation is possible.
+
+#### Store availability
+
+Publication on **F-Droid** and **Google Play (free)** is planned. The buttons above
+are status links, not claims that either listing is already available. Once
+published, search for **Utterlane** in the official F-Droid repository or Google
+Play and verify the application ID. Maintainers: follow the
+[release and store submission guide](docs/distribution/README.md).
+
+GitHub/Obtainium/Komi Store use the same developer-signed APK. An F-Droid build
+normally has an F-Droid signature, and Google Play may use a separate Play App
+Signing key. Switching between differently signed builds requires uninstalling
+the old app first, which removes its private data. Export anything you need first.
 
 Utterlane uses the application ID `io.github.lrq3000.utterlane`. It installs
 separately from its predecessor: settings, model files, recording history, and
@@ -82,8 +118,8 @@ saved voice messages.
 ### A closer look
 
 <p align="center">
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" alt="Utterlane recognition model and microphone settings" width="300">
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" alt="Utterlane keyboard, accessibility and floating microphone settings" width="300">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" alt="Utterlane Settings in English, with recognition model and microphone options" width="300">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" alt="Utterlane transcription dialog showing an audio file transcribed locally" width="300">
 </p>
 
 ### How streaming works
@@ -154,18 +190,18 @@ network access after model setup.
 
 ### Requirements
 
-- JDK 21+, Android SDK platform 35, Android NDK `28.2.13676358`, CMake `3.22.1`.
-- Python 3 and Git for pinned native-source preparation.
-- Bash and the upstream Android build prerequisites for the initial sherpa-onnx
-  source build. Gradle `8.12.1` is provided by the wrapper.
+- OpenJDK 21, Android SDK platform 36, build tools `35.0.0`, Android NDK
+  `28.2.13676358`, CMake `3.22.1` (including Ninja).
+- Python 3.11.8+ and Git for pinned native-source preparation.
+- AGP `8.10.1`, Kotlin `2.0.21`, and Gradle `8.12.1` via the wrapper.
 
 Set `JAVA_HOME` and `ANDROID_HOME` to **absolute paths** for your installation.
 The first build needs network access to retrieve dependencies and source code.
 
 ```bash
-# Build the sherpa-onnx AAR once (requires a Bash-compatible build environment).
-export ANDROID_NDK="$ANDROID_HOME/ndk/28.2.13676358"
-./build-sherpa-onnx-aar.sh
+# Build the sherpa-onnx Kotlin/JNI AAR from pinned source.
+# ONNX Runtime is a SHA-256-verified official Maven Central dependency.
+python tools/build_sherpa.py
 
 # Prepare the pinned CrispASR/ggml sources and build Utterlane.
 python tools/prepare_native.py
@@ -175,10 +211,10 @@ python tools/prepare_native.py
 adb -s YOUR_DEVICE_SERIAL install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-On Windows, use `gradlew.bat` after providing the source-built
-`app/libs/sherpa-onnx-1.12.23.aar` and running the Python preparation command.
-Converting the existing Bash AAR builder to a portable Python tool is a useful
-future contribution; it is currently still required for a fresh AAR source build.
+On Windows, use `gradlew.bat`; the same Python native builder works on Windows
+and Linux. Build release artifacts with `./gradlew assembleRelease bundleRelease`.
+They are unsigned unless the four documented signing environment variables are
+provided. See the [signing guide](docs/distribution/README.md#signing-and-github-releases).
 
 ### Tests
 

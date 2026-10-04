@@ -1,0 +1,4 @@
+<resources>
+    <string name="privacy_policy">Pravila privatnosti</string>
+    <string name="accessibility_data_use">Utterlane koristi pristupačnost Androida za pronalaženje aktivnog tekstnog polja u drugoj aplikaciji, čitanje teksta i položaja pokazivača te umetanje prijepisa. To se odvija na vašem uređaju; Utterlane ne šalje sadržaj polja poslužitelju niti ga sprema u povijest snimanja. Aplikacija primatelj obrađuje umetnuti tekst prema vlastitim pravilima privatnosti.\n\nOva dozvola nije obavezna. Ako odbijete, i dalje možete koristiti glasovni unos tipkovnice, prijepis zvučnih datoteka i međuspremnik.</string>
+</resources>

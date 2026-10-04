@@ -1,0 +1,4 @@
+<resources>
+    <string name="privacy_policy">Privacy policy</string>
+    <string name="accessibility_data_use">Utterlane uses Android Accessibility to find the focused text field in another app, read its text and cursor position, and insert your transcription there. This access happens on your device; Utterlane does not send that field content to a server or retain it as recording history. The receiving app handles the text you insert under its own privacy policy.\n\nThis permission is optional. If you decline, you can still use keyboard voice input, audio-file transcription, and copying text to the clipboard.</string>
+</resources>

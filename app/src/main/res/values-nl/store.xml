@@ -1,0 +1,4 @@
+<resources>
+    <string name="privacy_policy">Privacybeleid</string>
+    <string name="accessibility_data_use">Utterlane gebruikt Android-toegankelijkheid om het actieve tekstveld in een andere app te vinden, de tekst en cursorpositie te lezen en uw transcriptie in te voegen. Dit gebeurt op uw apparaat; Utterlane stuurt de veldinhoud niet naar een server en bewaart die niet in de opnamegeschiedenis. De ontvangende app verwerkt de ingevoegde tekst volgens haar eigen privacybeleid.\n\nDeze toestemming is optioneel. Bij weigering kunt u nog steeds spraakinvoer via het toetsenbord, transcriptie van audiobestanden en het klembord gebruiken.</string>
+</resources>

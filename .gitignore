@@ -11,6 +11,10 @@ local.properties
 # APK files
 *.apk
 *.ap_
+*.aab
+*.jks
+*.keystore
+dist/
 
 # Native libs
 app/src/main/jniLibs/

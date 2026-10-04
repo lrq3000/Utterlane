@@ -1,0 +1,4 @@
+<resources>
+    <string name="privacy_policy">Zásady ochrany súkromia</string>
+    <string name="accessibility_data_use">Utterlane používa prístupnosť Androidu na nájdenie aktívneho textového poľa v inej aplikácii, prečítanie jeho textu a polohy kurzora a vloženie prepisu. Všetko prebieha na vašom zariadení; Utterlane neposiela obsah poľa na server ani ho neukladá do histórie nahrávok. Prijímajúca aplikácia spracúva vložený text podľa vlastných zásad ochrany súkromia.\n\nToto povolenie je voliteľné. Ak ho odmietnete, môžete naďalej používať hlasový vstup klávesnice, prepis zvukových súborov a schránku.</string>
+</resources>

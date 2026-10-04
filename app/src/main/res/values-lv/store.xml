@@ -1,0 +1,4 @@
+<resources>
+    <string name="privacy_policy">Privātuma politika</string>
+    <string name="accessibility_data_use">Utterlane izmanto Android pieejamību, lai atrastu aktīvo teksta lauku citā lietotnē, nolasītu tekstu un kursora pozīciju un ievietotu transkripciju. Tas notiek jūsu ierīcē; Utterlane nesūta lauka saturu uz serveri un nesaglabā to ierakstu vēsturē. Saņēmēja lietotne apstrādā ievietoto tekstu saskaņā ar savu privātuma politiku.\n\nŠī atļauja nav obligāta. Ja atsakāties, varat turpināt izmantot tastatūras balss ievadi, audiofailu transkripciju un starpliktuvi.</string>
+</resources>
