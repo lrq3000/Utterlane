@@ -281,16 +281,17 @@ class DesignKit:
         art.end_group()
 
     def repo_card(self):
-        art = Artwork(1280, 640, "Utterlane — offline voice typing for Android", self.fonts, safe_margin=80)
+        art = Artwork(1280, 640, "Utterlane — Near real-time transcription. On your Android phone.", self.fonts, safe_margin=80)
         art.group("background")
         art.rect(0, 0, 1280, 640, self.light["background"],
                  gradient=("card-background", self.light["header"]), important=False)
         art.end_group()
         art.group("identity-and-message")
         self.logo(art, 96, 110, 622)
-        art.text(100, 345, "Offline voice typing", 48, self.light["text"], True)
-        art.text(100, 403, "for Android.", 48, self.light["text"], True)
-        art.text(100, 457, "Speak into any app. Transcribe audio files.", 24, self.light["muted"])
+        # Preserve the supplied slogan's explicit two-line composition; 28 px
+        # keeps the first sentence clear of the app illustration without wrapping.
+        art.text(100, 345, "Near real-time transcription. On your Android phone.", 28, self.light["text"], True)
+        art.text(100, 403, "100% offline. 100% private. 100% free.", 28, self.light["text"], True)
         art.text(100, 538, "github.com/lrq3000/Utterlane", 22, self.light["onContainer"])
         art.end_group()
         self.phone(art, 856, 84)

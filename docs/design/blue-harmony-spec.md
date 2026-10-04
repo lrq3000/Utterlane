@@ -198,8 +198,8 @@ the left, a simplified recording-panel illustration on the right.
 - Safe inset: **80 px** on all sides, following the supplied template's visual
   inset. Every important text/image bound is validated by the generator.
 - Wordmark: original transparent navy/blue artwork, with its tagline intact.
-- Headline: **Offline voice typing / for Android.**
-- Supporting copy: **Speak into any app. Transcribe audio files.**
+- Slogan, line 1: **Near real-time transcription. On your Android phone.**
+- Slogan, line 2: **100% offline. 100% private. 100% free.**
 - Repository identity: **github.com/lrq3000/Utterlane**.
 - Illustration: original app icon, white recording sheet, A's violet-to-blue
   waveform and tonal Cancel control. Sample waveform/transcript, not a screenshot.
