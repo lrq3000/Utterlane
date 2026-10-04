@@ -1,0 +1,14 @@
+Utterlane website
+Copyright 2026 Stephen Karl Larroque and Utterlane contributors.
+
+The original Utterlane wordmark and icon were supplied by Stephen Karl Larroque.
+Website brand assets are faithful copies of the source-derived exports in the
+Utterlane Android repository. See public/brand/README.md for provenance.
+
+Utterlane is an independently maintained fork of TranSlander, originally
+developed by hatsch and contributors. The website preserves this attribution;
+it does not include the Android application code or its dependency binaries.
+
+The app uses NVIDIA Parakeet, sherpa-onnx, CrispASR, and ggml. Models and
+third-party libraries retain their own licenses. Those dependencies are not
+shipped as part of this static website.

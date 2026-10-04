@@ -1,0 +1,23 @@
+{
+  "name": "utterlane-website",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The local-first Utterlane Android transcription app landing page.",
+  "license": "Apache-2.0",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "dev": "vite",
+    "check": "tsc --noEmit",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.11.1",
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^22.19.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.1"
+  }
+}

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en" data-motion="paused">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#F1F5FB">
+    <meta name="color-scheme" content="light">
+    <meta name="darkreader-lock">
+    <title>Utterlane — Your voice. Your phone. Your words.</title>
+    <meta name="description" content="Near real-time transcription on your Android phone. Dictate messages and turn audio into text with Utterlane. Offline, private, free, and open source.">
+    <link rel="canonical" href="https://lrq3000.github.io/Utterlane/">
+    <link rel="icon" type="image/png" href="./brand/icon.png">
+    <link rel="apple-touch-icon" href="./brand/icon.png">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Utterlane">
+    <meta property="og:title" content="Near real-time transcription. On your Android phone.">
+    <meta property="og:description" content="100% offline. 100% private. 100% free. Your voice becomes text, right on your device.">
+    <meta property="og:url" content="https://lrq3000.github.io/Utterlane/">
+    <meta property="og:image" content="https://lrq3000.github.io/Utterlane/brand/social-preview.png">
+    <meta property="og:image:width" content="1280">
+    <meta property="og:image:height" content="640">
+    <meta property="og:image:alt" content="Utterlane — fast, offline transcription on your Android phone">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="stylesheet" href="./src/styles.css">
+    <link rel="stylesheet" href="./src/illustrations.css">
+    <script type="module" src="./src/main.ts"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <!-- Shared line icons are local vectors. The supplied wordmark stays raster
+         artwork; it is never reconstructed with a font or an approximate SVG. -->
+    <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <symbol id="arrow-up-right" viewBox="0 0 24 24"><path d="M6 18 18 6M6 6h12v12"/></symbol>
+        <symbol id="arrow-down" viewBox="0 0 24 24"><path d="M12 4v16m-6-6 6 6 6-6"/></symbol>
+        <symbol id="arrow-right" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+        <symbol id="check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+        <symbol id="shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z"/><path d="m8 12 3 3 5-6"/></symbol>
+        <symbol id="lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></symbol>
+        <symbol id="mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></symbol>
+        <symbol id="plane" viewBox="0 0 24 24"><path d="m21 3-7 18-3-8-8-3L21 3Zm0 0L11 13"/></symbol>
+        <symbol id="file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Zm0 0v6h6M8 13h8m-8 4h6"/></symbol>
+        <symbol id="code" viewBox="0 0 24 24"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18"/></symbol>
+        <symbol id="pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+        <symbol id="play" viewBox="0 0 24 24"><path d="m8 4 12 8-12 8Z"/></symbol>
+        <symbol id="github" viewBox="0 0 24 24"><path stroke="none" fill="currentColor" d="M12 .7a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.2.8-.5v-2c-3.2.7-3.9-1.3-3.9-1.3-.5-1.3-1.3-1.6-1.3-1.6-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.3 1 .1-.8.4-1.3.7-1.6-2.5-.3-5.2-1.3-5.2-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11.2 11.2 0 0 1 5.8 0C17.3 5.4 18.3 5.7 18.3 5.7c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.2 5.7.4.3.8 1 .8 2.1v2.9c0 .3.2.6.8.5A11.5 11.5 0 0 0 12 .7Z"/></symbol>
+      </defs>
+    </svg>
+
+    <header class="site-header">
+      <nav class="container nav" aria-label="Main navigation">
+        <a class="brand" href="#" aria-label="Utterlane home"><img src="./brand/wordmark.png" alt="Utterlane — Fast. Offline. Transcription." width="175" height="53" fetchpriority="high"></a>
+        <div class="nav-links">
+          <a class="desktop-link" href="#everyday">Everyday uses</a>
+          <a class="desktop-link" href="#privacy">Why local?</a>
+          <a class="github-link desktop-link" href="https://github.com/lrq3000/Utterlane"><svg class="icon" aria-hidden="true"><use href="#github"/></svg>GitHub</a>
+          <a class="nav-cta" href="#setup">Get Utterlane <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a>
+        </div>
+      </nav>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <section class="hero" aria-labelledby="hero-title" data-motion-surface>
+        <div class="container hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span>Your voice. Your phone. Your words.</p>
+            <h1 id="hero-title">Near real-time transcription. On your Android phone.<br><span class="promise">100% <span class="static-promise" aria-hidden="true">offline.</span><span class="rotator" aria-hidden="true"><span class="rotator-track"><span>offline.</span><span>private.</span><span>free.</span><span>offline.</span></span></span><span class="sr-only">offline. 100% private. 100% free.</span></span></h1>
+            <p class="hero-summary">Turn a passing thought into a message. A voice note into text. All on your device, with nothing sent to a speech-recognition server.</p>
+            <div class="cta-row">
+              <a class="button primary" href="https://github.com/lrq3000/Utterlane/releases">Get Utterlane <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a>
+              <a class="text-link" href="#on-device">See how it works <svg class="icon" aria-hidden="true"><use href="#arrow-down"/></svg></a>
+            </div>
+            <p class="download-detail">Free & open source <span>·</span> Android 8.0+ <span>·</span> ARM64</p>
+          </div>
+
+          <figure class="hero-art">
+            <div class="art-scene" aria-hidden="true">
+              <div class="orbit"></div>
+              <div class="phone"><div class="phone-inner">
+                <div class="phone-status"><span>9:41</span><span><svg class="icon"><use href="#plane"/></svg><span class="battery"></span></span></div><div class="camera"></div>
+                <div class="app-nav"><span><span class="back-chevron">‹</span> Messages</span><div class="avatar">S</div></div>
+                <div class="messages"><div class="timestamp">TODAY, 9:41</div><div class="bubble">Coffee after the walk?</div><div class="bubble reply">That sounds like a plan.</div></div>
+                <div class="input-preview"><span>I will meet you at the usual place.</span><i class="cursor"></i></div>
+                <div class="capture"><div class="capture-title">Listening — speak now</div><div class="capture-sub">Utterlane · On-device recognition</div><div class="wave" data-bars="27"><svg viewBox="0 0 240 54" class="wave-fallback"><path d="M10 22v10m12-16v22m12-28v34m12-23v12m12-29v46m12-33v20m12-27v34m12-42v50m12-31v12m12-22v32m12-40v48m12-37v26m12-20v14m12-29v44m12-33v22m12-16v10m12-21v32m12-24v16m12-12v8"/></svg></div><div class="capture-note">Tap waveform to finish recording</div><div class="home-bar"></div></div>
+              </div></div>
+              <div class="float-card private-badge"><svg class="icon"><use href="#shield"/></svg><div><strong>Stays on your phone.</strong><small>No speech uploads. No account.</small></div></div>
+              <div class="float-card transcript-card"><div class="tiny-label"><span>From voice to text</span><svg class="icon"><use href="#arrow-up-right"/></svg></div><p>“I will meet you at the usual place.” <i class="cursor"></i></p></div>
+            </div>
+            <figcaption>Illustrative demo · no microphone access</figcaption>
+          </figure>
+        </div>
+        <div class="container hero-footer"><ul class="qualities"><li><svg class="icon" aria-hidden="true"><use href="#check"/></svg>On-device recognition</li><li><svg class="icon" aria-hidden="true"><use href="#check"/></svg>25 languages</li><li><svg class="icon" aria-hidden="true"><use href="#check"/></svg>No subscription</li></ul><a class="scroll-cue" href="#on-device">A little less typing. A lot more freedom. <svg class="icon" aria-hidden="true"><use href="#arrow-down"/></svg></a></div>
+      </section>
+
+      <section class="story" id="on-device" aria-labelledby="story-title" data-motion-surface>
+        <div class="story-sticky"><div class="container story-grid">
+          <div class="story-copy"><p class="section-kicker">01 / A shorter path from thought to text</p><h2 id="story-title">A small journey.<br>Entirely on your phone.</h2><p class="section-summary">Speak naturally. Utterlane turns your speech into completed text segments while you keep talking. Your phone does the work.</p>
+            <ol class="story-steps"><li data-story-step="0" aria-current="step"><span>01</span>Capture your voice</li><li data-story-step="1"><span>02</span>Process on-device</li><li data-story-step="2"><span>03</span>Put words to work</li></ol>
+            <p class="fine-print">Recognition works offline after model setup. Output arrives in segments; timing depends on your device, model, and pauses.</p>
+          </div>
+          <figure class="engine-figure"><div class="engine" aria-hidden="true"><div class="device-boundary"><div class="boundary-label">Inside your Android phone</div><img class="engine-logo" src="./brand/icon.png" alt="" width="66" height="66" loading="lazy"><div class="processing-path"><span></span><span></span><span></span></div><div class="wave" data-bars="31"></div><div class="engine-transcript"><div class="tiny-label"><span>Your words, ready to use</span><svg class="icon"><use href="#check"/></svg></div><p><span class="segment">A thought worth keeping.</span><br><span class="segment">A message ready to send.</span></p></div></div><div class="local-seal"><svg class="icon"><use href="#lock"/></svg>No cloud in the conversation.</div></div><figcaption class="sr-only">Illustration: voice is captured and processed within your phone, then returned as text.</figcaption></figure>
+        </div></div>
+      </section>
+
+      <section class="uses section-pad" id="everyday" aria-labelledby="uses-title">
+        <div class="container"><p class="section-kicker">02 / Made for the everyday</p><div class="section-heading-row"><h2 id="uses-title">Less typing.<br>More living.</h2><p class="section-summary">For the little moments when speaking is simply easier.</p></div>
+          <div class="use-grid">
+            <article class="use-card" data-motion-surface data-demo="dictation"><div class="use-art" aria-hidden="true"><div class="mini-sheet"><strong>A thought, before it disappears.</strong><p class="demo-text"><span>Remember to bring the camera.</span><span>The light will be beautiful today.</span></p><div class="mini-line short"></div></div><div class="microphone-dot"><svg class="icon"><use href="#mic"/></svg></div></div><div class="use-copy"><h3>Say it. Keep it.</h3><p>Capture ideas, write messages, and make notes with your keyboard mic or a floating button.</p></div></article>
+            <article class="use-card" data-motion-surface data-demo="audio"><div class="use-art" aria-hidden="true"><div class="mini-sheet audio-sheet"><div class="audio-file"><svg class="icon"><use href="#file"/></svg><span>Voice message.opus</span><span class="chip">AUDIO → TEXT</span></div><div class="mini-wave" data-bars="29"></div><p class="demo-text"><span>“The train arrives at six.</span><span>I will call when I am nearby.”</span></p></div></div><div class="use-copy"><h3>Read the voice note.</h3><p>Some moments call for quiet. Share an audio file with Utterlane and read it at your own pace.</p></div></article>
+            <article class="use-card" data-motion-surface data-demo="offline"><div class="use-art" aria-hidden="true"><div class="travel-orbit"></div><div class="mini-sheet travel-sheet"><div class="audio-file"><strong>A little off the grid.</strong><span class="chip"><svg class="icon"><use href="#plane"/></svg>OFFLINE</span></div><p>Ideas do not wait for a signal.<br>Neither should your notebook.</p><div class="mini-line"></div><div class="mini-line short"></div></div></div><div class="use-copy"><h3>Go where life takes you.</h3><p>On a flight, underground, or somewhere peaceful. After model setup, recognition needs no connection.</p></div></article>
+          </div>
+          <div class="feature-strip"><div><strong>25 languages.</strong><span>Automatically detected.</span></div><div><strong>Your own vocabulary.</strong><span>Custom word corrections.</span></div><div><strong>More ways to speak.</strong><span>Keyboard, accessibility, floating mic.</span></div></div>
+        </div>
+      </section>
+
+      <section class="privacy section-pad" id="privacy" aria-labelledby="privacy-title"><div class="container privacy-grid">
+        <div><p class="section-kicker">03 / Local by design</p><h2 id="privacy-title">Your words are yours.<br>Let’s keep it that way.</h2><p class="section-summary">A thought does not need to travel to a server to become text. Utterlane keeps speech recognition where it belongs: on your device.</p><a class="text-link" href="https://github.com/lrq3000/Utterlane/blob/main/PRIVACY_POLICY.md">Read the privacy policy <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a></div>
+        <div class="privacy-points"><div class="privacy-point"><svg class="icon" aria-hidden="true"><use href="#shield"/></svg><div><h3>No speech uploads.</h3><p>Your audio and transcripts are not sent to a speech service. Recognition runs locally, even in airplane mode.</p></div></div><div class="privacy-point"><svg class="icon" aria-hidden="true"><use href="#lock"/></svg><div><h3>No account. No analytics.</h3><p>There is nothing to sign up for. Optional microphone history is off by default, and you control what you keep or export.</p></div></div><div class="privacy-point"><svg class="icon" aria-hidden="true"><use href="#code"/></svg><div><h3>Open source. Open to scrutiny.</h3><p>The code is available under Apache-2.0. Read it, build it, improve it. Good tools should be accessible to everyone.</p></div></div></div>
+      </div></section>
+
+      <section class="setup section-pad" id="setup" aria-labelledby="setup-title"><div class="container">
+        <p class="section-kicker">04 / A little setup. A lot of possibility.</p><div class="section-heading-row"><h2 id="setup-title">Make room<br>for your voice.</h2><p class="section-summary">An Android phone. A local speech model. And something to say.</p></div>
+        <ol class="setup-steps"><li><span class="step-number">01</span><h3>Get the app.</h3><p>Choose an Utterlane APK from GitHub Releases when available, or build it from source.</p><a class="text-link" href="https://github.com/lrq3000/Utterlane/releases">View releases <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a></li><li><span class="step-number">02</span><h3>Choose your model.</h3><p>Download a speech model in the app, or import existing model files. Recognition works offline from then on.</p><span class="step-detail">Approximately 402–674 MB per model</span></li><li><span class="step-number">03</span><h3>Tap. Speak. Done.</h3><p>Allow microphone access and enable your preferred input method. Focus a text field, tap the mic, and speak.</p><a class="text-link" href="https://github.com/lrq3000/Utterlane#your-first-dictation">See the setup guide <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a></li></ol>
+        <div class="requirements"><span><svg class="icon" aria-hidden="true"><use href="#check"/></svg>Android 8.0 or later</span><span><svg class="icon" aria-hidden="true"><use href="#check"/></svg>ARM64 device</span><span><svg class="icon" aria-hidden="true"><use href="#check"/></svg>Space for a speech model</span><a href="https://github.com/lrq3000/Utterlane#build-from-source">Prefer to build it yourself? <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a></div>
+      </div></section>
+
+      <section class="faq section-pad" id="faq" aria-labelledby="faq-title"><div class="container faq-grid"><div><p class="section-kicker">A few good questions</p><h2 id="faq-title">Good to know.</h2><p class="section-summary">A little clarity before<br>your first dictation.</p><a class="text-link" href="https://github.com/lrq3000/Utterlane/issues">Ask on GitHub <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a></div>
+        <div class="faq-list">
+          <details><summary>Does it really work offline?<span class="disclosure" aria-hidden="true"></span></summary><div class="faq-answer"><p>Yes. Once a speech model is installed, recognition works without a network connection. The initial model download uses Hugging Face; you can also import model files from a local folder.</p></div></details>
+          <details><summary>What does “near real-time” mean?<span class="disclosure" aria-hidden="true"></span></summary><div class="faq-answer"><p>Completed text segments arrive while microphone capture continues. This is not instantaneous word-by-word output. Timing depends on your phone, the selected model, and pauses in your speech.</p><p>The default Parakeet v3 backend simulates streaming over an offline model. <a href="https://github.com/lrq3000/Utterlane#how-streaming-works">Read how streaming works.</a></p></div></details>
+          <details><summary>Can I dictate into other apps?<span class="disclosure" aria-hidden="true"></span></summary><div class="faq-answer"><p>Use a compatible keyboard’s microphone button, the accessibility button, or the floating mic. Utterlane inserts text into the focused field and can fall back to clipboard or transcript recovery when insertion is unavailable.</p><p>Integration depends on the receiving app and keyboard. <a href="https://github.com/Helium314/HeliBoard">HeliBoard</a> is one compatible keyboard; AOSP Keyboard does not offer this voice-input integration.</p></div></details>
+          <details><summary>Which languages and audio files are supported?<span class="disclosure" aria-hidden="true"></span></summary><div class="faq-answer"><p>Utterlane automatically detects 25 recognition languages: Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Spanish, Swedish, and Ukrainian.</p><p>Share or open OPUS, AAC, OGG, M4A, MP3, and WAV files, subject to your device’s codec support. You can also monitor selected folders for newly saved audio.</p></div></details>
+          <details><summary>What happens to my recordings?<span class="disclosure" aria-hidden="true"></span></summary><div class="faq-answer"><p>Microphone history is disabled by default. Enable it if you want to replay or retranscribe recordings, with configurable retention. Saved history is private to the app and excluded from Android cloud backup and device transfer.</p><p>Temporary text files support long transcripts and recovery. When you choose to copy, share, or export, the receiving app has its own privacy behavior.</p></div></details>
+          <details><summary>Is it really free?<span class="disclosure" aria-hidden="true"></span></summary><div class="faq-answer"><p>Yes. No account or subscription is required. Utterlane is open source under Apache-2.0; models and third-party libraries retain their own licenses.</p><p>If it helps you, help it grow: report a bug, improve a translation, or contribute code. <a href="https://github.com/lrq3000/Utterlane/blob/main/CONTRIBUTING.md">Contributions are welcome.</a></p></div></details>
+        </div>
+      </div></section>
+
+      <section class="closing" aria-labelledby="closing-title"><div class="container"><p class="section-kicker">Built with care. Given freely.</p><h2 id="closing-title">Your voice deserves<br>this much freedom.</h2><p>No account. No subscription. Open-source speech recognition that runs on the phone you already own.</p><a class="button primary" href="https://github.com/lrq3000/Utterlane/releases">Explore GitHub releases <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a><div class="closing-detail">Offline after setup. Open source from the start.</div></div></section>
+    </main>
+
+    <footer class="site-footer"><div class="container"><div class="footer-top"><a class="brand" href="#" aria-label="Utterlane home"><img src="./brand/wordmark.png" alt="Utterlane — Fast. Offline. Transcription." width="175" height="53" loading="lazy"></a><nav aria-label="Footer navigation"><a href="https://github.com/lrq3000/Utterlane">Source code</a><a href="https://github.com/lrq3000/Utterlane/blob/main/PRIVACY_POLICY.md">Privacy</a><a href="https://github.com/lrq3000/Utterlane/blob/main/LICENSE">License</a><a href="https://github.com/lrq3000/Utterlane/blob/main/CONTRIBUTING.md">Contribute</a></nav></div><div class="footer-bottom"><p>Independently maintained by <a href="https://github.com/lrq3000">Stephen Karl Larroque</a>.<br>A fork of <a href="https://github.com/hatsch/TranSlander">TranSlander</a> by hatsch and contributors.</p><p>Built on NVIDIA Parakeet, sherpa-onnx, CrispASR & ggml.<br>© 2026 Utterlane contributors. Apache-2.0.</p></div></div></footer>
+    <button class="motion-toggle" type="button" aria-label="Play animations" aria-pressed="false" title="Play animations" hidden><svg class="icon" aria-hidden="true"><use href="#play"/></svg><span>Play animations</span></button>
+  </body>
+</html>
