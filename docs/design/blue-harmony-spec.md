@@ -2,6 +2,9 @@
 
 Version 1 · 2026-10-04 · Implemented UI baseline: `592a659`.
 
+Header refinement: centered wordmark with the app icon on the right, requested
+after the baseline redesign.
+
 This is the reusable specification for the approved **revision-3, option-A**
 redesign. The repository card uses the subsequently selected **app showcase**
 composition. The code references below describe the implementation; illustrative
@@ -133,7 +136,8 @@ Use a 4 dp spacing rhythm, with 8/12/16/20/24 dp as common increments.
 | Section heading | 8 dp extra start inset, 10 dp gap before card |
 | Section card | 20 dp radius, 1 dp outline-variant border, 8 dp inner vertical padding |
 | Settings brand header | 24 dp horizontal / 20 dp vertical padding plus system insets |
-| Header identity row | At most 360 dp wide, 42 dp icon, 12 dp icon/wordmark gap |
+| Header identity area | Full width, minimum 64 dp high; wordmark centered on the banner; 42 dp icon pinned right |
+| Header wordmark | At most 290 dp wide; symmetric 54 dp gutters reserve icon width plus a 12 dp gap |
 | Header waveform motif | 56 × 24 dp, 20 dp end / 8 dp bottom inset, 14% text-color opacity |
 | Filled action buttons | 12 dp radius |
 | Transcription result surface | 16 dp radius |
@@ -152,8 +156,10 @@ landscape so it does not expand into a full-screen logo.
 
 ### Settings
 
-Pair the original icon and wordmark in the subtle gradient header, with the
-localized Settings label beneath. Group related controls in inset surface cards.
+Center the original wordmark in the subtle gradient header and place the app icon
+on the right, with the localized Settings label beneath. Symmetric gutters keep
+the logo centered independently of the icon and prevent overlap on narrow screens.
+Group related controls in inset surface cards.
 Use plain blue/pale-blue icons, semantic switches and unambiguous status text.
 Keep model selection, download/load/reset/delete, permissions, history, corrections
 and appearance controls available. Use red for destructive model deletion.

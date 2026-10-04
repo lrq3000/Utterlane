@@ -61,3 +61,16 @@ end-to-end voice-activity contract test from those screenshots. The focused nati
 panel test passed. Full IME/API recognition, populated-history actions, live
 floating-mic interaction, Android 12+ dynamic-color behavior and Android 15
 edge-to-edge rendering were not independently exercised in this pass.
+
+## Follow-up: centered Settings identity
+
+The subsequent header refinement centers the wordmark on the full banner and
+pins the app icon to the right. Symmetric 54 dp gutters reserve the 42 dp icon
+plus a 12 dp gap on either side; the wordmark is capped at 290 dp.
+
+- `gradlew.bat --offline --console=plain --quiet assembleDebug`: passed.
+- Installed and visually inspected at 720×1280, 560×1000 and 1920×1080 on the
+  existing 280-dpi emulator. The wordmark remains centered without icon overlap.
+- Evidence: `qa-artifacts/centered-banner-{portrait,narrow,landscape}.png` and
+  corresponding UI trees in the `blue-harmony-kit` worktree.
+- Restored the original 1920×1080 display; font scale remained 1.0.

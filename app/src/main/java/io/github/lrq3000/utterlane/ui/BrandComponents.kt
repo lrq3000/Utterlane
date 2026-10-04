@@ -10,6 +10,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -26,16 +27,18 @@ fun BrandHeader() {
     val palette = LocalBrandPalette.current
     Box(Modifier.fillMaxWidth().background(Brush.horizontalGradient(palette.header))) {
         Column(Modifier.statusBarsPadding().padding(horizontal = 24.dp, vertical = 20.dp)) {
-            // Bound the row before distributing weight: a weighted child's own
-            // widthIn cannot shrink the tight width assigned on tablets/landscape.
-            Row(Modifier.widthIn(max = 360.dp), verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Image(painterResource(R.drawable.utterlane_icon), null, Modifier.size(42.dp))
+            Box(Modifier.fillMaxWidth().heightIn(min = 64.dp), contentAlignment = Alignment.Center) {
+                // Symmetric icon-sized gutters center the wordmark on the banner
+                // itself, not just the space remaining beside the right-side icon.
+                // Bound its width before filling, so landscape stays compact.
                 Image(
                     painterResource(if (palette.dark) R.drawable.utterlane_wordmark_dark else R.drawable.utterlane_wordmark),
                     stringResource(R.string.app_name),
-                    Modifier.weight(1f).widthIn(max = 290.dp).aspectRatio(1190f / 326f)
+                    Modifier.padding(horizontal = 54.dp).widthIn(max = 290.dp)
+                        .fillMaxWidth().aspectRatio(1190f / 326f)
                 )
+                Image(painterResource(R.drawable.utterlane_icon), null,
+                    Modifier.align(AbsoluteAlignment.CenterRight).size(42.dp))
             }
             Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.labelLarge,
                 color = palette.muted, modifier = Modifier.padding(top = 12.dp))
