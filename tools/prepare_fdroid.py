@@ -12,7 +12,12 @@ import shutil
 
 class FdroidSources:
     UNUSED = {
-        "crispasr": ("bindings", "examples", "crispasr", "crispasr-sys", "flutter", "models", "samples", "tests", "tools"),
+        # The generic runtime needs examples/CMakeLists.txt, common helpers and
+        # talk-llama's vendored core even with CRISPASR_BUILD_EXAMPLES=OFF. Remove
+        # only the unused example subtrees responsible for scanner findings.
+        "crispasr": ("bindings", "examples/addon.node", "examples/crispasr.android.java",
+                     "examples/wasm-tts", "examples/wchess", "crispasr", "crispasr-sys",
+                     "flutter", "models", "samples", "tests", "tools"),
         "sherpa-onnx": (".github", "android", "dart-api-examples", "flutter", "flutter-examples",
                         "nodejs-addon-examples", "nodejs-examples", "scripts/node-addon-api", "scripts/nodejs", "mfc-examples"),
     }

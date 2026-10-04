@@ -30,7 +30,7 @@ human-reviewed AI-assisted contribution policy if asked; do not conceal provenan
 ## Google Play app access / reviewer setup
 
 No account, login, subscription or payment is required. Use an ARM64 device with
-Android 8 or later and enough space for a 402–674 MB model. Open Utterlane, choose
+Android 8 or later and enough space for a catalog model (159–674 MB). Open Utterlane, choose
 a model and download it, or import the model files locally. Wait until it is
 loaded before testing dictation. Speech recognition then works offline.
 

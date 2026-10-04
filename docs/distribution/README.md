@@ -6,7 +6,8 @@ GitHub Releases, which Obtainium and Komi Store can consume. Application ID:
 
 This is preparation for a new listing. Upstream TranSlander accounts, approvals,
 signatures, test history and listings do not transfer to this application ID.
-See [verification results](../../docs/qa/store-release-2.0.md) for what was actually
+See [latest-main integration results](../qa/store-release-main-first.md) and
+[original preparation results](../qa/store-release-2.0.md) for what was actually
 tested, and the [release notes](release-notes-2.0.0.md) for the announcement.
 
 ## Before publication
@@ -25,7 +26,7 @@ tested, and the [release notes](release-notes-2.0.0.md) for the announcement.
 
 ## Build and inspect
 
-Install OpenJDK 21, Python 3.11.8+, Git, SDK platform 36, build tools 35.0.0,
+Install OpenJDK 21, Python 3.11.8+, Git, SDK platforms 35 and 36, build tools 35.0.0,
 NDK 28.2.13676358 and SDK CMake 3.22.1 (with Ninja). Set `JAVA_HOME` and
 `ANDROID_HOME` to absolute paths. Gradle 8.12.1 is supplied by the wrapper.
 
@@ -50,7 +51,9 @@ Native source inputs are pinned in `tools/prepare_native.py` and
 `tools/build_sherpa.py`. The latter compiles sherpa JNI/Kotlin bindings from source
 and uses **official MIT-licensed ONNX Runtime 1.23.2 from Maven Central**, checked
 against SHA-256 `82048d1f462218adae4ba76477089ab0ba76093d84f733540066db1a8ba6b827`.
-It does **not** build ONNX Runtime itself. F-Droid permits freely licensed Maven
+The separately pinned transcribe.cpp source builds the compact ternary backend;
+its vendored ggml remains isolated from CrispASR's ggml.
+The builder does **not** build ONNX Runtime itself. F-Droid permits freely licensed Maven
 Central dependencies under its inclusion policy. Runtime licenses/notices are
 packaged in `assets/native-licenses/`; CrispASR/ggml notices are in
 `assets/native-licenses.txt`. Model weights are separate CC-BY-4.0 downloads.
@@ -89,9 +92,12 @@ development debug key or generate a fresh distribution key on each CI run.
 3. Configure the environment's permitted branches/tags and reviewers to match
    your maintainer workflow. PR builds receive no signing credentials.
 4. Commit/integrate the reviewed preparation and create tag **v2.0.0** at that
-   commit. Create a GitHub release using `release-notes-2.0.0.md` (replace relative
-   documentation links with full GitHub URLs when pasting into the release).
-5. The published-release workflow tests and builds, then signs and uploads:
+   commit. Pushing the tag runs the existing Android tag workflow, which now uses
+   the same signing helper/secrets and creates the GitHub release. Edit its notes
+   using `release-notes-2.0.0.md` (replace relative links with full GitHub URLs).
+   Alternatively, manually publishing a release triggers the Build APK workflow;
+   both paths use the same signed artifact names and validation.
+5. The release workflow tests and builds, then signs and uploads:
    - `Utterlane-2.0.0-arm64-v8a.apk`
    - `Utterlane-2.0.0.aab`
    - `SHA256SUMS`
@@ -152,8 +158,9 @@ if only some are supplied, Gradle fails with an explanatory error.
 6. Answer review questions. After acceptance/build/publication, update the README
    button to `https://f-droid.org/packages/io.github.lrq3000.utterlane/`.
 
-The recipe materializes pinned CrispASR, ggml, sherpa and CMake dependency sources
-**before scanning**, removes only unused upstream example/test trees, and compiles
+The recipe materializes pinned CrispASR, ggml, transcribe.cpp, sherpa and CMake dependency sources
+**before scanning**, removes only unused upstream example/test trees (preserving
+CrispASR's runtime sources under `examples/`), and compiles
 the AAR **after scanning**. No blanket `scanignore` is used. Downloaded model
 weights are not bundled in the APK. Tag-based updates read the version fields
 from Gradle. Reproducible builds/developer-signature reuse remain a separate,

@@ -25,7 +25,7 @@ Builds:
     gradle:
       - yes
     prebuild:
-      - sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'cmake;3.22.1'
+      - sdkmanager 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'cmake;3.22.1'
       - cd ..
       - python3 tools/prepare_native.py
       - python3 tools/build_sherpa.py --sources-only
@@ -42,7 +42,7 @@ MaintainerNotes: |-
   optional local history, and CrispASR model support. Models are downloaded only
   on user request or imported locally; weights are CC-BY-4.0 data, not executable
   updates. Inference works without a network connection.
-  Native sources are pinned in tools/prepare_native.py and tools/build_sherpa.py
+  Native sources (including transcribe.cpp) are pinned in tools/prepare_native.py and tools/build_sherpa.py
   and downloaded before the source scanner. CMake downloads are disabled during
   compilation. ONNX Runtime 1.23.2 is MIT-licensed, fetched from Maven Central
   after scanning, and verified by SHA-256. No GitHub-release binary dependencies.

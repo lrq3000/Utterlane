@@ -27,6 +27,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import android.util.Log
 
 class AudioMonitorService : Service() {
+    override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(io.github.lrq3000.utterlane.settings.AppLanguage.wrap(base))
     private val TAG = "AudioMonitorService"
 
     companion object {

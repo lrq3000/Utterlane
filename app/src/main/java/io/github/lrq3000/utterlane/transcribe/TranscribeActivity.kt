@@ -40,7 +40,7 @@ import kotlinx.coroutines.ensureActive
 import io.github.lrq3000.utterlane.asr.TranscriptStore
 import androidx.core.content.FileProvider
 
-class TranscribeActivity : ComponentActivity() {
+class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivity() {
 
     companion object {
         const val ACTION_TRANSCRIBE = "io.github.lrq3000.utterlane.action.TRANSCRIBE"

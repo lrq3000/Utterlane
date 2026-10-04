@@ -61,6 +61,18 @@
     <string name="model_auto_load_title">Auto-load on startup</string>
     <string name="model_auto_load_on">Model loads when app starts</string>
     <string name="model_auto_load_off">Load model manually</string>
+    <string name="model_auto_load_skipped_immediate">Skipped while idle time is Immediate; loads when transcription starts</string>
+    <string name="model_idle_title">Idle time before unload</string>
+    <string name="model_idle_change">Change</string>
+    <string name="model_idle_description">Free model memory after transcription is idle. The next transcription reloads it automatically. Active recording and processing are never interrupted.</string>
+    <string name="model_idle_immediate">Immediate</string>
+    <string name="model_idle_five_minutes">5 min</string>
+    <string name="model_idle_twenty_minutes">20 min</string>
+    <string name="model_idle_hour">1 h</string>
+    <string name="model_idle_three_hours">3 h</string>
+    <string name="model_idle_day">24 h</string>
+    <string name="model_idle_never">Never</string>
+    <string name="floating_install_model_first">Download or import a model first</string>
     <string name="model_attribution" translatable="false">NVIDIA Parakeet TDT v3 · CC-BY-4.0</string>
     <string name="model_import_title">Load model from folder</string>
     <string name="model_import_instructions">Download the model files from the link below and place them in a folder on your device:\n\n • encoder.int8.onnx\n • decoder.int8.onnx\n • joiner.int8.onnx\n • tokens.txt\n\nThen select that folder.</string>
@@ -286,4 +298,26 @@
     <string name="model_delete_button">Delete</string>
     <string name="model_delete_confirm_message">Delete the downloaded weights for %1$s? You will need to download or import them again to use this model.</string>
     <string name="model_delete_selection_changed">The selected model changed. Please confirm deletion again.</string>
+    <string name="model_native_ternary_description">159.1 MB download · Native ternary kernels prioritize lower RAM over speed. Total RAM also includes inference buffers.</string>
+    <string name="model_ternary_attribution">Moondream / NVIDIA · CC-BY-4.0 · Nairod785 ternary conversion · transcribe.cpp native runtime</string>
+    <string name="model_custom">Custom model…</string>
+    <string name="model_custom_primary">Choose the main model file</string>
+    <string name="model_custom_help">Select a CrispASR speech model (GGUF or Whisper GGML). Select its companion files together, then choose the main model below. Files are copied into the app. Compatibility and memory requirements depend on the model; use Load to validate it.</string>
+    <string name="model_custom_reimport">Import this custom model again using Custom model…</string>
+    <string name="model_custom_codec">Audio tokenizer / codec</string>
+    <string name="model_custom_codec_help">If the model requires an explicit audio tokenizer or codec (for example, MiMo-ASR), select that companion. Otherwise keep automatic discovery. All selected files will still be imported with their original names.</string>
+    <string name="model_custom_codec_auto">Automatic / no explicit codec</string>
+    <string name="diarization_title">Speaker diarization</string>
+    <string name="diarization_enable">Add speaker labels</string>
+    <string name="diarization_description">Label speakers as microphone or imported audio is transcribed. Adds processing time. Changes apply to the next recording.</string>
+    <string name="diarization_count">Number of speakers</string>
+    <string name="diarization_auto">Auto (up to 8)</string>
+    <string name="diarization_count_help">Auto detects active speaker tracks. A number constrains the streaming decoder to that many arrival-order tracks; it does not create speakers who have not spoken. Labels are estimates and remain fixed once inserted.</string>
+    <string name="diarization_model_info">NVIDIA Nemotron-3-Diarization · Q8_0 · 107 MB · OpenMDW-1.1. Download once, or import a folder containing Nemotron-3-Diarization.q8_0.gguf. Processing is offline.</string>
+    <string name="diarization_install_first">Download or import the speaker diarization model in Settings, or turn off speaker labels.</string>
+    <string name="diarization_model_ready">Diarization model installed. Used automatically when speaker labels are enabled.</string>
+    <string name="speaker_label">Speaker %1$d</string>
+    <string name="speaker_unknown">Unknown speaker</string>
+    <string name="app_language">App language</string>
+    <string name="app_language_system">System (device language)</string>
 </resources>

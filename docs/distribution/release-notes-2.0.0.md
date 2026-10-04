@@ -4,6 +4,9 @@ Fast, offline voice typing and audio transcription for Android. This major
 release gives the independently maintained fork its own Utterlane identity and
 Blue harmony interface, alongside incremental transcription, optional local
 recording history, additional Parakeet models and improved session recovery.
+The combined release also includes compact native ternary Redux, custom model
+imports, optional streaming speaker labels, persistent app language, and idle
+model unloading.
 
 ## Download
 
@@ -14,7 +17,7 @@ recording history, additional Parakeet models and improved session recovery.
 - Obtainium and Komi Store can track the GitHub release APK.
 
 Download or locally import a speech model before first use (approximately
-402–674 MB). Recognition then works offline; audio and transcripts are not
+159–674 MB for catalog models; custom models vary). Recognition then works offline; audio and transcripts are not
 uploaded to a speech-recognition service.
 
 Utterlane uses `io.github.lrq3000.utterlane` and installs separately from its

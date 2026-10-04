@@ -3,24 +3,7 @@
 #include <string>
 #include <vector>
 #include "parakeet.h"
-
-namespace {
-void error(JNIEnv* env, const char* message) {
-    env->ThrowNew(env->FindClass("java/lang/IllegalStateException"), message);
-}
-// java.lang.String(byte[], UTF_8) handles full UTF-8 rather than JNI's modified
-// UTF-8 convention, including any non-BMP tokenizer text.
-jstring utf8(JNIEnv* env, const char* text) {
-    const std::string value(text ? text : "");
-    auto bytes = env->NewByteArray(static_cast<jsize>(value.size()));
-    env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(value.size()), reinterpret_cast<const jbyte*>(value.data()));
-    auto encoding = env->NewStringUTF("UTF-8");
-    auto cls = env->FindClass("java/lang/String");
-    auto result = static_cast<jstring>(env->NewObject(cls, env->GetMethodID(cls, "<init>", "([BLjava/lang/String;)V"), bytes, encoding));
-    env->DeleteLocalRef(bytes); env->DeleteLocalRef(encoding); env->DeleteLocalRef(cls);
-    return result;
-}
-}
+#include "jni_text.h"
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_io_github_lrq3000_utterlane_asr_CrispParakeetBackend_openNative(JNIEnv* env, jobject, jstring path) {

@@ -22,19 +22,32 @@ import io.github.lrq3000.utterlane.history.HistoryCleanupService
 import java.io.File
 import io.github.lrq3000.utterlane.asr.CacheArtifacts
 import io.github.lrq3000.utterlane.asr.MicrophoneSessionFactory
+import io.github.lrq3000.utterlane.asr.DeviceWakeObserver
+import io.github.lrq3000.utterlane.asr.ModelIdleTimeout
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 class UtterlaneApp : Application() {
+    override fun attachBaseContext(base: android.content.Context) {
+        super.attachBaseContext(io.github.lrq3000.utterlane.settings.AppLanguage.wrap(base))
+    }
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        io.github.lrq3000.utterlane.settings.AppLanguage.refresh(this)
+    }
 
     var microphoneSessions = MicrophoneSessionFactory()
         internal set
 
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var modelWakeObserver: DeviceWakeObserver? = null
 
     lateinit var settingsRepository: SettingsRepository
         private set
 
     lateinit var modelManager: ModelManager
         private set
+
+    val diarizationModels by lazy { ModelManager(this, fixedModel = io.github.lrq3000.utterlane.asr.DiarizationModel.definition) }
 
     lateinit var recognizerManager: RecognizerManager
         private set
@@ -65,6 +78,14 @@ class UtterlaneApp : Application() {
         dictionaryManager = DictionaryManager(this)
         modelManager = ModelManager(this)
         recognizerManager = RecognizerManager(this, modelManager)
+        // Application lifetime, not Settings lifetime: file transcription and
+        // background microphone entry points share the same idle policy.
+        applicationScope.launch(Dispatchers.IO) {
+            settingsRepository.modelIdleTimeout.distinctUntilChanged().collect {
+                recognizerManager.setIdleTimeout(it)
+            }
+        }
+        modelWakeObserver = DeviceWakeObserver(this) { recognizerManager.recheckIdleTimeout() }
         transcribeManager = TranscribeManager(this)
         recordingHistory = RecordingHistory(File(filesDir, "microphone-history"))
         createNotificationChannel()
@@ -87,7 +108,8 @@ class UtterlaneApp : Application() {
         applicationScope.launch(Dispatchers.IO) {
             modelManager.initializeSelection()
             val autoLoad = settingsRepository.autoLoadModel.first()
-            if (autoLoad && modelManager.isModelReady()) {
+            val idleTimeout = settingsRepository.modelIdleTimeout.first()
+            if (autoLoad && idleTimeout != ModelIdleTimeout.IMMEDIATE && modelManager.isModelReady()) {
                 Log.i(TAG, "Auto-loading speech model")
                 recognizerManager.initialize()
             }

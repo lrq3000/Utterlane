@@ -21,27 +21,34 @@ class ReleaseSigner:
         self.source = source
         self.output = output
 
+    @staticmethod
+    def release_version(tag):
+        # The existing tag workflow also publishes alpha/beta releases. Keep
+        # those safe filename components while rejecting branches/path syntax.
+        if not re.fullmatch(r"v\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?", tag):
+            raise ValueError("Expected a stable or prerelease vMAJOR.MINOR.PATCH tag")
+        return tag[1:]
+
     def sign(self):
         names = ("UTTERLANE_KEYSTORE_BASE64", "UTTERLANE_STORE_PASSWORD", "UTTERLANE_KEY_ALIAS", "UTTERLANE_KEY_PASSWORD", "RELEASE_TAG")
         if any(not os.environ.get(name) for name in names):
             raise ValueError("Configure the release environment signing secrets and RELEASE_TAG before publishing")
         tag = os.environ["RELEASE_TAG"]
-        if not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
-            raise ValueError("Expected a stable vMAJOR.MINOR.PATCH release tag")
+        version = self.release_version(tag)
         apk = self.source / "apk/release/app-release-unsigned.apk"
         bundle = self.source / "bundle/release/app-release.aab"
         for artifact in (apk, bundle):
             NativeArchive(artifact).verify()
         tools = pathlib.Path(os.environ["ANDROID_HOME"]) / "build-tools/35.0.0"
         badging = subprocess.check_output([str(tools / "aapt"), "dump", "badging", str(apk)], text=True)
-        if f"versionName='{tag[1:]}'" not in badging or "name='io.github.lrq3000.utterlane'" not in badging:
+        if f"versionName='{version}'" not in badging or "name='io.github.lrq3000.utterlane'" not in badging:
             raise ValueError("Release tag and APK identity/version do not agree")
         manifest = subprocess.check_output([str(tools / "aapt"), "dump", "xmltree", str(apk), "AndroidManifest.xml"], text=True)
         if re.search(r"android:(debuggable|testOnly)\([^\n]*(?:0xffffffff|=\"true\")", manifest):
             raise ValueError("Refusing to publish a debug/test APK")
         self.output.mkdir(parents=True, exist_ok=True)
-        signed_apk = self.output / f"Utterlane-{tag[1:]}-arm64-v8a.apk"
-        signed_bundle = self.output / f"Utterlane-{tag[1:]}.aab"
+        signed_apk = self.output / f"Utterlane-{version}-arm64-v8a.apk"
+        signed_bundle = self.output / f"Utterlane-{version}.aab"
         # The temporary keystore is removed even if a signing command fails.
         # Passwords are referenced by environment name, never command-line value.
         with tempfile.TemporaryDirectory(prefix="utterlane-sign-") as temporary:

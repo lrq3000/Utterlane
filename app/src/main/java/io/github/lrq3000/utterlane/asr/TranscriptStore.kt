@@ -28,7 +28,7 @@ class TranscriptStore(val file: File) {
 
     @Synchronized fun append(text: String) {
         if (text.isBlank()) return
-        val delta = (if (file.length() > 0) " " else "") + text.trim()
+        val delta = (if (file.length() == 0L) "" else if (text.startsWith('\n')) "\n" else " ") + text.trim()
         file.appendText(delta, Charsets.UTF_8)
         tail = (tail + delta).takeLast(PREVIEW_LIMIT).let { if (it.firstOrNull()?.isLowSurrogate() == true) it.drop(1) else it }
         segments++

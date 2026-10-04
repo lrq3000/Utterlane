@@ -45,6 +45,7 @@ import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.asr.DictionaryManager
 import io.github.lrq3000.utterlane.asr.ModelManager
+import io.github.lrq3000.utterlane.asr.ModelIdleTimeout
 import io.github.lrq3000.utterlane.service.FloatingMicService
 import io.github.lrq3000.utterlane.service.TextInjectionService
 import io.github.lrq3000.utterlane.transcribe.TranscribeManager
@@ -56,7 +57,7 @@ import io.github.lrq3000.utterlane.ui.BrandSection
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-class SettingsActivity : ComponentActivity() {
+class SettingsActivity : LocalizedActivity() {
 
     private val refreshTrigger = mutableStateOf(0)
 
@@ -176,12 +177,14 @@ class SettingsActivity : ComponentActivity() {
         val app = UtterlaneApp.instance
         app.applicationScope.launch {
             val serviceEnabled = app.settingsRepository.serviceEnabled.first()
-            val recognizerReady = app.recognizerManager.isInitialized()
+            // Idle unloading is a memory policy, not a request to disable voice
+            // input. The capture session loads installed model files on demand.
+            val modelInstalled = app.modelManager.isModelReady()
             val hasMic = hasMicPermission()
             val hasOverlay = hasOverlayPermission()
 
             if (serviceEnabled) {
-                if (!recognizerReady || !hasMic || !hasOverlay) {
+                if (!modelInstalled || !hasMic || !hasOverlay) {
                     // Conditions no longer met - disable
                     app.settingsRepository.setServiceEnabled(false)
                     stopFloatingService()
@@ -339,6 +342,7 @@ fun SettingsScreen(
     val serviceEnabled by settingsRepository.serviceEnabled.collectAsStateWithLifecycle(initialValue = false)
     val themeMode by settingsRepository.themeMode.collectAsStateWithLifecycle(initialValue = SettingsRepository.THEME_SYSTEM)
     val autoLoadModel by settingsRepository.autoLoadModel.collectAsStateWithLifecycle(initialValue = false)
+    val modelIdleTimeout by settingsRepository.modelIdleTimeout.collectAsStateWithLifecycle(initialValue = ModelIdleTimeout.TWENTY_MINUTES)
     val downloadState by modelManager.downloadState.collectAsStateWithLifecycle()
     val selectedModel by modelManager.selected.collectAsStateWithLifecycle()
     // A confirmation belongs to the named model, not whichever model is selected later.
@@ -396,6 +400,7 @@ fun SettingsScreen(
             SettingsSection(title = stringResource(R.string.section_speech_model)) {
                 ModelSelector()
                 ModelSettingItem(
+                    isCustom = selectedModel.isCustom,
                     modelName = selectedModel.name,
                     modelBytes = selectedModel.downloadBytes,
                     importFiles = selectedModel.artifacts.joinToString(", ") { it.url.substringAfterLast('/').substringBefore('?') },
@@ -488,7 +493,11 @@ fun SettingsScreen(
 
                 val context = LocalContext.current
                 Text(
-                    text = if (selectedModel.id == "parakeet-v3") stringResource(R.string.model_attribution) else stringResource(R.string.model_moondream_attribution),
+                    text = when {
+                        selectedModel.id == "parakeet-v3" -> stringResource(R.string.model_attribution)
+                        selectedModel.backend == io.github.lrq3000.utterlane.asr.ModelBackend.TRANSCRIBE_CPP -> stringResource(R.string.model_ternary_attribution)
+                        else -> stringResource(R.string.model_moondream_attribution)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
@@ -504,7 +513,11 @@ fun SettingsScreen(
 
                 SwitchSettingItem(
                     title = stringResource(R.string.model_auto_load_title),
-                    subtitle = if (autoLoadModel) stringResource(R.string.model_auto_load_on) else stringResource(R.string.model_auto_load_off),
+                    subtitle = when {
+                        modelIdleTimeout == ModelIdleTimeout.IMMEDIATE -> stringResource(R.string.model_auto_load_skipped_immediate)
+                        autoLoadModel -> stringResource(R.string.model_auto_load_on)
+                        else -> stringResource(R.string.model_auto_load_off)
+                    },
                     icon = Icons.Default.Speed,
                     checked = autoLoadModel,
                     onCheckedChange = { enabled ->
@@ -513,6 +526,9 @@ fun SettingsScreen(
                         }
                     }
                 )
+                ModelIdleSettings(modelIdleTimeout) { timeout ->
+                    scope.launch { settingsRepository.setModelIdleTimeout(timeout) }
+                }
             }
 
             // Microphone Permission (required for all voice input)
@@ -595,18 +611,19 @@ fun SettingsScreen(
 
             // Optional Floating Mic Button
             SettingsSection(title = stringResource(R.string.section_floating_mic)) {
+                val modelInstalled = modelManager.isModelReady()
                 SwitchSettingItem(
                     title = stringResource(R.string.floating_enable),
                     subtitle = when {
                         !hasMicPermission.value -> stringResource(R.string.floating_grant_mic_first)
                         !hasOverlayPermission.value -> stringResource(R.string.floating_grant_overlay_first)
-                        !isRecognizerReady -> stringResource(R.string.floating_load_model_first)
+                        !modelInstalled -> stringResource(R.string.floating_install_model_first)
                         serviceEnabled -> stringResource(R.string.floating_shows_red)
                         else -> stringResource(R.string.floating_additional)
                     },
                     icon = Icons.Default.RadioButtonChecked,
                     checked = serviceEnabled,
-                    enabled = hasMicPermission.value && hasOverlayPermission.value && isRecognizerReady,
+                    enabled = hasMicPermission.value && hasOverlayPermission.value && modelInstalled,
                     onCheckedChange = { enabled ->
                         scope.launch {
                             settingsRepository.setServiceEnabled(enabled)
@@ -796,8 +813,11 @@ fun SettingsScreen(
                 )
             }
 
+            DiarizationSettings(onPickModelFolder)
+
             // Appearance Section
             SettingsSection(title = stringResource(R.string.section_appearance)) {
+                AppLanguageSetting()
                 ThemeSettingItem(
                     selectedTheme = themeMode,
                     onThemeSelected = { theme ->
@@ -899,7 +919,8 @@ fun ModelSettingItem(
     onDownload: () -> Unit,
     onLoadLocal: () -> Unit,
     onLoadModel: () -> Unit,
-    onUnloadModel: () -> Unit
+    onUnloadModel: () -> Unit,
+    isCustom: Boolean = false
 ) {
     var showImportDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -940,10 +961,11 @@ fun ModelSettingItem(
             when {
                 downloadState is ModelManager.DownloadState.NotStarted ||
                 downloadState is ModelManager.DownloadState.Error -> {
-                    Button(onClick = onDownload, shape = MaterialTheme.shapes.small) {
+                    if (isCustom) Text(stringResource(R.string.model_custom_reimport))
+                    else Button(onClick = onDownload, shape = MaterialTheme.shapes.small) {
                         Text(stringResource(R.string.action_download))
                     }
-                    TextButton(onClick = { showImportDialog = true }) {
+                    if (!isCustom) TextButton(onClick = { showImportDialog = true }) {
                         Text(stringResource(R.string.action_load_local))
                     }
                 }

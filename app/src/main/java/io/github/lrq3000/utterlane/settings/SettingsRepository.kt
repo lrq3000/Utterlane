@@ -12,6 +12,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import io.github.lrq3000.utterlane.asr.ModelCatalog
+import io.github.lrq3000.utterlane.asr.ModelIdleTimeout
 import io.github.lrq3000.utterlane.history.HistoryRetention
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -24,12 +25,15 @@ class SettingsRepository(private val context: Context) {
         private val BUTTON_X_KEY = intPreferencesKey("button_x")
         private val BUTTON_Y_KEY = intPreferencesKey("button_y")
         private val AUTO_LOAD_MODEL_KEY = booleanPreferencesKey("auto_load_model")
+        private val MODEL_IDLE_TIMEOUT_KEY = stringPreferencesKey("model_idle_timeout")
         private val DICTIONARY_ENABLED_KEY = booleanPreferencesKey("dictionary_enabled")
         private val AUDIO_MONITOR_ENABLED_KEY = booleanPreferencesKey("audio_monitor_enabled")
         private val MONITORED_FOLDERS_KEY = stringSetPreferencesKey("monitored_folders")
         private val FLOATING_BUTTON_SIZE_KEY = stringPreferencesKey("floating_button_size")
         private val HISTORY_RETENTION_KEY = stringPreferencesKey("history_retention")
         private val SELECTED_MODEL_KEY = stringPreferencesKey("selected_model")
+        private val DIARIZATION_KEY = booleanPreferencesKey("speaker_diarization")
+        private val SPEAKER_COUNT_KEY = intPreferencesKey("speaker_count")
 
         const val BUTTON_SIZE_SMALL = "small"   // 44dp
         const val BUTTON_SIZE_MEDIUM = "medium" // 56dp (default)
@@ -48,6 +52,10 @@ class SettingsRepository(private val context: Context) {
     }
 
     val selectedModelId: Flow<String> = context.dataStore.data.map { it[SELECTED_MODEL_KEY] ?: ModelCatalog.DEFAULT.id }
+    val diarizationEnabled: Flow<Boolean> = context.dataStore.data.map { it[DIARIZATION_KEY] ?: false }
+    val speakerCount: Flow<Int> = context.dataStore.data.map { (it[SPEAKER_COUNT_KEY] ?: 0).takeIf { n -> n in 0..8 } ?: 0 }
+    suspend fun setDiarizationEnabled(enabled: Boolean) { context.dataStore.edit { it[DIARIZATION_KEY] = enabled } }
+    suspend fun setSpeakerCount(count: Int) { require(count in 0..8); context.dataStore.edit { it[SPEAKER_COUNT_KEY] = count } }
     suspend fun setSelectedModelId(id: String) { context.dataStore.edit { it[SELECTED_MODEL_KEY] = id } }
 
     suspend fun setHistoryRetention(retention: HistoryRetention) {
@@ -66,6 +74,14 @@ class SettingsRepository(private val context: Context) {
 
     val autoLoadModel: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[AUTO_LOAD_MODEL_KEY] ?: false
+    }
+
+    val modelIdleTimeout: Flow<ModelIdleTimeout> = context.dataStore.data.map { preferences ->
+        ModelIdleTimeout.fromKey(preferences[MODEL_IDLE_TIMEOUT_KEY])
+    }
+
+    suspend fun setModelIdleTimeout(timeout: ModelIdleTimeout) {
+        context.dataStore.edit { it[MODEL_IDLE_TIMEOUT_KEY] = timeout.key }
     }
 
     val dictionaryEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->

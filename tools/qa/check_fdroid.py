@@ -32,7 +32,7 @@ class FdroidCheck:
                 target = source / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(original, target)
-        for name in ("crispasr", "sherpa-onnx", "sherpa-deps", "onnxruntime-notices"):
+        for name in ("crispasr", "transcribe", "sherpa-onnx", "sherpa-deps", "onnxruntime-notices"):
             shutil.copytree(ROOT / ".native-cache" / name, source / ".native-cache" / name,
                             ignore=shutil.ignore_patterns(".git", "__pycache__"), symlinks=True)
         subprocess.run([sys.executable, str(source / "tools/prepare_fdroid.py")], check=True)

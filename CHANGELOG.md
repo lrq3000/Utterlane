@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recoverable completed text, and processing feedback.
 - Optional local recording history, replay, export, and configurable retention.
 - Moondream Parakeet Ultra/Redux recognition through the pinned CrispASR backend.
+- Compact native ternary Redux, custom CrispASR model imports, streaming speaker
+  labels, persistent app-language selection, and configurable idle model unloading.
 - F-Droid packaging preparation and free Google Play release-bundle workflow.
 - GitHub Releases, Obtainium, and Komi Store installation instructions.
 

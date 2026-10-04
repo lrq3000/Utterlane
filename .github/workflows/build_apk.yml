@@ -29,9 +29,9 @@ jobs:
 
       - name: Install Android build dependencies
         # The Ubuntu runner supplies the SDK tools and accepted SDK licenses.
-        # App and source-built sherpa bindings both target the API 36 toolchain.
+        # App/sherpa bindings use API 36; main's transcribe-native module uses 35.
         run: >-
-          sdkmanager "platforms;android-36" "build-tools;35.0.0"
+          sdkmanager "platforms;android-35" "platforms;android-36" "build-tools;35.0.0"
           "ndk;28.2.13676358" "cmake;3.22.1"
 
       - name: Cache sherpa-onnx AAR

@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
  * The user taps the notification, this activity starts the enabled services,
  * dismisses the notification, and finishes — the user never sees any UI.
  */
-class ServiceStartActivity : ComponentActivity() {
+class ServiceStartActivity : io.github.lrq3000.utterlane.settings.LocalizedActivity() {
 
     companion object {
         private const val TAG = "ServiceStartActivity"

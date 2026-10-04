@@ -34,12 +34,16 @@ Android**, built around responsive capture and incremental output. Dictate into
 other apps, use your keyboard's microphone button, or turn a shared voice message
 into text. No account, subscription, or speech-recognition server is required.
 
+**Automatically multilingual:** Utterlane detects the language you speak and can
+transcribe **multiple languages in the same recording**, with no manual language
+switching—all offline.
+
 ## Get started
 
 ### Install
 
 Use an **Android 8.0+ device with ARM64 support** and leave room for a speech model
-(approximately 402–674 MB, depending on your selection).
+(approximately 159–674 MB for the catalog models; custom models vary).
 
 **Direct APK:** open [GitHub Releases](https://github.com/lrq3000/Utterlane/releases/latest),
 download `Utterlane-<version>-arm64-v8a.apk` from **Assets**, and open it to install.
@@ -108,12 +112,28 @@ saved voice messages.
 | **Incremental text** | Receive completed speech segments while microphone capture continues; see file-transcription results before the whole file finishes. |
 | **System-wide input** | Use a keyboard microphone, accessibility button, or draggable floating microphone. |
 | **Voice-message transcription** | Share, open, or monitor audio files including OPUS, AAC, OGG, M4A, MP3, and WAV, subject to device codec support. |
-| **25 recognition languages** | Automatic language detection; a multilingual user interface. |
+| **Automatic multilingual transcription** | Recognize 25 languages automatically and mix supported languages in the same recording without changing settings. A multilingual user interface is also available. |
 | **Word corrections** | Fix recurring names and recognition mistakes with your own whole-word replacement rules. |
 | **Optional local history** | Replay, share, delete, or retranscribe saved microphone recordings with configurable retention. Off by default. |
 | **Long-session handling** | Bounded audio queues, chunked decoding, cancellation, and recoverable completed transcripts. |
 | **Live feedback** | Audio-driven waveform, low/no-signal feedback, processing progress, and an estimated remaining time after stopping. |
 | **Model recovery** | Unload/reset recognition without force-closing the app if a model fails or becomes stuck. |
+| **Automatic model unloading** | Free model memory after configurable inactivity; defaults to 20 minutes. |
+
+### Model memory
+
+In **Speech Model → Idle time before unload**, choose **Immediate**, **5 min**,
+**20 min** (default), **1 h**, **3 h**, **24 h**, or **Never**. The idle countdown
+starts after the last transcription finishes or is cancelled, or after loading
+a model without transcribing. Active recording and processing keep the model
+loaded. Changing the timeout applies to the time already spent idle.
+
+Unloading keeps downloaded model files and microphone services available; the
+next transcription reloads the model automatically. **Immediate** also skips
+startup auto-loading. **Never** disables this automatic unloading, although
+Android can still reclaim the app process. Sleep counts toward inactivity;
+expired deadlines are rechecked when the device wakes without waking it solely
+to unload the model.
 
 ### A closer look
 
@@ -141,16 +161,66 @@ background cleanup while asleep or force-stopped.
 
 ### Models and languages
 
+Speak naturally in any of the 25 supported languages—Utterlane detects the
+language automatically. You can even **switch languages within a single
+recording**: start speaking **English**, continue in **French**, then switch to
+**Spanish**. Utterlane transcribes each part in its spoken language without
+requiring you to select a language or restart the recording.
+
 | Model | Runtime | Approximate model download |
 | --- | --- | --- |
-| NVIDIA Parakeet TDT v3 — default | sherpa-onnx / ONNX INT8 | 670 MB |
-| Moondream Parakeet Ultra | CrispASR / GGUF Q8_0 or Q4_K | 674 MB or 402 MB |
+| NVIDIA Parakeet TDT v3 | sherpa-onnx / ONNX INT8 | 670 MB |
+| Moondream Parakeet Ultra — Q8_0 is the first-launch default | CrispASR / GGUF Q8_0 or Q4_K | 674 MB or 402 MB |
 | Moondream Parakeet Redux | CrispASR / GGUF Q8_0 or Q4_K | 674 MB or 402 MB |
+| Moondream Parakeet Redux — compact native ternary | transcribe.cpp / TQ1_Q8_0 | **159.1 MB** |
 
-These Redux GGUF conversions are not the original 178 MB Photon packing, and
+The CrispASR Redux GGUF conversions are not the original 178 MB Photon packing, and
 published Photon benchmarks do not establish their performance on your phone.
 The Q8 alternatives have on-emulator inference coverage; Q4 variants share the
 backend but have not received a separate on-device inference run.
+
+The additional **Redux TQ1_Q8_0** option retains its ternary encoder in RAM using
+transcribe.cpp's native ternary kernels. Q8_0 applies only to the remaining dense
+parameters. This prioritizes compact memory over the engine's faster expanded
+CPU layout. Its download is pinned and verified; it has separate storage and
+does not replace the existing Redux options. Total process RAM is greater than
+the download size because decoding, activations and application state also use
+memory. See [native ternary QA](docs/qa/redux-native-ternary.md) for measurements.
+
+**Custom models:** choose **Recognition model → Custom model…**, select the
+CrispASR-compatible speech model and its companion files together, then choose
+the main file. GGUF and legacy Whisper GGML models use CrispASR's generic session
+dispatcher. For models requiring an explicit audio tokenizer/codec (such as
+MiMo-ASR), assign that companion in the next step; otherwise retain automatic
+sibling discovery. Original filenames are preserved in private storage; **Load** checks
+native compatibility and runs a warm-up. A model supported upstream still needs
+the correct converted weights, companions, and enough device memory. Missing
+companions are not downloaded implicitly. TTS/music models are not speech-input
+models. Custom models currently use disjoint audio chunks so models without word
+timestamps cannot duplicate overlapping text.
+
+**Speaker labels:** enable **Speaker diarization → Add speaker labels** and
+download the separate NVIDIA Nemotron-3-Diarization model (107 MB), or import its
+GGUF from a folder. Labels appear while microphone or imported audio is processed;
+they are also included in copied/shared transcripts and text inserted into other
+apps. The default is **Off**, preserving ordinary unlabeled transcription.
+Choose **Auto (up to 8)** or **1–8** speakers. A specified count constrains native
+arrival-order tracks; it does not force nonexistent speakers or perform an
+offline global re-clustering pass. Speaker IDs belong to one recording, and
+uncertain speech can be labeled **Unknown speaker**. Settings changes take effect
+on the next recording. Diarization works alongside the original ONNX Parakeet v3;
+no migration or replacement download of that speech model is needed.
+
+Streaming labels are emitted at the existing audio segment boundaries, with
+lookahead and additional inference work. Device throughput determines whether
+processing keeps up with recording. Custom models without exposed word timings
+are transcribed by speaker-turn audio slices when diarization is enabled.
+
+**App language:** under **Appearance**, select **System (device language)**,
+**English**, or any of the 23 packaged translations. The choice persists across
+restarts and is independent of speech recognition language. Android 13+ also
+exposes the supported languages in its system per-app language settings. New
+settings use English fallback until the project's translation batch.
 
 <details>
 <summary>Supported recognition languages</summary>
@@ -190,7 +260,7 @@ network access after model setup.
 
 ### Requirements
 
-- OpenJDK 21, Android SDK platform 36, build tools `35.0.0`, Android NDK
+- OpenJDK 21, Android SDK platforms 35 and 36, build tools `35.0.0`, Android NDK
   `28.2.13676358`, CMake `3.22.1` (including Ninja).
 - Python 3.11.8+ and Git for pinned native-source preparation.
 - AGP `8.10.1`, Kotlin `2.0.21`, and Gradle `8.12.1` via the wrapper.
@@ -203,7 +273,7 @@ The first build needs network access to retrieve dependencies and source code.
 # ONNX Runtime is a SHA-256-verified official Maven Central dependency.
 python tools/build_sherpa.py
 
-# Prepare the pinned CrispASR/ggml sources and build Utterlane.
+# Prepare pinned CrispASR and transcribe.cpp sources (each with its own ggml).
 python tools/prepare_native.py
 ./gradlew assembleDebug
 

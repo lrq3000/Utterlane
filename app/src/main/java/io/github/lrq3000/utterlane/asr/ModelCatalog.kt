@@ -1,8 +1,9 @@
 package io.github.lrq3000.utterlane.asr
 
-enum class ModelBackend { SHERPA, CRISP }
+enum class ModelBackend { SHERPA, CRISP, TRANSCRIBE_CPP }
 data class ModelArtifact(val url: String, val localName: String, val bytes: Long, val sha256: String?)
-data class ModelDefinition(val id: String, val name: String, val backend: ModelBackend, val artifacts: List<ModelArtifact>) {
+data class ModelDefinition(val id: String, val name: String, val backend: ModelBackend, val artifacts: List<ModelArtifact>, val primaryFile: String = "model.gguf", val codecFile: String? = null) {
+    val isCustom: Boolean get() = id.startsWith("custom-")
     val downloadBytes: Long get() = artifacts.sumOf { it.bytes }
     // Storage belongs to model identity, not the first-launch default. Preserve
     // the original ONNX location and share this rule with the isolated worker.
@@ -21,10 +22,21 @@ object ModelCatalog {
         "parakeet-$family-$quant", "Moondream Parakeet ${family.replaceFirstChar { it.uppercase() }} · ${quant.uppercase()}", ModelBackend.CRISP,
         listOf(ModelArtifact("https://huggingface.co/cstr/parakeet-$family-GGUF/resolve/main/parakeet-$family-$quant.gguf", "model.gguf", size, hash)))
     val DEFAULT = gguf("ultra", "q8_0", 674342400, "ebf1186c3dc7e77f71877a5380a73e39d5c0aaf5cb55e65e56b077b1b2aacef1")
+    val REDUX_TERNARY = ModelDefinition(
+        "parakeet-redux-tq1-q8-native",
+        "Moondream Parakeet Redux · TQ1_Q8_0 · transcribe.cpp",
+        ModelBackend.TRANSCRIBE_CPP,
+        listOf(ModelArtifact(
+            "https://huggingface.co/Nairod785/parakeet-redux-gguf/resolve/87cbc354ce32bc9fe144b5b7bcdd9c68538907a9/parakeet-redux-0.6b-TQ1_Q8_0.gguf",
+            "model.gguf", 159121504,
+            "74f43ba852479e86e29df92cdbc89aa8215c7e8070f711be424ff466415b6184"
+        ))
+    )
     val models = listOf(PARAKEET_V3, DEFAULT,
         gguf("redux", "q8_0", 674342400, "606135796d55fd64b5baeb21966b3fcb469b61e6950ba2e0f9269c49cc734ff2"),
         gguf("ultra", "q4_k", 402226496, "09bb4a91da4c14f158ad01829b9bb3d81eedc85156d884e9a9c483dfe09238c6"),
-        gguf("redux", "q4_k", 402226496, "c07c7a0c76aa573334df88afc3a0c3bed45f90a35f09c22979e811078be30e6d"))
+        gguf("redux", "q4_k", 402226496, "c07c7a0c76aa573334df88afc3a0c3bed45f90a35f09c22979e811078be30e6d"),
+        REDUX_TERNARY)
     private val byId = models.associateBy { it.id }
     fun find(id: String?): ModelDefinition = byId[id] ?: DEFAULT
 }

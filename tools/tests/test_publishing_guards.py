@@ -11,6 +11,13 @@ from sign_release import ReleaseSigner
 
 
 class PublishingGuardsTest(unittest.TestCase):
+    def test_release_tag_preserves_main_prerelease_support(self):
+        for tag in ("v2.0.0", "v2.0.0-beta.1", "v2.0.0-alpha", "v2.0.0-rc.2"):
+            self.assertEqual(tag[1:], ReleaseSigner.release_version(tag))
+        for tag in ("main", "v2.0.0-", "v2.0.0-../escape", "v2.0.0;command"):
+            with self.assertRaises(ValueError):
+                ReleaseSigner.release_version(tag)
+
     def test_missing_signing_credentials_cannot_publish(self):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(ValueError, "signing secrets"):
