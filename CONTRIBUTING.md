@@ -27,9 +27,9 @@ as valuable contributions too.
 - Preserve third-party copyright/license notices. Contributions to this project
   are submitted under its existing Apache-2.0 license.
 
-See the README for build prerequisites and [QA notes](docs/qa/README.md) for
-device-test context. Brand assets have their own reproducible
-[design workflow](docs/design/utterlane-branding.md).
+See the [developer guide](docs/development.md) for build prerequisites and
+[QA notes](docs/qa/README.md) for device-test context. Brand assets have their own
+reproducible [design workflow](docs/design/utterlane-branding.md).
 
 ## AI-assisted contributions
 
