@@ -61,6 +61,18 @@
     <string name="model_auto_load_title">Auto-load on startup</string>
     <string name="model_auto_load_on">Model loads when app starts</string>
     <string name="model_auto_load_off">Load model manually</string>
+    <string name="model_auto_load_skipped_immediate">Skipped while idle time is Immediate; loads when transcription starts</string>
+    <string name="model_idle_title">Idle time before unload</string>
+    <string name="model_idle_change">Change</string>
+    <string name="model_idle_description">Free model memory after transcription is idle. The next transcription reloads it automatically. Active recording and processing are never interrupted.</string>
+    <string name="model_idle_immediate">Immediate</string>
+    <string name="model_idle_five_minutes">5 min</string>
+    <string name="model_idle_twenty_minutes">20 min</string>
+    <string name="model_idle_hour">1 h</string>
+    <string name="model_idle_three_hours">3 h</string>
+    <string name="model_idle_day">24 h</string>
+    <string name="model_idle_never">Never</string>
+    <string name="floating_install_model_first">Download or import a model first</string>
     <string name="model_attribution" translatable="false">NVIDIA Parakeet TDT v3 · CC-BY-4.0</string>
     <string name="model_import_title">Load model from folder</string>
     <string name="model_import_instructions">Download the model files from the link below and place them in a folder on your device:\n\n • encoder.int8.onnx\n • decoder.int8.onnx\n • joiner.int8.onnx\n • tokens.txt\n\nThen select that folder.</string>
