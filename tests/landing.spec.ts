@@ -9,7 +9,7 @@ test('presents the promised product and usable download route', async ({ page })
   await expect(page.getByRole('heading', { level: 1 })).toContainText('100%');
   const downloads = page.getByRole('main').getByRole('link', { name: 'Get Utterlane', exact: true });
   await expect(downloads.first()).toHaveAttribute('href', 'https://github.com/lrq3000/Utterlane/releases');
-  await expect(page.locator('#setup')).toContainText('402–674 MB');
+  await expect(page.locator('#setup')).toContainText('Size varies by model');
 });
 
 test('respects reduced motion and lets the reader explicitly start and pause it', async ({ page }) => {
