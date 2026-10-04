@@ -21,7 +21,8 @@ class MicrophoneSession(
     private val onCaptureEnded: () -> Unit = {},
     private val onWarning: (String) -> Unit = {},
     private val onReady: () -> Unit = {},
-    private val recorder: AudioCapture = AudioRecorder()
+    private val recorder: AudioCapture = AudioRecorder(),
+    private val onSessionClosed: () -> Unit = {}
 ) {
     companion object {
         private val active = AtomicReference<MicrophoneSession?>(null)
@@ -43,12 +44,14 @@ class MicrophoneSession(
             var session: TranscriptionSession? = null
             var recording: RecordingHistory.Recording? = null
             var lease: Closeable? = null
+            var power: TranscriptionPower? = null
             var failure: SessionFailure? = null
             var phase = SessionFailure.Kind.MODEL
             var finalizationWarning: String? = null
             val captureFailure = java.util.concurrent.atomic.AtomicReference<SessionFailure?>(null)
             val historyWriteFailed = java.util.concurrent.atomic.AtomicBoolean(false)
             try {
+                power = TranscriptionPower(context) { recorder.resumeAfterSleep() }
                 val app = UtterlaneApp.instance
                 telemetry.model(app.modelManager.selected.value.name)
                 session = app.recognizerManager.createSession(onProcessed = { end, ms -> telemetry.processed(end, ms) }) { delta ->
@@ -156,24 +159,29 @@ class MicrophoneSession(
                 Log.e("MicrophoneSession", "Transcription failed", e)
                 failure = SessionFailure(phase, e.message ?: context.getString(R.string.transcribe_error_failed))
             } finally {
-                recorder.stop()
-                withContext(NonCancellable + Dispatchers.IO) {
-                    session?.close()
-                    try { recording?.finish((failure != null && failure.kind != SessionFailure.Kind.NO_SPEECH) || cancelled || historyWriteFailed.get()) }
-                    catch (e: Exception) { Log.e("MicrophoneSession", "History finalization failed", e); finalizationWarning = context.getString(R.string.history_save_failed, e.message ?: "Storage error") }
-                    finally {
-                        try { lease?.close() }
-                        finally { active.compareAndSet(this@MicrophoneSession, null) }
+                try {
+                    recorder.stop()
+                    withContext(NonCancellable + Dispatchers.IO) {
+                        session?.close()
+                        try { recording?.finish((failure != null && failure.kind != SessionFailure.Kind.NO_SPEECH) || cancelled || historyWriteFailed.get()) }
+                        catch (e: Exception) { Log.e("MicrophoneSession", "History finalization failed", e); finalizationWarning = context.getString(R.string.history_save_failed, e.message ?: "Storage error") }
+                        finally {
+                            try { lease?.close() }
+                            finally { active.compareAndSet(this@MicrophoneSession, null) }
+                        }
+                        try { UtterlaneApp.instance.recordingHistory.prune(UtterlaneApp.instance.settingsRepository.historyRetention.first()) }
+                        catch (e: Exception) { Log.e("MicrophoneSession", "History pruning failed", e) }
                     }
-                    try { UtterlaneApp.instance.recordingHistory.prune(UtterlaneApp.instance.settingsRepository.historyRetention.first()) }
-                    catch (e: Exception) { Log.e("MicrophoneSession", "History pruning failed", e) }
-                }
-                withContext(NonCancellable + Dispatchers.Main) {
-                    if (cancelled) telemetry.cancelled() else telemetry.completed(failure?.message)
-                    if (!cancelled) finalizationWarning?.let { onWarning(it) }
-                    if (resetRequested) onComplete(session?.store, SessionFailure(SessionFailure.Kind.MODEL, context.getString(R.string.model_reset_done)))
-                    else if (!cancelled) onComplete(session?.store, failure)
-                    else session?.store?.let { io.github.lrq3000.utterlane.service.TranscriptRecovery.show(context, it) }
+                    withContext(NonCancellable + Dispatchers.Main) {
+                        if (cancelled) telemetry.cancelled() else telemetry.completed(failure?.message)
+                        if (!cancelled) finalizationWarning?.let { onWarning(it) }
+                        if (resetRequested) onComplete(session?.store, SessionFailure(SessionFailure.Kind.MODEL, context.getString(R.string.model_reset_done)))
+                        else if (!cancelled) onComplete(session?.store, failure)
+                        else session?.store?.let { io.github.lrq3000.utterlane.service.TranscriptRecovery.show(context, it) }
+                    }
+                } finally {
+                    try { withContext(NonCancellable + Dispatchers.Main) { onSessionClosed() } }
+                    finally { power?.close() }
                 }
             }
         }

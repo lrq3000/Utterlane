@@ -62,9 +62,10 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         observer = scope.launch { state.collect { render(it) } }
     }
     fun preview(text: String) { statusText.text = text.takeLast(300) }
-    fun release() { observer?.cancel(); observer = null }
+    fun release() { observer?.cancel(); observer = null; keepScreenOn = false }
 
     private fun render(snapshot: CaptureSnapshot) {
+        keepScreenOn = snapshot.phase !in listOf(CapturePhase.COMPLETE, CapturePhase.FAILED, CapturePhase.CANCELLED)
         val capturing = snapshot.phase == CapturePhase.CAPTURING
         waveform.visibility = if (capturing) View.VISIBLE else View.GONE
         waveform.isEnabled = capturing

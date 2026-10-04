@@ -8,6 +8,22 @@ import org.junit.Test
 import android.speech.SpeechRecognizer
 
 class AudioPipelineTest {
+    @Test fun interruptedFinalWindowCanBeFinishedWithoutLosingOrDuplicatingTail() = runBlocking {
+        val delivered = mutableListOf<AudioWindow>()
+        var interrupted = true
+        val segmenter = AudioSegmenter(sampleRate = 100, maxSeconds = 1, contextSeconds = 0.1) { window ->
+            if (interrupted) throw IllegalStateException("worker temporarily unavailable")
+            delivered.add(window)
+        }
+        segmenter.accept(shortArrayOf(1000, 2000, 3000))
+        try { segmenter.finish(); fail("Expected interruption") } catch (_: IllegalStateException) { }
+        interrupted = false
+        segmenter.finish()
+        segmenter.finish()
+        assertEquals("The uncommitted final audio window must survive interruption", 1, delivered.size)
+        assertArrayEquals(shortArrayOf(1000, 2000, 3000), delivered.single().samples)
+    }
+
     @Test fun subwordPiecesAcrossOwnershipBoundaryRemainOneWord() {
         val first = WindowText.select(arrayOf(" Hel", "lo", " world"), floatArrayOf(0.9f, 1.1f, 1.3f), AudioWindow(ShortArray(200), 0, 0, 100), 100)
         val second = WindowText.select(arrayOf(" Hello", " world"), floatArrayOf(0.9f, 1.3f), AudioWindow(ShortArray(200), 0, 100, 200), 100)

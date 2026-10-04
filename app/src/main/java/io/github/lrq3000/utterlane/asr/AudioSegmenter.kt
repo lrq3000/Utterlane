@@ -46,9 +46,11 @@ class AudioSegmenter(
 
     suspend fun finish() {
         if (finished) return
-        finished = true
         boundary?.let { emit(it) }
         if (start + size > ownedStart) emit(start + size)
+        // Commit completion only after consume succeeds, so interruption cannot
+        // permanently hide the final buffered window from a resumed finish().
+        finished = true
     }
 
     private suspend fun emit(end: Long) {
