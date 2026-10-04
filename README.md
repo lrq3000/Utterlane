@@ -82,6 +82,22 @@ saved voice messages.
 | **Long-session handling** | Bounded audio queues, chunked decoding, cancellation, and recoverable completed transcripts. |
 | **Live feedback** | Audio-driven waveform, low/no-signal feedback, processing progress, and an estimated remaining time after stopping. |
 | **Model recovery** | Unload/reset recognition without force-closing the app if a model fails or becomes stuck. |
+| **Automatic model unloading** | Free model memory after configurable inactivity; defaults to 20 minutes. |
+
+### Model memory
+
+In **Speech Model → Idle time before unload**, choose **Immediate**, **5 min**,
+**20 min** (default), **1 h**, **3 h**, **24 h**, or **Never**. The idle countdown
+starts after the last transcription finishes or is cancelled, or after loading
+a model without transcribing. Active recording and processing keep the model
+loaded. Changing the timeout applies to the time already spent idle.
+
+Unloading keeps downloaded model files and microphone services available; the
+next transcription reloads the model automatically. **Immediate** also skips
+startup auto-loading. **Never** disables this automatic unloading, although
+Android can still reclaim the app process. Sleep counts toward inactivity;
+expired deadlines are rechecked when the device wakes without waking it solely
+to unload the model.
 
 ### A closer look
 
