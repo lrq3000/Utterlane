@@ -107,14 +107,49 @@ background cleanup while asleep or force-stopped.
 
 | Model | Runtime | Approximate model download |
 | --- | --- | --- |
-| NVIDIA Parakeet TDT v3 — default | sherpa-onnx / ONNX INT8 | 670 MB |
-| Moondream Parakeet Ultra | CrispASR / GGUF Q8_0 or Q4_K | 674 MB or 402 MB |
+| NVIDIA Parakeet TDT v3 | sherpa-onnx / ONNX INT8 | 670 MB |
+| Moondream Parakeet Ultra — Q8_0 default | CrispASR / GGUF Q8_0 or Q4_K | 674 MB or 402 MB |
 | Moondream Parakeet Redux | CrispASR / GGUF Q8_0 or Q4_K | 674 MB or 402 MB |
 
 These Redux GGUF conversions are not the original 178 MB Photon packing, and
 published Photon benchmarks do not establish their performance on your phone.
 The Q8 alternatives have on-emulator inference coverage; Q4 variants share the
 backend but have not received a separate on-device inference run.
+
+**Custom models:** choose **Recognition model → Custom model…**, select the
+CrispASR-compatible speech model and its companion files together, then choose
+the main file. GGUF and legacy Whisper GGML models use CrispASR's generic session
+dispatcher. For models requiring an explicit audio tokenizer/codec (such as
+MiMo-ASR), assign that companion in the next step; otherwise retain automatic
+sibling discovery. Original filenames are preserved in private storage; **Load** checks
+native compatibility and runs a warm-up. A model supported upstream still needs
+the correct converted weights, companions, and enough device memory. Missing
+companions are not downloaded implicitly. TTS/music models are not speech-input
+models. Custom models currently use disjoint audio chunks so models without word
+timestamps cannot duplicate overlapping text.
+
+**Speaker labels:** enable **Speaker diarization → Add speaker labels** and
+download the separate NVIDIA Nemotron-3-Diarization model (107 MB), or import its
+GGUF from a folder. Labels appear while microphone or imported audio is processed;
+they are also included in copied/shared transcripts and text inserted into other
+apps. The default is **Off**, preserving ordinary unlabeled transcription.
+Choose **Auto (up to 8)** or **1–8** speakers. A specified count constrains native
+arrival-order tracks; it does not force nonexistent speakers or perform an
+offline global re-clustering pass. Speaker IDs belong to one recording, and
+uncertain speech can be labeled **Unknown speaker**. Settings changes take effect
+on the next recording. Diarization works alongside the original ONNX Parakeet v3;
+no migration or replacement download of that speech model is needed.
+
+Streaming labels are emitted at the existing audio segment boundaries, with
+lookahead and additional inference work. Device throughput determines whether
+processing keeps up with recording. Custom models without exposed word timings
+are transcribed by speaker-turn audio slices when diarization is enabled.
+
+**App language:** under **Appearance**, select **System (device language)**,
+**English**, or any of the 23 packaged translations. The choice persists across
+restarts and is independent of speech recognition language. Android 13+ also
+exposes the supported languages in its system per-app language settings. New
+settings use English fallback until the project's translation batch.
 
 <details>
 <summary>Supported recognition languages</summary>

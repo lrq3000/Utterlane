@@ -70,11 +70,31 @@ class WorkerRecognitionBackend(context: Context, private val model: ModelDefinit
     }
 
     override fun transcribeWindow(samples: ShortArray): WindowResult {
+        val result = request(RecognitionProtocol.DECODE, pcmBundle(samples), 90)
+        return WindowResult(requireNotNull(result.getStringArray("tokens")), requireNotNull(result.getFloatArray("timestamps")), result.getString("text"))
+    }
+    private fun pcmBundle(samples: ShortArray): Bundle {
         require(samples.size in 1..RecognitionProtocol.MAX_SAMPLES)
         val pcm = ByteBuffer.allocate(samples.size * 2).order(ByteOrder.LITTLE_ENDIAN)
         pcm.asShortBuffer().put(samples)
-        val result = request(RecognitionProtocol.DECODE, Bundle().apply { putByteArray("pcm", pcm.array()) }, 90)
-        return WindowResult(requireNotNull(result.getStringArray("tokens")), requireNotNull(result.getFloatArray("timestamps")))
+        return Bundle().apply { putByteArray("pcm", pcm.array()) }
+    }
+    override fun transcribeSpeakers(sessionId: Long, window: AudioWindow, count: Int): List<SpeechSpan> {
+        val result = request(RecognitionProtocol.SPEAKERS, pcmBundle(window.samples).apply {
+            putLong("session", sessionId); putInt("count", count); putLong("start", window.startSample)
+            putLong("ownedStart", window.ownedStart); putLong("ownedEnd", window.ownedEnd); putBoolean("final", window.isFinal)
+        }, 90)
+        val texts = requireNotNull(result.getStringArray("texts"))
+        val speakers = requireNotNull(result.getIntArray("speakers"))
+        check(texts.size == speakers.size && speakers.all { it in -1..7 })
+        return texts.indices.map { SpeechSpan(texts[it], speakers[it]) }
+    }
+    override fun endSession(sessionId: Long) {
+        // Fire-and-forget cleanup is queued behind any cancelled in-flight JNI
+        // operation. Closing a recording never waits on the Android main thread.
+        if (!closed.get()) try {
+            remote?.send(Message.obtain().apply { what = RecognitionProtocol.END_SESSION; data = Bundle().apply { putLong("session", sessionId) } })
+        } catch (_: RemoteException) { /* Process exit has already reclaimed it. */ }
     }
 
     private fun request(operation: Int, data: Bundle, seconds: Long): Bundle {

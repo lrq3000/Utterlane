@@ -56,7 +56,7 @@ import io.github.lrq3000.utterlane.ui.BrandSection
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-class SettingsActivity : ComponentActivity() {
+class SettingsActivity : LocalizedActivity() {
 
     private val refreshTrigger = mutableStateOf(0)
 
@@ -396,6 +396,7 @@ fun SettingsScreen(
             SettingsSection(title = stringResource(R.string.section_speech_model)) {
                 ModelSelector()
                 ModelSettingItem(
+                    isCustom = selectedModel.isCustom,
                     modelName = selectedModel.name,
                     modelBytes = selectedModel.downloadBytes,
                     importFiles = selectedModel.artifacts.joinToString(", ") { it.url.substringAfterLast('/').substringBefore('?') },
@@ -796,8 +797,11 @@ fun SettingsScreen(
                 )
             }
 
+            DiarizationSettings(onPickModelFolder)
+
             // Appearance Section
             SettingsSection(title = stringResource(R.string.section_appearance)) {
+                AppLanguageSetting()
                 ThemeSettingItem(
                     selectedTheme = themeMode,
                     onThemeSelected = { theme ->
@@ -884,7 +888,8 @@ fun ModelSettingItem(
     onDownload: () -> Unit,
     onLoadLocal: () -> Unit,
     onLoadModel: () -> Unit,
-    onUnloadModel: () -> Unit
+    onUnloadModel: () -> Unit,
+    isCustom: Boolean = false
 ) {
     var showImportDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -925,10 +930,11 @@ fun ModelSettingItem(
             when {
                 downloadState is ModelManager.DownloadState.NotStarted ||
                 downloadState is ModelManager.DownloadState.Error -> {
-                    Button(onClick = onDownload, shape = MaterialTheme.shapes.small) {
+                    if (isCustom) Text(stringResource(R.string.model_custom_reimport))
+                    else Button(onClick = onDownload, shape = MaterialTheme.shapes.small) {
                         Text(stringResource(R.string.action_download))
                     }
-                    TextButton(onClick = { showImportDialog = true }) {
+                    if (!isCustom) TextButton(onClick = { showImportDialog = true }) {
                         Text(stringResource(R.string.action_load_local))
                     }
                 }

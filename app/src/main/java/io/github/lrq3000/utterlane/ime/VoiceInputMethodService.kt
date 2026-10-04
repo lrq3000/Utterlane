@@ -18,6 +18,7 @@ import kotlinx.coroutines.*
 
 /** Auxiliary voice IME. Shared recording UI and bounded microphone pipeline. */
 class VoiceInputMethodService : InputMethodService() {
+    override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(io.github.lrq3000.utterlane.settings.AppLanguage.wrap(base))
     companion object { private const val TAG = "VoiceInputMethodService" }
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var microphoneSession: MicrophoneSession? = null

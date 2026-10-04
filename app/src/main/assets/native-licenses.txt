@@ -1,6 +1,7 @@
-CrispASR (Parakeet runtime and shared primitives)
+CrispASR (generic speech runtime, streaming diarization and shared primitives)
 https://github.com/CrispStrobe/CrispASR
 Revision: 966561aa596cfc653aa0e9885d44117fad9cca35
+Complete upstream notices are packaged in assets/crispasr/THIRD_PARTY_NOTICES.txt.
 
 MIT License
 
@@ -59,3 +60,7 @@ GGUF conversions: https://huggingface.co/cstr/parakeet-ultra-GGUF
 and https://huggingface.co/cstr/parakeet-redux-GGUF
 Model licenses: CC-BY-4.0, https://creativecommons.org/licenses/by/4.0/
 Quantized GGUF conversions differ from the original weight packaging.
+
+NVIDIA Nemotron-3-Diarization (optional separate download):
+https://huggingface.co/nvidia/Nemotron-3-Diarization
+Model license: OpenMDW-1.1, https://github.com/OpenMDW/OpenMDW/blob/main/LICENSE.md
