@@ -4,14 +4,14 @@ import type { MotionPreference } from './motion';
  * layout changes; a frame only updates a fixed handful of CSS properties.
  * There is no perpetual rAF loop and no document query inside a scroll frame. */
 export class ScrollStory {
-  private readonly hero = document.querySelector<HTMLElement>('.hero');
+  private readonly hero = document.querySelector<HTMLElement>('.hero-art');
   private readonly story = document.querySelector<HTMLElement>('.story');
   private readonly steps = [...document.querySelectorAll<HTMLElement>('[data-story-step]')];
   private readonly segments = [...document.querySelectorAll<HTMLElement>('.segment')];
   private frame = 0;
   private needsMeasure = true;
-  private heroTop = 0;
-  private heroHeight = 1;
+  private heroStart = 0;
+  private heroEnd = 1;
   private storyTop = 0;
   private storyHeight = 1;
   private sticky = false;
@@ -29,6 +29,10 @@ export class ScrollStory {
     const observer = new ResizeObserver(() => this.invalidate());
     observer.observe(this.hero);
     observer.observe(this.story);
+    // The interlude and stacked hero can change the story's position without
+    // changing the story's own dimensions (for example, with larger text).
+    const main = document.querySelector('main');
+    if (main) observer.observe(main);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) this.invalidate();
     });
@@ -51,8 +55,12 @@ export class ScrollStory {
   private measure(): void {
     const heroRect = this.hero!.getBoundingClientRect();
     const storyRect = this.story!.getBoundingClientRect();
-    this.heroTop = heroRect.top + scrollY;
-    this.heroHeight = heroRect.height;
+    const heroTop = heroRect.top + scrollY;
+    // Finish the turn while much of the phone is still visible. On mobile,
+    // the copy sits above it, so normalizing against the whole hero wastes
+    // most of the useful rotation before the illustration even enters view.
+    this.heroStart = Math.max(0, heroTop - innerHeight * .46);
+    this.heroEnd = heroTop + heroRect.height * .45;
     this.storyTop = storyRect.top + scrollY;
     this.storyHeight = storyRect.height;
     this.sticky = matchMedia('(min-width: 761px) and (min-height: 700px)').matches;
@@ -70,7 +78,7 @@ export class ScrollStory {
       return;
     }
 
-    const heroProgress = this.clamp((scrollY - this.heroTop) / this.heroHeight).toFixed(3);
+    const heroProgress = this.clamp((scrollY - this.heroStart) / Math.max(1, this.heroEnd - this.heroStart)).toFixed(3);
     if (heroProgress !== this.lastHeroProgress) {
       this.hero!.style.setProperty('--hero-progress', heroProgress);
       this.lastHeroProgress = heroProgress;

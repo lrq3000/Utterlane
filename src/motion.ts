@@ -55,3 +55,62 @@ export class MotionVisibility {
     });
   }
 }
+
+/** One entrance per target, independent of scroll-frame work. Content is
+ * readable by default; only a successfully initialized observer opts into
+ * the pre-entry styles. Pausing motion restores the static CSS immediately. */
+export class ViewportReveals {
+  private readonly observer: IntersectionObserver | null;
+  private readonly entering = new Set<HTMLElement>();
+
+  constructor(private readonly motion: MotionPreference) {
+    if (!('IntersectionObserver' in window)) {
+      this.observer = null;
+      return;
+    }
+    this.observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) this.reveal(entry.target as HTMLElement);
+      }
+    }, { threshold: .08, rootMargin: '0px 0px -32px 0px' });
+
+    document.querySelectorAll<HTMLElement>('[data-reveal]').forEach(target => this.observer!.observe(target));
+    document.documentElement.dataset.reveals = 'ready';
+    // Retire CSS entrance eligibility after its final animation. Merely keeping
+    // data-revealed would recreate animations whenever Pause changes to Play.
+    // The speed heading's detail is its last section-arrival (750ms including
+    // delay); ordinary targets and quickstart rules finish together at 650ms.
+    document.addEventListener('animationend', event => {
+      if (event.animationName !== 'section-arrival' || !(event.target instanceof Element)) return;
+      const target = event.target.closest<HTMLElement>('[data-reveal]');
+      if (target) this.settle(target);
+    });
+    motion.addEventListener('change', () => {
+      if (!motion.enabled) {
+        for (const target of this.entering) this.settle(target);
+      }
+    });
+    // Keyboard navigation must never wait for a viewport threshold or an
+    // entrance delay. Only walk the focused element's ancestors, not the page.
+    document.addEventListener('focusin', event => {
+      let target = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-reveal]') : null;
+      while (target) {
+        this.reveal(target);
+        this.settle(target);
+        target = target.parentElement?.closest<HTMLElement>('[data-reveal]') ?? null;
+      }
+    });
+  }
+
+  private reveal(target: HTMLElement): void {
+    target.dataset.revealed = '';
+    this.observer?.unobserve(target);
+    if (!this.motion.enabled) this.settle(target);
+    else if (!target.hasAttribute('data-reveal-settled')) this.entering.add(target);
+  }
+
+  private settle(target: HTMLElement): void {
+    target.dataset.revealSettled = '';
+    this.entering.delete(target);
+  }
+}

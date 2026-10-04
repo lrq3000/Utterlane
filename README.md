@@ -36,10 +36,13 @@ For reproducible desktop/mobile visual captures with the preview server running:
 
 ```text
 node tools/capture.mjs http://127.0.0.1:4174 /absolute/path/to/screenshots
+node tools/capture.mjs http://127.0.0.1:4174 /absolute/path/to/screenshots "#speed" "#everyday" ".closing"
 ```
 
 The capture utility uses reduced motion so a full-page image shows the completed
-story. Also check the live scroll sequence and play/pause control in a browser.
+story, in desktop, portrait and landscape layouts. Optional trailing selectors
+also capture individual sections at native resolution. Check the live scroll
+sequence and play/pause control in a browser too.
 
 ## GitHub Pages
 
@@ -79,6 +82,9 @@ Graph URLs in `index.html`, `public/robots.txt`, and `public/sitemap.xml`.
 - `src/styles.css`: Blue harmony tokens, typography, layout and breakpoints.
 - `src/illustrations.css`: original CSS phone and on-device processing scenes.
 - `src/motion.ts`: user/OS motion preference, offscreen/background pausing.
+- `ViewportReveals` in `src/motion.ts`: one-shot section entrances that settle on
+  completion, pause, reduced motion, or keyboard focus; resuming does not replay
+  already-read text.
 - `src/scroll-story.ts`: requestAnimationFrame-coalesced scroll progression.
 - `src/demos.ts`: bounded decorative waveform construction (no audio capture).
 - `public/brand/`: original artwork and its provenance.

@@ -10,7 +10,9 @@ export class DemoIllustrations {
     const fragment = document.createDocumentFragment();
     for (let index = 0; index < count; index++) {
       const bar = document.createElement('i');
-      bar.style.setProperty('--bar-height', `${12 + Math.abs(Math.sin(index * 1.83)) * 32}px`);
+      // Proportions preserve a substantial signal in every panel, from the
+      // audio-file card to the phone and the full-width speed interlude.
+      bar.style.setProperty('--bar-height', `${24 + Math.abs(Math.sin(index * 1.83)) * 62}%`);
       bar.style.setProperty('--bar-delay', `${-(index % 9) * .14}s`);
       fragment.append(bar);
     }
