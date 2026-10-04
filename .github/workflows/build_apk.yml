@@ -27,8 +27,15 @@ jobs:
           distribution: temurin
           cache: gradle
 
+      # Bootstrap sdkmanager and accept licenses explicitly: runner image
+      # updates can change the preinstalled SDK tools and their PATH entries.
+      - name: Set up Android SDK tools
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: ''
+          log-accepted-android-sdk-licenses: false
+
       - name: Install Android build dependencies
-        # The Ubuntu runner supplies the SDK tools and accepted SDK licenses.
         # App/sherpa bindings use API 36; main's transcribe-native module uses 35.
         run: >-
           sdkmanager "platforms;android-35" "platforms;android-36" "build-tools;35.0.0"
@@ -105,6 +112,13 @@ jobs:
         with:
           name: Utterlane-release-unsigned
           path: artifacts
+
+      # Jobs have separate runners; the build job's SDK setup is not inherited.
+      - name: Set up Android SDK tools
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: ''
+          log-accepted-android-sdk-licenses: false
 
       - name: Install signing tools
         run: sdkmanager "build-tools;35.0.0"
