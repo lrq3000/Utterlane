@@ -141,6 +141,13 @@ fun TranscribeScreen(
     var processingJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var preserveResult by remember { mutableStateOf(false) }
 
+    val view = androidx.compose.ui.platform.LocalView.current
+    DisposableEffect(view, running) {
+        val previous = view.keepScreenOn
+        view.keepScreenOn = running
+        onDispose { view.keepScreenOn = previous }
+    }
+
     DisposableEffect(store) {
         val result = store
         val ownerJob = processingJob
@@ -159,6 +166,7 @@ fun TranscribeScreen(
     LaunchedEffect(audioUri, filePath, historyId, transcriptPath) {
         processingJob = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
         var activeSession: io.github.lrq3000.utterlane.asr.TranscriptionSession? = null
+        var power: io.github.lrq3000.utterlane.asr.TranscriptionPower? = null
         try {
             if (transcriptPath != null) {
                 val recovered = withContext(Dispatchers.IO) {
@@ -171,6 +179,7 @@ fun TranscribeScreen(
                 return@LaunchedEffect
             }
             require(audioUri != null || filePath != null || historyId != null) { context.getString(R.string.transcribe_error_no_audio) }
+            power = io.github.lrq3000.utterlane.asr.TranscriptionPower(context)
             withContext(Dispatchers.IO) {
                 val app = UtterlaneApp.instance
                 check(app.modelManager.isModelReady()) { context.getString(R.string.transcribe_error_no_model) }
@@ -210,11 +219,12 @@ fun TranscribeScreen(
             android.util.Log.e("TranscribeActivity", "Incremental transcription failed", e)
             message = e.message ?: context.getString(R.string.transcribe_error_failed)
         } finally {
-            activeSession?.close()
-            // Cancellation can happen between file creation and the first UI
-            // publication. Such an unexposed empty store still has an owner.
-            if (store == null) withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { activeSession?.store?.dispose() }
-            running = false
+            try {
+                activeSession?.close()
+                // Cancellation can happen between file creation and the first UI
+                // publication. Such an unexposed empty store still has an owner.
+                if (store == null) withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { activeSession?.store?.dispose() }
+            } finally { running = false; power?.close() }
         }
     }
 

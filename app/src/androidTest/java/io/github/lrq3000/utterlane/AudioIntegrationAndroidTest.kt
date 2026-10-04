@@ -173,14 +173,7 @@ class AudioIntegrationAndroidTest {
     }
 
     @Test fun voiceImeCommitsLiveTextAndDrainsOnDone() {
-        shell("ime enable $voiceIme")
-        shell("settings put secure show_ime_with_hard_keyboard 1")
-        // Auxiliary IME selection via `ime set` is transient on this emulator:
-        // the settings observer restores the persisted keyboard on the next
-        // settings change. Select it persistently for this fixture; @After
-        // restores the original keyboard and enabled-method list.
-        shell("settings put secure default_input_method $voiceIme")
-        launchEditor(showKeyboard = true)
+        startVoiceIme()
         await("new IME capture") { source.get()?.running?.get() == true }
         await("IME live text") { editor("QA first editor")?.text?.contains("country", true) == true }
         assertTrue(source.get().running.get())
@@ -188,6 +181,86 @@ class AudioIntegrationAndroidTest {
         await("IME capture stop") { !source.get().running.get() }
         await("previous keyboard restored") { shell("settings get secure default_input_method") != voiceIme }
         assertTrue(editor("QA first editor")!!.text.toString().contains("country", true))
+    }
+
+    @Test fun voiceImeKeepsScreenAwakeAndContinuesSameSessionAfterSleep() = verifySleepRecovery(forceDoze = false)
+
+    @Test fun voiceImeContinuesSameSessionAfterForcedDoze() {
+        try {
+            shell("input keyevent 223")
+            shell("dumpsys battery unplug")
+            val response = shell("dumpsys deviceidle force-idle")
+            org.junit.Assume.assumeTrue("Runtime does not support forced Doze: $response",
+                app.getSystemService(android.os.PowerManager::class.java).isDeviceIdleMode)
+        } finally { wakeDevice() }
+        verifySleepRecovery(forceDoze = true)
+    }
+
+    private fun verifySleepRecovery(forceDoze: Boolean) {
+        val oldTimeout = shell("settings get system screen_off_timeout")
+        try {
+            shell("settings put system screen_off_timeout 30000")
+            startVoiceIme()
+            await("new IME capture") { source.get()?.running?.get() == true }
+            await("IME live text") { editor("QA first editor")?.text?.contains("country", true) == true }
+            val originalSource = source.get()
+            val originalText = editor("QA first editor")!!.text.toString()
+            if (!forceDoze) Thread.sleep(32_000)
+            assertTrue("Active dictation must prevent automatic screen timeout", app.getSystemService(android.os.PowerManager::class.java).isInteractive)
+            assertTrue(originalSource.running.get())
+            val beforeSleep = editor("QA first editor")!!.text.toString()
+
+            // Power is a forced screen-off despite our screen lock. Doze is a
+            // separate case: emulators which cannot enter it must not fake a pass.
+            shell("input keyevent 223")
+            if (forceDoze) {
+                shell("dumpsys battery unplug")
+                shell("dumpsys deviceidle force-idle")
+            }
+            Thread.sleep(1500)
+            assertFalse("Test must actually turn the display off", app.getSystemService(android.os.PowerManager::class.java).isInteractive)
+            if (forceDoze) assertTrue("Test must actually enter Doze", app.getSystemService(android.os.PowerManager::class.java).isDeviceIdleMode)
+            assertTrue("Screen-off must not stop live capture", originalSource.running.get())
+            wakeDevice()
+            await("same IME session resumes insertion") {
+                val text = editor("QA first editor")?.text?.toString().orEmpty()
+                text.startsWith(beforeSleep) && text.length > beforeSleep.length &&
+                    find { it.viewIdResourceName?.endsWith("/recording_done") == true } != null
+            }
+            assertSame("Wake must not create a new session", originalSource, source.get())
+            assertTrue(originalSource.running.get())
+            val afterWake = editor("QA first editor")!!.text.toString()
+            await("new speech continues after wake backlog") { editor("QA first editor")!!.text.length > afterWake.length }
+            click(find { it.viewIdResourceName?.endsWith("/recording_done") == true }!!)
+            await("wake-recovered capture stop") { !originalSource.running.get() }
+            await("wake-recovered final tail") { !MicrophoneSession.isBusy() }
+            assertTrue(editor("QA first editor")!!.text.toString().startsWith(originalText))
+            await("all transcription wake locks released") {
+                !shell("dumpsys power").substringAfter("Wake Locks: ").substringBefore("Suspend Blockers:").contains("Utterlane:transcription-")
+            }
+        } finally {
+            wakeDevice()
+            if (oldTimeout == "null") shell("settings delete system screen_off_timeout")
+            else shell("settings put system screen_off_timeout $oldTimeout")
+        }
+    }
+
+    private fun wakeDevice() {
+        shell("dumpsys deviceidle unforce")
+        shell("dumpsys battery reset")
+        shell("input keyevent 224")
+        shell("wm dismiss-keyguard")
+    }
+
+    private fun startVoiceIme() {
+        // Focus the final editor BEFORE selecting the auto-recording IME. Doing
+        // this in reverse can start dictation in the previous activity's editor
+        // and correctly stop it during the subsequent activity transition.
+        launchEditor(showKeyboard = true)
+        shell("ime enable $voiceIme")
+        shell("settings put secure show_ime_with_hard_keyboard 1")
+        // `ime set` is transient on LDPlayer; @After restores persisted settings.
+        shell("settings put secure default_input_method $voiceIme")
     }
 
     private fun enableAccessibility() {
@@ -205,9 +278,12 @@ class AudioIntegrationAndroidTest {
         }
     }
     private fun launchEditor(requestVoice: Boolean = false, showKeyboard: Boolean = false, requestSpeechApi: Boolean = false) {
+        val launchId = SystemClock.uptimeMillis().toString()
         app.startActivity(Intent().setComponent(ComponentName(instrumentation.context.packageName, QAEditorActivity::class.java.name))
             .putExtra("request_voice", requestVoice).putExtra("show_keyboard", showKeyboard).putExtra("request_speech_api", requestSpeechApi)
+            .putExtra("qa_run_id", launchId)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        if (!requestVoice) await("new QA activity") { find { it.contentDescription?.toString() == "QA launch $launchId" } != null }
         if (requestVoice) await("new voice activity capture") { source.get()?.running?.get() == true }
         else await("fresh QA editor") { editor("QA first editor")?.text?.toString()?.contains("country", true) == false }
     }

@@ -30,6 +30,7 @@ class CapturePanelAndroidTest {
             telemetry.started(); clock = 2000; telemetry.samples(ShortArray(800), true)
             instrumentation.waitForIdleSync()
             instrumentation.runOnMainSync {
+                assertTrue("Active capture must prevent screen timeout", panel.keepScreenOn)
                 assertTrue(texts(panel).any { it.text.toString() == app.getString(R.string.capture_no_signal) && it.visibility == View.VISIBLE })
                 val button = panel.findViewById<android.widget.Button>(R.id.recording_done)
                 assertTrue(button.isEnabled)
@@ -38,10 +39,16 @@ class CapturePanelAndroidTest {
             }
             assertTrue(stopped)
             instrumentation.waitForIdleSync()
-            instrumentation.runOnMainSync { assertEquals(View.GONE, panel.findViewById<View>(R.id.recording_done).visibility) }
+            instrumentation.runOnMainSync {
+                assertEquals(View.GONE, panel.findViewById<View>(R.id.recording_done).visibility)
+                assertTrue("Draining audio must still prevent timeout", panel.keepScreenOn)
+            }
             telemetry.completed(null)
             instrumentation.waitForIdleSync()
-            instrumentation.runOnMainSync { assertTrue(texts(panel).any { it.text.toString() == "100%" }) }
+            instrumentation.runOnMainSync {
+                assertTrue(texts(panel).any { it.text.toString() == "100%" })
+                assertFalse("Completed work must release the screen", panel.keepScreenOn)
+            }
         } finally { instrumentation.runOnMainSync { panel.release() }; scope.cancel() }
     }
     private fun texts(view: View): List<TextView> {

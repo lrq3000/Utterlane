@@ -14,12 +14,13 @@ import kotlinx.coroutines.withContext
 object TranscriptFinalization {
     fun deliver(context: Context, store: TranscriptStore?, send: suspend () -> Boolean) {
         UtterlaneApp.instance.applicationScope.launch {
+            val power = io.github.lrq3000.utterlane.asr.TranscriptionPower(context)
             var delivered = false
             try { delivered = send() }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) { Log.e("TranscriptFinalization", "Result delivery failed", e) }
             finally {
-                withContext(NonCancellable + Dispatchers.IO) {
+                try { withContext(NonCancellable + Dispatchers.IO) {
                     if (store != null) {
                         if (delivered || store.file.length() == 0L) store.dispose()
                         else {
@@ -27,7 +28,7 @@ object TranscriptFinalization {
                             withContext(Dispatchers.Main) { TranscriptRecovery.show(context, store) }
                         }
                     }
-                }
+                } } finally { power.close() }
             }
         }
     }

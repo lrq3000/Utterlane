@@ -8,6 +8,7 @@ class MicrophoneSessionFactory(private val capture: () -> AudioCapture = { Audio
     fun create(context: Context, scope: CoroutineScope,
         onText: suspend (String, TranscriptStore) -> Unit,
         onComplete: (TranscriptStore?, SessionFailure?) -> Unit,
-        onCaptureEnded: () -> Unit = {}, onWarning: (String) -> Unit = {}, onReady: () -> Unit = {}): MicrophoneSession =
-        MicrophoneSession(context, scope, onText, onComplete, onCaptureEnded, onWarning, onReady, capture())
+        onCaptureEnded: () -> Unit = {}, onWarning: (String) -> Unit = {}, onReady: () -> Unit = {},
+        onSessionClosed: () -> Unit = {}): MicrophoneSession =
+        MicrophoneSession(context, scope, onText, onComplete, onCaptureEnded, onWarning, onReady, capture(), onSessionClosed)
 }

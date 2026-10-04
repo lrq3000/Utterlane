@@ -36,6 +36,12 @@ public class QAEditorActivity extends Activity {
         result.setText("Waiting");
         result.setContentDescription("QA result");
         layout.addView(first); layout.addView(second); layout.addView(result);
+        // A fresh-launch marker prevents instrumentation from selecting an IME
+        // against a previous activity's still-visible editor during CLEAR_TASK.
+        TextView launchMarker = new TextView(this);
+        launchMarker.setText("QA launch " + getIntent().getStringExtra("qa_run_id"));
+        launchMarker.setContentDescription(launchMarker.getText());
+        layout.addView(launchMarker);
         setContentView(layout);
         first.requestFocus();
         if (getIntent().getBooleanExtra("show_keyboard", false)) {

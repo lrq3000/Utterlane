@@ -89,9 +89,31 @@ class WorkerRecognitionBackend(context: Context, private val model: ModelDefinit
             return await(result, seconds).also { it.getString("error")?.let { message -> error(message) } }
         } finally { replies.remove(id) }
     }
-    private fun <T> await(future: CompletableFuture<T>, seconds: Long): T = try { future.get(seconds, TimeUnit.SECONDS) }
-        catch (e: ExecutionException) { throw IllegalStateException(e.cause?.message ?: "Recognition worker failed", e.cause) }
-        catch (e: TimeoutException) { close(); throw IllegalStateException("Recognition exceeded ${seconds}s. Worker unloaded; retry or choose another model.", e) }
+    private fun <T> await(future: CompletableFuture<T>, seconds: Long): T {
+        val power = context.getSystemService(PowerManager::class.java)
+        fun paused() = !power.isInteractive || power.isDeviceIdleMode
+        val deadline = AwakeDeadline(seconds * 1000, SystemClock.uptimeMillis(), paused())
+        while (true) {
+            try { return future.get(250, TimeUnit.MILLISECONDS) }
+            catch (e: InterruptedException) {
+                // Cancel this wait, not the shared worker: other sessions still
+                // own it. request() removes this reply ID; the serialized worker
+                // may finish its current decode before serving the next request.
+                // Initialization cancellation is closed by RecognizerManager.
+                throw e
+            }
+            catch (e: ExecutionException) { throw IllegalStateException(e.cause?.message ?: "Recognition worker failed", e.cause) }
+            catch (e: TimeoutException) {
+                // uptime excludes deep sleep; the explicit pause also covers a
+                // frozen worker while the main process remains awake. Poll the
+                // existing request, never resend PCM and duplicate its result.
+                if (deadline.expired(SystemClock.uptimeMillis(), paused()) && !future.isDone) {
+                    close()
+                    throw IllegalStateException("Recognition exceeded ${seconds}s of awake time. Worker unloaded; retry or choose another model.", e)
+                }
+            }
+        }
+    }
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return

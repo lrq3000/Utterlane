@@ -115,19 +115,21 @@ class TextInjectionService : AccessibilityService() {
         recordingOverlay = io.github.lrq3000.utterlane.ui.RecordingOverlay(this).apply {
             onDoneClick = { if (isRecording.get()) stopRecording() }
             onCancelClick = {
+                target.close()
                 microphoneSession?.cancel(); microphoneSession = null; isRecording.set(false)
                 hideCapturePanel()
             }
             show()
         }
         microphoneSession = UtterlaneApp.instance.microphoneSessions.create(this, serviceScope,
-            onText = { delta, _ -> target.accept(delta); recordingOverlay?.setStatus(delta) },
+            onText = { delta, store -> target.accept(store); recordingOverlay?.setStatus(delta) },
             onComplete = { store, error ->
                 isRecording.set(false); microphoneSession = null
                 hideCapturePanel()
                 target.finish(store, preserve = error != null)
                 error?.let { showToast(it.message); store?.let { result -> TranscriptRecovery.show(this, result) } }
-            }, onCaptureEnded = { isRecording.set(false) }, onWarning = { showToast(it) })
+            }, onCaptureEnded = { isRecording.set(false) }, onWarning = { showToast(it) },
+            onSessionClosed = { target.sessionClosed() })
         Log.i(TAG, "Starting incremental audio recording")
         microphoneSession?.let { recordingOverlay?.bind(serviceScope, it); it.start() }
     }

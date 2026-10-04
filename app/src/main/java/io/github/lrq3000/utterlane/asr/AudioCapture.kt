@@ -5,6 +5,7 @@ interface AudioCapture {
     fun startRecording(onSamples: (ShortArray) -> Unit, shouldContinue: () -> Boolean = { true })
     fun stop()
     fun setObserver(observer: CaptureObserver) {}
+    fun resumeAfterSleep() {}
 }
 
 interface CaptureObserver {

@@ -85,7 +85,7 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         }
     }
     fun preview(text: String) { statusText.text = text.takeLast(300) }
-    fun release() { observer?.cancel(); observer = null; themeObserver?.cancel(); themeObserver = null }
+    fun release() { observer?.cancel(); observer = null; themeObserver?.cancel(); themeObserver = null; keepScreenOn = false }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
@@ -109,6 +109,7 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
     }
 
     private fun render(snapshot: CaptureSnapshot) {
+        keepScreenOn = snapshot.phase !in listOf(CapturePhase.COMPLETE, CapturePhase.FAILED, CapturePhase.CANCELLED)
         val capturing = snapshot.phase == CapturePhase.CAPTURING
         waveform.visibility = if (capturing) View.VISIBLE else View.GONE
         waveform.isEnabled = capturing

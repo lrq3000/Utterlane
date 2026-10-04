@@ -76,7 +76,7 @@ class RecognizerManager(
                 // Publish before preparation: reset can abort a blocked worker load.
                 recognizer = candidate
             }
-            candidate.prepare()
+            runInterruptible(Dispatchers.IO) { candidate.prepare() }
             currentCoroutineContext().ensureActive()
             synchronized(stateLock) {
                 if (expected != generation) { candidate.close(); return false }
@@ -141,7 +141,8 @@ class RecognizerManager(
                                     check(expected == generation && sessions.containsKey(id)) { "Model was unloaded" }
                                     checkNotNull(recognizer)
                                 }
-                                val result = try { backend.transcribeWindow(window.samples) }
+                                val result = try { runInterruptible(Dispatchers.IO) { backend.transcribeWindow(window.samples) } }
+                                catch (error: CancellationException) { throw error }
                                 catch (error: Exception) {
                                     synchronized(stateLock) { if (expected == generation) { _failure.value = error.message; _isReady.value = false } }
                                     throw error
