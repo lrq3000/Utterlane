@@ -6,6 +6,13 @@ plugins {
 
 val sherpaOnnxVersion = "1.12.23"
 val aarFile = layout.projectDirectory.file("libs/sherpa-onnx-$sherpaOnnxVersion.aar").asFile
+val crispNotices = layout.buildDirectory.dir("generated/crispNotices")
+val copyCrispNotices = tasks.register<Sync>("copyCrispNotices") {
+    val source = rootProject.file(".native-cache/crispasr")
+    from(source) { include("LICENSE", "THIRD_PARTY_NOTICES.txt") }
+    into(crispNotices.map { it.dir("crispasr") })
+    doFirst { check(source.resolve("THIRD_PARTY_NOTICES.txt").isFile) { "Run python tools/prepare_native.py first" } }
+}
 
 tasks.register("checkSherpaOnnxAar") {
     doLast {
@@ -20,6 +27,7 @@ tasks.register("checkSherpaOnnxAar") {
 
 tasks.named("preBuild") {
     dependsOn("checkSherpaOnnxAar")
+    dependsOn(copyCrispNotices)
 }
 
 android {
@@ -76,6 +84,7 @@ android {
     externalNativeBuild {
         cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" }
     }
+    sourceSets.getByName("main").assets.srcDir(crispNotices)
 
     packaging {
         resources {

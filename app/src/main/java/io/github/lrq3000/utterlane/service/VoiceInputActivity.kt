@@ -19,7 +19,7 @@ import io.github.lrq3000.utterlane.ui.RecordingOverlay
 import kotlinx.coroutines.*
 
 /** Final-result voice-input contract with live preview and no ten-second recording cutoff. */
-class VoiceInputActivity : ComponentActivity() {
+class VoiceInputActivity : io.github.lrq3000.utterlane.settings.LocalizedActivity() {
     companion object { private const val TAG = "VoiceInputActivity" }
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var microphoneSession: MicrophoneSession? = null

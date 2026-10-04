@@ -24,6 +24,7 @@ class ModelIdleAndroidTest {
     private lateinit var manager: RecognizerManager
     private lateinit var previousModel: ModelDefinition
     private lateinit var previousTimeout: ModelIdleTimeout
+    private var previousDiarization = false
     private val backends = mutableListOf<FakeBackend>()
     private var nextPrepare: () -> Unit = {}
     private var failDecode = false
@@ -42,6 +43,10 @@ class ModelIdleAndroidTest {
     @Before fun prepare(): Unit = runBlocking {
         previousModel = app.modelManager.selected.value
         previousTimeout = app.settingsRepository.modelIdleTimeout.first()
+        // These existing idle-policy tests inject a text-only fake backend.
+        // Isolate them from the user's independently persisted speaker setting.
+        previousDiarization = app.settingsRepository.diarizationEnabled.first()
+        app.settingsRepository.setDiarizationEnabled(false)
         app.recognizerManager.forceUnload()
         val model = ModelCatalog.find("parakeet-ultra-q8_0")
         app.recognizerManager.selectModel(model)
@@ -62,6 +67,7 @@ class ModelIdleAndroidTest {
         if (::manager.isInitialized) manager.forceUnload()
         if (::previousTimeout.isInitialized) app.settingsRepository.setModelIdleTimeout(previousTimeout)
         if (::previousModel.isInitialized) app.recognizerManager.selectModel(previousModel)
+        app.settingsRepository.setDiarizationEnabled(previousDiarization)
     }
 
     private suspend fun awaitUnload() {

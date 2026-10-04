@@ -27,6 +27,13 @@ import io.github.lrq3000.utterlane.asr.ModelIdleTimeout
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 class UtterlaneApp : Application() {
+    override fun attachBaseContext(base: android.content.Context) {
+        super.attachBaseContext(io.github.lrq3000.utterlane.settings.AppLanguage.wrap(base))
+    }
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        io.github.lrq3000.utterlane.settings.AppLanguage.refresh(this)
+    }
 
     var microphoneSessions = MicrophoneSessionFactory()
         internal set
@@ -39,6 +46,8 @@ class UtterlaneApp : Application() {
 
     lateinit var modelManager: ModelManager
         private set
+
+    val diarizationModels by lazy { ModelManager(this, fixedModel = io.github.lrq3000.utterlane.asr.DiarizationModel.definition) }
 
     lateinit var recognizerManager: RecognizerManager
         private set

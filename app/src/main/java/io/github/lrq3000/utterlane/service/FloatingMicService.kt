@@ -39,6 +39,7 @@ import io.github.lrq3000.utterlane.ui.theme.NativeBrandStyle
 import java.util.concurrent.atomic.AtomicBoolean
 
 class FloatingMicService : Service() {
+    override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(io.github.lrq3000.utterlane.settings.AppLanguage.wrap(base))
 
     companion object {
         private const val TAG = "FloatingMicService"

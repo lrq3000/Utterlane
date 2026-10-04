@@ -1,7 +1,7 @@
 """Fetch exact source revisions needed by the Android Parakeet JNI runtime.
 
-Run before Gradle builds. No binary downloads or vendor-source modifications.
-The cache is disposable; an existing dirty checkout is never overwritten.
+Run before Gradle builds. No binary downloads. Apply the minimal source-pinned
+CMake embedding adaptation; any other dirty checkout is never overwritten.
 """
 import argparse
 import pathlib
@@ -19,12 +19,31 @@ class NativeSources:
     def git(self, *args):
         return subprocess.check_output(["git", "-C", str(self.source), *args], text=True).strip()
 
+    def adaptations(self):
+        cmake = self.git("show", "HEAD:src/CMakeLists.txt")
+        cache = self.git("show", "HEAD:src/crispasr_cache.cpp")
+        entry = "static bool fetch_download(const std::string& url, const std::string& dest, bool quiet) {"
+        if cache.count(entry) != 1:
+            raise RuntimeError("Pinned native download entry point changed; review the Android offline adaptation")
+        return {
+            "src/CMakeLists.txt": cmake.replace("${CMAKE_SOURCE_DIR}", "${PROJECT_SOURCE_DIR}"),
+            # Missing companion weights must be imported by the user, not fetched
+            # by a hidden native curl/wget subprocess on rooted Android devices.
+            "src/crispasr_cache.cpp": cache.replace(entry, entry + "\n#ifdef __ANDROID__\n"
+                '    fprintf(stderr, "Utterlane: import the missing companion model; native downloads are disabled.\\n");\n'
+                "    return false;\n#endif"),
+        }
+
     def prepare(self):
         self.source.parent.mkdir(parents=True, exist_ok=True)
         if not self.source.exists():
             subprocess.run(["git", "clone", "--quiet", "--depth", "1", "https://github.com/CrispStrobe/CrispASR.git", str(self.source)], check=True)
-        if self.git("status", "--porcelain", "--untracked-files=no"):
-            raise RuntimeError("Native source checkout has changes; refusing to overwrite it")
+        dirty = self.git("status", "--porcelain", "--untracked-files=no")
+        if dirty:
+            known = self.adaptations()
+            changed = self.git("diff", "--name-only", "HEAD").splitlines()
+            if not changed or any(name not in known or (self.source / name).read_text(encoding="utf-8").strip() != known[name] for name in changed):
+                raise RuntimeError("Native source checkout has changes; refusing to overwrite it")
         if self.git("rev-parse", "HEAD") != CRISP_REVISION:
             self.git("fetch", "--quiet", "--depth", "1", "origin", CRISP_REVISION)
             self.git("checkout", "--quiet", CRISP_REVISION)
@@ -33,6 +52,12 @@ class NativeSources:
         actual = subprocess.check_output(["git", "-C", str(self.source / "ggml"), "rev-parse", "HEAD"], text=True).strip()
         if actual != GGML_REVISION:
             raise RuntimeError(f"ggml revision mismatch: {actual}")
+        # Upstream's library CMake refers to the embedding app root for bundled
+        # llama, WebRTC and codec sources. PROJECT_SOURCE_DIR is CrispASR's root.
+        for name, adapted in self.adaptations().items():
+            path = self.source / name
+            if path.read_text(encoding="utf-8").strip() != adapted:
+                path.write_text(adapted + "\n", encoding="utf-8")
         print(f"Native sources ready: CrispASR {CRISP_REVISION[:12]}, ggml {actual[:12]}")
 
 

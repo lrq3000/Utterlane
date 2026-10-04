@@ -2,7 +2,8 @@ package io.github.lrq3000.utterlane.asr
 
 enum class ModelBackend { SHERPA, CRISP, TRANSCRIBE_CPP }
 data class ModelArtifact(val url: String, val localName: String, val bytes: Long, val sha256: String?)
-data class ModelDefinition(val id: String, val name: String, val backend: ModelBackend, val artifacts: List<ModelArtifact>) {
+data class ModelDefinition(val id: String, val name: String, val backend: ModelBackend, val artifacts: List<ModelArtifact>, val primaryFile: String = "model.gguf", val codecFile: String? = null) {
+    val isCustom: Boolean get() = id.startsWith("custom-")
     val downloadBytes: Long get() = artifacts.sumOf { it.bytes }
     // Storage belongs to model identity, not the first-launch default. Preserve
     // the original ONNX location and share this rule with the isolated worker.

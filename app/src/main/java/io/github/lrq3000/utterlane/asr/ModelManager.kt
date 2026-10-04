@@ -20,7 +20,7 @@ import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 /** Catalog-based private storage. Only verified, fully published artifacts are loadable. */
-class ModelManager(private val context: Context, private val client: OkHttpClient? = null) {
+class ModelManager(private val context: Context, private val client: OkHttpClient? = null, private val fixedModel: ModelDefinition? = null) {
     companion object { private const val TAG = "ModelManager" }
     enum class ErrorType { NETWORK, CHECKSUM_MISMATCH, MISSING_FILE, FOLDER_ACCESS, STORAGE, UNKNOWN }
     sealed class DownloadState {
@@ -33,8 +33,10 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
     }
     private val settings = SettingsRepository(context)
     private val operation = Mutex()
-    private val _selected = MutableStateFlow(ModelCatalog.DEFAULT)
+    private val _selected = MutableStateFlow(fixedModel ?: ModelCatalog.DEFAULT)
     val selected: StateFlow<ModelDefinition> = _selected.asStateFlow()
+    private val _customModels = MutableStateFlow<List<ModelDefinition>>(emptyList())
+    val customModels: StateFlow<List<ModelDefinition>> = _customModels.asStateFlow()
     private val _downloadState = MutableStateFlow<DownloadState>(DownloadState.NotStarted)
     val downloadState: StateFlow<DownloadState> = _downloadState.asStateFlow()
     @Volatile private var initialized = false
@@ -49,13 +51,18 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
         if (initialized) return
         operation.withLock {
             if (!initialized) {
-                _selected.value = ModelCatalog.find(settings.selectedModelId.first())
+                if (fixedModel != null) { initialized = true; checkModelStatus(); return@withLock }
+                _customModels.value = File(context.filesDir, "models").listFiles().orEmpty()
+                    .mapNotNull { CustomModelManifest.load(context.filesDir, it.name) }
+                val id = settings.selectedModelId.first()
+                _selected.value = CustomModelManifest.load(context.filesDir, id) ?: ModelCatalog.find(id)
                 initialized = true
                 checkModelStatus()
             }
         }
     }
     suspend fun select(model: ModelDefinition) = withContext(Dispatchers.IO) {
+        check(fixedModel == null) { "Auxiliary model selection is fixed" }
         check(operation.tryLock()) { "A model transfer is already running" }
         try { settings.setSelectedModelId(model.id); _selected.value = model; initialized = true; checkModelStatus() }
         finally { operation.unlock() }
@@ -99,6 +106,51 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
             val remote = artifact.url.substringAfterLast('/').substringBefore('?')
             val source = folder.findFile(remote) ?: folder.findFile(artifact.localName) ?: throw java.io.FileNotFoundException(remote)
             context.contentResolver.openInputStream(source.uri) ?: error("Cannot read ${source.name}")
+        }
+    }
+
+    /** Stage a complete local bundle. The prior model remains usable on failure. */
+    suspend fun importCustom(uris: List<Uri>, primaryUri: Uri, codecUri: Uri? = null): ModelDefinition = withContext(Dispatchers.IO) {
+        require(uris.size in 1..64 && primaryUri in uris)
+        require(codecUri == null || (codecUri in uris && codecUri != primaryUri))
+        initializeSelection()
+        check(operation.tryLock()) { "A model transfer is already running" }
+        val id = "custom-${java.util.UUID.randomUUID()}"
+        val parent = File(context.filesDir, "models")
+        val staging = File(parent, ".$id")
+        try {
+            transferJob = currentCoroutineContext()[Job]
+            _downloadState.value = DownloadState.Copying(0)
+            check(parent.mkdirs() || parent.isDirectory)
+            check(staging.mkdir())
+            val names = HashSet<String>()
+            var primary: String? = null
+            var codec: String? = null
+            uris.forEachIndexed { index, uri ->
+                val name = DocumentFile.fromSingleUri(context, uri)?.name ?: error("Cannot read model filename")
+                require(CustomModelManifest.validFileName(name) && names.add(name.lowercase(java.util.Locale.ROOT))) { "Invalid or duplicate model filename: $name" }
+                if (uri == primaryUri) primary = name
+                if (uri == codecUri) codec = name
+                val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open $name")
+                input.use { source -> File(staging, name).outputStream().use { target ->
+                    val bytes = ByteArray(65536)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val n = source.read(bytes); if (n < 0) break
+                        target.write(bytes, 0, n)
+                    }
+                } }
+                _downloadState.value = DownloadState.Copying((index + 1) * 99 / uris.size)
+            }
+            val model = CustomModelManifest.create(staging, id, requireNotNull(primary), codec)
+            CustomModelManifest.save(staging, model)
+            currentCoroutineContext().ensureActive()
+            Files.move(staging.toPath(), File(parent, id).toPath(), StandardCopyOption.ATOMIC_MOVE)
+            _customModels.value = _customModels.value + model
+            Log.i(TAG, "Imported custom model: ${model.id}, ${model.artifacts.size} files")
+            model
+        } finally {
+            staging.deleteRecursively(); transferJob = null; checkModelStatus(); operation.unlock()
         }
     }
     private suspend fun transfer(importing: Boolean, onProgress: (Int) -> Unit = {}, open: (ModelArtifact) -> InputStream) = withContext(Dispatchers.IO) {
@@ -171,7 +223,16 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
     fun cancelTransfer() { activeCall?.cancel(); transferJob?.cancel() }
     suspend fun deleteModel() = withContext(Dispatchers.IO) {
         check(operation.tryLock()) { "A model transfer is running" }
-        try { check(directory().deleteRecursively()) { "Cannot delete model" }; verified.remove(selected.value.id); checkModelStatus() }
+        try {
+            val model = selected.value
+            check(directory().deleteRecursively()) { "Cannot delete model" }
+            verified.remove(model.id)
+            if (model.isCustom) {
+                _customModels.value = _customModels.value.filterNot { it.id == model.id }
+                settings.setSelectedModelId(ModelCatalog.DEFAULT.id); _selected.value = ModelCatalog.DEFAULT
+            }
+            checkModelStatus()
+        }
         finally { operation.unlock() }
     }
     fun getModelSize(): Long = selected.value.artifacts.sumOf { File(directory(), it.localName).length() }

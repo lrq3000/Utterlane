@@ -193,6 +193,12 @@ class RecognizerManager(
                     check(initializeLocked(expected)) { _failure.value ?: context.getString(R.string.toast_model_load_failed) }
                     val app = UtterlaneApp.instance
                     val rules = if (app.settingsRepository.dictionaryEnabled.first()) app.dictionaryManager.rules.value else emptyList()
+                    val diarize = app.settingsRepository.diarizationEnabled.first()
+                    val count = app.settingsRepository.speakerCount.first()
+                    val speakerLabels = (1..8).map { context.getString(R.string.speaker_label, it) }
+                    val unknownSpeaker = context.getString(R.string.speaker_unknown)
+                    if (diarize) check(app.diarizationModels.ensureVerified()) { context.getString(R.string.diarization_install_first) }
+                    val sessionBackend = checkNotNull(recognizer)
                     val directory = File(context.cacheDir, "transcripts").apply { mkdirs() }
                     val store = TranscriptStore(File.createTempFile("transcript-", ".txt", directory))
                     val id = sessionIds.incrementAndGet()
@@ -201,23 +207,16 @@ class RecognizerManager(
                         sessions[id] = owner
                     }
                     TranscriptionSession(store, StreamingCorrections(rules), onSegment, decode = { window ->
-                        withContext(Dispatchers.IO) {
-                            mutex.withLock {
-                                val backend = synchronized(stateLock) {
-                                    check(expected == generation && sessions.containsKey(id)) { "Model was unloaded" }
-                                    checkNotNull(recognizer)
-                                }
-                                val result = try { runInterruptible(Dispatchers.IO) { backend.transcribeWindow(window.samples) } }
-                                catch (error: CancellationException) { throw error }
-                                catch (error: Exception) {
-                                    synchronized(stateLock) { if (expected == generation) { _failure.value = error.message; _isReady.value = false } }
-                                    throw error
-                                }
-                                synchronized(stateLock) { check(expected == generation) { "Model was unloaded" } }
-                                WindowText.select(result.tokens, result.timestamps, window)
-                            }
+                        withSessionBackend(expected, id) { backend ->
+                            // Arbitrary ASR models need not supply word timings. Decode
+                            // disjoint ownership for them rather than inventing timestamps.
+                            val pcm = if (modelManager.selected.value.isCustom) window.samples.copyOfRange(
+                                (window.ownedStart - window.startSample).toInt(), (window.ownedEnd - window.startSample).toInt()) else window.samples
+                            val result = backend.transcribeWindow(pcm)
+                            result.text ?: WindowText.select(result.tokens, result.timestamps, window)
                         }
                     }, onClosed = {
+                        sessionBackend.endSession(id)
                         synchronized(stateLock) {
                             // A late close after reset belongs to the old generation.
                             if (sessions.containsKey(id)) {
@@ -225,7 +224,10 @@ class RecognizerManager(
                                 refreshIdleTimerLocked()
                             }
                         }
-                    }, onProcessed = onProcessed).also { created = it }
+                    }, onProcessed = onProcessed,
+                        decodeSpeakers = if (diarize) { window -> withSessionBackend(expected, id) { it.transcribeSpeakers(id, window, count) } } else null,
+                        speakerLabel = { speaker -> speakerLabels.getOrElse(speaker) { unknownSpeaker } }
+                    ).also { created = it }
                 }
             }
         } catch (error: Throwable) {
@@ -233,6 +235,23 @@ class RecognizerManager(
             // Dispose that unreturned session rather than leaking its busy lease.
             withContext(NonCancellable + Dispatchers.IO) { created?.let { it.close(); it.store.dispose() } }
             throw error
+        }
+    }
+
+    private suspend fun <T> withSessionBackend(expected: Long, id: Long, action: (RecognitionBackend) -> T): T = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val backend = synchronized(stateLock) {
+                check(expected == generation && sessions.containsKey(id)) { "Model was unloaded" }
+                checkNotNull(recognizer)
+            }
+            val result = try { runInterruptible(Dispatchers.IO) { action(backend) } }
+            catch (error: CancellationException) { throw error }
+            catch (error: Exception) {
+                synchronized(stateLock) { if (expected == generation) { _failure.value = error.message; _isReady.value = false } }
+                throw error
+            }
+            synchronized(stateLock) { check(expected == generation) { "Model was unloaded" } }
+            result
         }
     }
 
@@ -245,6 +264,12 @@ class RecognizerManager(
             }
             old?.close()
             modelManager.select(model)
+        }
+    }
+    suspend fun deleteDiarizationModel() = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            synchronized(stateLock) { check(sessions.isEmpty() && !MicrophoneSession.isBusy()) { context.getString(R.string.stream_busy) } }
+            UtterlaneApp.instance.diarizationModels.deleteModel()
         }
     }
     suspend fun deleteSelectedModel(expectedModelId: String = modelManager.selected.value.id) = withContext(Dispatchers.IO) {

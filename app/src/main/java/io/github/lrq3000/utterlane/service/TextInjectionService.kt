@@ -24,6 +24,7 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
 class TextInjectionService : AccessibilityService() {
+    override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(io.github.lrq3000.utterlane.settings.AppLanguage.wrap(base))
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var microphoneSession: MicrophoneSession? = null

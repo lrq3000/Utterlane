@@ -32,6 +32,8 @@ class SettingsRepository(private val context: Context) {
         private val FLOATING_BUTTON_SIZE_KEY = stringPreferencesKey("floating_button_size")
         private val HISTORY_RETENTION_KEY = stringPreferencesKey("history_retention")
         private val SELECTED_MODEL_KEY = stringPreferencesKey("selected_model")
+        private val DIARIZATION_KEY = booleanPreferencesKey("speaker_diarization")
+        private val SPEAKER_COUNT_KEY = intPreferencesKey("speaker_count")
 
         const val BUTTON_SIZE_SMALL = "small"   // 44dp
         const val BUTTON_SIZE_MEDIUM = "medium" // 56dp (default)
@@ -50,6 +52,10 @@ class SettingsRepository(private val context: Context) {
     }
 
     val selectedModelId: Flow<String> = context.dataStore.data.map { it[SELECTED_MODEL_KEY] ?: ModelCatalog.DEFAULT.id }
+    val diarizationEnabled: Flow<Boolean> = context.dataStore.data.map { it[DIARIZATION_KEY] ?: false }
+    val speakerCount: Flow<Int> = context.dataStore.data.map { (it[SPEAKER_COUNT_KEY] ?: 0).takeIf { n -> n in 0..8 } ?: 0 }
+    suspend fun setDiarizationEnabled(enabled: Boolean) { context.dataStore.edit { it[DIARIZATION_KEY] = enabled } }
+    suspend fun setSpeakerCount(count: Int) { require(count in 0..8); context.dataStore.edit { it[SPEAKER_COUNT_KEY] = count } }
     suspend fun setSelectedModelId(id: String) { context.dataStore.edit { it[SELECTED_MODEL_KEY] = id } }
 
     suspend fun setHistoryRetention(retention: HistoryRetention) {

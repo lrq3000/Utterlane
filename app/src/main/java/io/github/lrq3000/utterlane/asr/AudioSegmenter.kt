@@ -6,7 +6,8 @@ data class AudioWindow(
     val samples: ShortArray,
     val startSample: Long,
     val ownedStart: Long,
-    val ownedEnd: Long
+    val ownedEnd: Long,
+    val isFinal: Boolean = false
 )
 
 /** A constant-sized sliding window. Context is decoded again, but has no text ownership. */
@@ -14,6 +15,7 @@ class AudioSegmenter(
     private val sampleRate: Int = 16000,
     maxSeconds: Int = 10,
     contextSeconds: Double = 1.0,
+    private val flushPendingOnFinish: Boolean = false,
     private val consume: suspend (AudioWindow) -> Unit
 ) {
     private val maximum = maxSeconds * sampleRate
@@ -46,16 +48,19 @@ class AudioSegmenter(
 
     suspend fun finish() {
         if (finished) return
-        boundary?.let { emit(it) }
-        if (start + size > ownedStart) emit(start + size)
+        // At EOF a pending boundary has <1 s right context. Diarization must
+        // flush before owning those samples; coalesce the remaining <=12 s into
+        // one final window. The ordinary unlabeled path keeps its prior cuts.
+        if (!flushPendingOnFinish) boundary?.let { emit(it) }
+        if (start + size > ownedStart) emit(start + size, final = true)
         // Commit completion only after consume succeeds, so interruption cannot
         // permanently hide the final buffered window from a resumed finish().
         finished = true
     }
 
-    private suspend fun emit(end: Long) {
+    private suspend fun emit(end: Long, final: Boolean = false) {
         val audioEnd = minOf(start + size, end + context)
-        consume(AudioWindow(buffer.copyOfRange(0, (audioEnd - start).toInt()), start, ownedStart, end))
+        consume(AudioWindow(buffer.copyOfRange(0, (audioEnd - start).toInt()), start, ownedStart, end, final))
         val keepStart = maxOf(start, end - context)
         val drop = (keepStart - start).toInt()
         System.arraycopy(buffer, drop, buffer, 0, size - drop)
@@ -70,12 +75,19 @@ class AudioSegmenter(
 /** Group subword tokens before selecting ownership, so a cut never emits half a word. */
 object WindowText {
     fun select(tokens: Array<String>, timestamps: FloatArray, window: AudioWindow, sampleRate: Int = 16000): String {
-        require(tokens.size == timestamps.size) { "Recognizer did not return token timestamps" }
         val result = StringBuilder()
+        forEachOwnedWord(tokens, timestamps, window, sampleRate) { text, _ -> result.append(text) }
+        return result.toString().trim()
+    }
+
+    /** Share word grouping between labeled and ordinary output so ownership cannot drift. */
+    fun forEachOwnedWord(tokens: Array<String>, timestamps: FloatArray, window: AudioWindow, sampleRate: Int = 16000,
+                         consume: (String, Long) -> Unit) {
+        require(tokens.size == timestamps.size) { "Recognizer did not return token timestamps" }
         val word = StringBuilder()
         var position = 0L
         fun flush() {
-            if (position >= window.ownedStart && position < window.ownedEnd) result.append(word)
+            if (word.isNotEmpty() && position >= window.ownedStart && position < window.ownedEnd) consume(word.toString(), position)
             word.setLength(0)
         }
         tokens.forEachIndexed { index, token ->
@@ -84,6 +96,5 @@ object WindowText {
             word.append(token)
         }
         flush()
-        return result.toString().trim()
     }
 }
