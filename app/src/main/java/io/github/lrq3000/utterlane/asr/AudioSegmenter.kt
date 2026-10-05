@@ -167,12 +167,15 @@ object WindowText {
         fun flush() {
             if (word.isNotEmpty()) words += Word(word.toString(), position, wordEnd)
             word.setLength(0)
+            wordEnd = 0L
         }
         tokens.forEachIndexed { index, token ->
-            // Standalone punctuation belongs to its lexical predecessor, even if
-            // its timestamp lies in silence or across an ownership boundary.
+            // Preserve the original Off ownership rule: every whitespace-prefixed
+            // token starts a group, including whitespace-only BPE and punctuation.
+            // Otherwise following digits can inherit a left-context timestamp and
+            // disappear. Speaker inheritance is applied only after this selection.
             val lexical = token.any { it.isLetterOrDigit() }
-            if (token.firstOrNull()?.isWhitespace() == true && lexical && word.isNotEmpty()) flush()
+            if (token.firstOrNull()?.isWhitespace() == true && word.isNotEmpty()) flush()
             if (word.isEmpty()) position = window.startSample + (timestamps[index] * sampleRate).toLong()
             if (lexical) wordEnd = ends.getOrNull(index)?.takeIf { it.isFinite() && it > timestamps[index] }
                 ?.let { window.startSample + (it * sampleRate).toLong() } ?: 0L
