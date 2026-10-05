@@ -235,6 +235,88 @@ class CommandLineTests(unittest.TestCase):
         result = self.run_cli(self.directory, "--format", "json")
         self.assertEqual(result.returncode, 2)
 
+    def test_performance_jsonl_files_are_optional_and_composable(self):
+        cold = self.write("cold.jsonl", json.dumps({"stage": "load", "phase": "cold", "elapsed_ms": 3000}) + "\n")
+        warm = self.write("warm.jsonl", "\n" + json.dumps({"stage": "chunk", "phase": "warm", "chunk_id": 1,
+                                                       "elapsed_ms": 200, "audio_ms": 1000, "extra": "ignored"}) + "\n")
+        result = self.run_cli("--performance-jsonl", cold, "--performance-jsonl", warm, "--format", "json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        performance = json.loads(result.stdout)["performance"]
+        self.assertEqual(performance["event_count"], 2)
+        self.assertEqual(len(performance["groups"]), 2)
+        result = self.run_cli("--performance-jsonl", warm)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("RTF", result.stdout)
+        self.assertIn("warm", result.stdout)
+
+    def test_performance_jsonl_errors_include_file_and_line(self):
+        path = self.write("invalid.jsonl", '{"elapsed_ms": 1}\n{"elapsed_ms": -1}\n')
+        result = self.run_cli("--performance-jsonl", path, "--format", "json")
+        self.assertEqual(result.returncode, 2)
+        # Missing option support must fail this test too, not just return 2.
+        self.assertTrue(result.stdout, result.stderr)
+        self.assertIn("invalid.jsonl:2", json.loads(result.stdout)["error"])
+        for content in ["{broken", "[]", "\n"]:
+            self.write("invalid.jsonl", content)
+            result = self.run_cli("--performance-jsonl", path, "--format", "json")
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("error", json.loads(result.stdout))
+
+
+class PerformanceTests(ScorerTestCase):
+    def summary(self, records):
+        self.assertTrue(hasattr(self.api, "PerformanceSummary"), "Performance summaries are not implemented")
+        return self.api.PerformanceSummary().summarize(records)
+
+    def test_cold_and_warm_are_separate_with_duration_weighted_rtf(self):
+        records = [
+            {"phase": "cold", "chunk_id": 0, "elapsed_ms": 4000, "audio_ms": 1000, "backlog_ms": 3000},
+            {"phase": "warm", "chunk_id": 1, "elapsed_ms": 100, "audio_ms": 1000, "backlog_ms": 100},
+            {"phase": "warm", "chunk_id": 2, "elapsed_ms": 600, "audio_ms": 3000, "backlog_ms": 0},
+        ]
+        report = self.summary(records)
+        groups = {group["phase"]: group for group in report["groups"]}
+        self.assertEqual(report["event_count"], 3)
+        self.assertEqual(groups["cold"]["rtf"], 4)
+        warm = groups["warm"]
+        self.assertAlmostEqual(warm["rtf"], 0.175)
+        self.assertEqual(warm["elapsed_ms"], {"total": 700, "mean": 350, "p50": 100, "p95": 600, "max": 600})
+        self.assertEqual(warm["backlog_ms"], {"count": 2, "mean": 50, "max": 100, "last": 0})
+        self.assertEqual([chunk["rtf"] for chunk in warm["chunks"]], [0.1, 0.2])
+
+    def test_partial_audio_durations_do_not_bias_rtf_or_imply_warm(self):
+        report = self.summary([{"elapsed_ms": 900}, {"elapsed_ms": 100, "audio_ms": 1000}])
+        group = report["groups"][0]
+        self.assertEqual(group["phase"], "unspecified")
+        self.assertEqual(group["elapsed_ms"]["total"], 1000)
+        self.assertEqual(group["rtf"], 0.1)
+        self.assertEqual(group["rtf_event_count"], 1)
+        self.assertIsNone(group["backlog_ms"])
+        self.assertIsNone(self.summary([{"elapsed_ms": 100}])["groups"][0]["rtf"])
+
+    def test_stages_recordings_and_runs_are_not_summed_together(self):
+        records = [{"recording": recording, "run_id": run, "stage": stage, "chunk_id": 0, "elapsed_ms": 100}
+                   for recording, run, stage in itertools.product(["one", "two"], ["run1", "run2"], ["asr", "speaker"])]
+        report = self.summary(records)
+        self.assertEqual(len(report["groups"]), 8)
+        self.assertTrue(all(group["elapsed_ms"]["total"] == 100 for group in report["groups"]))
+
+    def test_invalid_performance_data_is_not_silently_averaged(self):
+        invalid = [[], {}, {"elapsed_ms": -1}, {"elapsed_ms": float("nan")}, {"elapsed_ms": float("inf")},
+                   {"elapsed_ms": True}, {"elapsed_ms": "100"}, {"elapsed_ms": 1, "audio_ms": 0},
+                   {"elapsed_ms": 1, "backlog_ms": -1}, {"elapsed_ms": 1, "phase": "hot"},
+                   {"elapsed_ms": 1, "stage": ""}, {"elapsed_ms": 1, "chunk_id": False}]
+        for record in invalid:
+            with self.subTest(record=record), self.assertRaises(ValueError):
+                self.summary([record])
+        with self.assertRaises(ValueError):
+            self.summary([])
+
+    def test_duplicate_chunk_stage_is_rejected(self):
+        event = {"chunk_id": 0, "elapsed_ms": 100, "audio_ms": 1000}
+        with self.assertRaisesRegex(ValueError, "[Dd]uplicate"):
+            self.summary([event, event])
+
 
 if __name__ == "__main__":
     unittest.main()
