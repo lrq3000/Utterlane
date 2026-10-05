@@ -116,13 +116,14 @@ class SpeakerTimeline(
         // sustained competing evidence merely because nearby labels agree.
         if (evidence.voiced >= 3 * 160) return -1
         val initial = firstConfirmed
+        val initialIsUnambiguous = initial != null &&
+            initialActiveFrames.indices.none { it != initial.speaker && initialActiveFrames[it] >= 3 }
         // Initial ASR words can end just before the first voiced onset after a
         // long leading silence. Backfill only toward that session's first
         // confirmed voice, within the configured end-to-onset distance, and
         // never through an initially competing track (even if it was pruned).
         if (!coarse && initial != null && options.unknownBridgeMs > 0 && stop <= initial.start &&
-            initial.start - stop <= options.unknownBridgeMs * 16L &&
-            initialActiveFrames.indices.none { it != initial.speaker && initialActiveFrames[it] >= 3 }) {
+            initial.start - stop <= options.unknownBridgeMs * 16L && initialIsUnambiguous) {
             return identity(initial.speaker)
         }
         val search = maxOf(options.unknownBridgeMs, options.alignmentToleranceMs) * 16L
@@ -135,8 +136,11 @@ class SpeakerTimeline(
         // A clipped first/last word has no two-sided neighbor. Permit only the
         // explicit timestamp tolerance at the retained audio edges, not a long
         // unbounded propagation of the last known identity into silence.
+        // The leading-edge shortcut must not bypass rejected initial competition
+        // or mistake a pruned prefix for a new session's first confirmed voice.
         if (start < first * 160 + tolerance && left == null && right != null &&
-            right.second * 160 - start <= tolerance) return identity(right.first)
+            right.second * 160 - start <= tolerance && initialIsUnambiguous &&
+            right.first == initial?.speaker) return identity(right.first)
         if (stop > endSample - tolerance && right == null && left != null &&
             stop - (left.second + 1) * 160 <= tolerance) return identity(left.first)
         return -1
