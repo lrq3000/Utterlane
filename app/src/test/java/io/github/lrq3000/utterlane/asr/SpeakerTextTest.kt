@@ -100,4 +100,41 @@ class SpeakerTextTest {
             assertEquals("Word partition $size", stripLabels(expected), stripLabels(chunks.joinToString(" ")))
         }
     }
+
+    @Test fun crossSpeakerCorrectionsKeepLiteralPunctuationWithTheCorrectedWord() {
+        val rules = listOf(DictionaryManager.ReplacementRule("hello world", "greetings"))
+        for (suffix in listOf("!", "?!", "…»", " !")) for (split in listOf(false, true)) {
+            val off = StreamingCorrections(rules)
+            val formatter = formatterFor(rules)
+            val spans = listOf(SpeechSpan("hello", 0), SpeechSpan(" world$suffix", 1))
+            val batches = if (split) spans.map { listOf(it) } else listOf(spans)
+            val baseline = (batches.map { off.accept(it.joinToString("") { span -> span.text }) } + off.finish())
+                .filter { it.isNotBlank() }.joinToString(" ")
+            val labeled = (batches.flatMap { formatter.accept(it) } + formatter.finish())
+                .filter { it.isNotBlank() }.joinToString(" ")
+            assertEquals("greetings$suffix", baseline)
+            assertEquals("suffix=$suffix split=$split", "Unknown speaker: $baseline", labeled)
+        }
+    }
+
+    @Test fun trailingPunctuationPrecedesTheNextGenuineSpeakerHeader() {
+        val formatter = formatterFor(listOf(DictionaryManager.ReplacementRule("hello world", "greetings")))
+        val text = (formatter.accept(listOf(SpeechSpan("hello", 0), SpeechSpan(" world! Next.", 1))) + formatter.finish())
+            .filter { it.isNotBlank() }.joinToString(" ")
+        assertEquals("greetings! Next.", stripLabels(text))
+        assertTrue(text.startsWith("Unknown speaker: greetings!"))
+        assertTrue(text.contains("Speaker 2: Next."))
+        assertFalse(text.contains("Speaker 2: !"))
+    }
+
+    @Test fun punctuationAloneCannotStartATurnOrChangeItsSpeaker() {
+        val formatter = formatterFor()
+        assertEquals(listOf("!"), formatter.accept(listOf(SpeechSpan("!", 1))))
+        assertEquals(listOf("Unknown speaker: greetings"), formatter.accept(listOf(SpeechSpan("greetings", -1))))
+        assertEquals(listOf("?!"), formatter.accept(listOf(SpeechSpan("?!", 1))))
+        assertEquals(listOf("again"), formatter.accept(listOf(SpeechSpan("again", -1))))
+    }
+
+    private fun formatterFor(rules: List<DictionaryManager.ReplacementRule> = emptyList()) =
+        SpeakerText(StreamingCorrections(rules)) { if (it < 0) "Unknown speaker" else "Speaker ${it + 1}" }
 }
