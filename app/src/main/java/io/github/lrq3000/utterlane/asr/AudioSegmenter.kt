@@ -104,6 +104,46 @@ class AudioSegmenter(
 object WindowText {
     data class Word(val text: String, val start: Long, val end: Long, val coarse: Boolean = false)
 
+    fun hasTimings(result: WindowResult): Boolean = result.tokens.isNotEmpty() &&
+        result.tokens.size == result.timestamps.size && result.timestamps.indices.all { i ->
+            result.timestamps[i].isFinite() && result.timestamps[i] >= 0f &&
+                (i == 0 || result.timestamps[i - 1] <= result.timestamps[i])
+        }
+
+    /**
+     * Generic backends may return whole words without leading BPE whitespace.
+     * Locate them monotonically in the authoritative raw result, preserving all
+     * separators/punctuation. Missing lexical text or unusable timestamps makes
+     * the entire alignment unavailable, never a license to discard ASR words.
+     */
+    fun alignRawText(result: WindowResult, window: AudioWindow): List<Word>? {
+        val text = result.text ?: return null
+        if (!hasTimings(result) || result.timestamps.any { it * 16000 >= window.samples.size }) return null
+        val aligned = Array(result.tokens.size) { "" }
+        var cursor = 0
+        for ((index, token) in result.tokens.withIndex()) {
+            val lexical = token.trim()
+            if (lexical.isEmpty()) return null
+            val at = text.indexOf(lexical, cursor)
+            if (at < 0) return null
+            val gap = text.substring(cursor, at)
+            if (gap.any { it.isLetterOrDigit() }) return null
+            if (index > 0 && lexical.any { it.isLetterOrDigit() }) {
+                val punctuationEnd = gap.indexOfLast { !it.isWhitespace() } + 1
+                aligned[index - 1] += gap.take(punctuationEnd)
+                aligned[index] = gap.drop(punctuationEnd) + lexical
+            } else aligned[index] = gap + lexical
+            cursor = at + lexical.length
+        }
+        val suffix = text.substring(cursor)
+        if (suffix.any { it.isLetterOrDigit() }) return null
+        aligned[aligned.lastIndex] += suffix
+        // The existing generic Off contract emits full result.text, including
+        // context. Timing adds labels only; changing text ownership is separate.
+        return ownedWords(aligned, result.timestamps,
+            window.copy(ownedStart = window.startSample, ownedEnd = window.startSample + window.samples.size), result.ends)
+    }
+
     fun select(tokens: Array<String>, timestamps: FloatArray, window: AudioWindow, sampleRate: Int = 16000): String {
         val result = StringBuilder()
         forEachOwnedWord(tokens, timestamps, window, sampleRate) { text, _ -> result.append(text) }

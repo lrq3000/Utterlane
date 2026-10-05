@@ -13,7 +13,7 @@ class DiarizedWindowProcessor(
     private val backend: RecognitionBackend,
     private val stream: SpeakerProbabilityStream,
     private val count: Int,
-    @Suppress("UNUSED_PARAMETER") textOnly: Boolean = false,
+    private val textOnly: Boolean = false,
     private val options: RuntimeOptions = RuntimeOptions()
 ) : Closeable {
     init { require(count in 0..8); options.requireValid() }
@@ -45,16 +45,14 @@ class DiarizedWindowProcessor(
         // Exactly one recognition pass on the original PCM/context in every mode.
         // Generic models without trustworthy times keep their complete raw text.
         val result = backend.transcribeWindow(window.samples)
-        val timed = result.tokens.isNotEmpty() && result.tokens.size == result.timestamps.size &&
-            result.timestamps.all { it.isFinite() && it >= 0f } &&
-            result.timestamps.asList().zipWithNext().all { (a, b) -> a <= b }
-        val words = if (timed) WindowText.ownedWords(result.tokens, result.timestamps, window, result.ends)
-            else result.text?.takeIf { it.isNotBlank() }?.let {
-                listOf(WindowText.Word(it, window.ownedStart, window.ownedEnd, coarse = true))
-            }.orEmpty()
+        val words = when {
+            textOnly && result.text != null -> WindowText.alignRawText(result, window) ?: rawText(result, window)
+            WindowText.hasTimings(result) -> WindowText.ownedWords(result.tokens, result.timestamps, window, result.ends)
+            else -> rawText(result, window)
+        }
         val output = mutableListOf<SpeechSpan>()
         if (count != 1) {
-            val keepFrom = minOf(pending.peekFirst()?.start ?: window.ownedStart, window.ownedStart) - paddingMs * 16L
+            val keepFrom = minOf(pending.peekFirst()?.start ?: window.startSample, window.startSample) - paddingMs * 16L
             timeline.discardBefore(keepFrom.coerceAtLeast(0))
             val fresh = window.samples.copyOfRange((fed - window.startSample).toInt(), window.samples.size)
             timeline.append(stream.push(fresh, window.isFinal))
@@ -77,6 +75,11 @@ class DiarizedWindowProcessor(
         drain(output)
         return output
     }
+
+    private fun rawText(result: WindowResult, window: AudioWindow): List<WindowText.Word> =
+        result.text?.takeIf { it.isNotBlank() }?.let {
+            listOf(WindowText.Word(it, window.startSample, window.startSample + window.samples.size, coarse = true))
+        }.orEmpty()
 
     private fun drain(output: MutableList<SpeechSpan>) {
         while (pending.isNotEmpty()) {

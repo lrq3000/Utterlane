@@ -207,4 +207,31 @@ class DiarizedWindowProcessorTest {
             assertEquals("first final", spans.joinToString(" ") { span -> span.text.trim() })
         }
     }
+
+    @Test fun genericWordArraysKeepFullRawTextSpacingPunctuationAndContextLikeOff() {
+        val result = WindowResult(arrayOf("Hello", "world", "keep", "everything"),
+            floatArrayOf(0f, .5f, 1f, 1.5f), "Hello,  world! keep everything.")
+        DiarizedWindowProcessor(Backend(result), Frames(IntArray(200) { 0 }), 0, textOnly = true).use {
+            // Generic Off uses result.text, including context. Optional arrays
+            // must not silently remove its leading/trailing recognized words.
+            assertEquals(listOf(SpeechSpan(result.text!!, 0)),
+                it.process(AudioWindow(ShortArray(32000), 0, 8000, 24000, true)))
+        }
+    }
+
+    @Test fun incompleteGenericArraysFallBackToWholeRawTextInsteadOfLosingUnalignedWords() {
+        val result = WindowResult(arrayOf("keep"), floatArrayOf(0f), "keep these final words")
+        DiarizedWindowProcessor(Backend(result), Frames(IntArray(200) { 0 }), 0, textOnly = true).use {
+            assertEquals(listOf(SpeechSpan(result.text!!, 0)),
+                it.process(AudioWindow(ShortArray(32000), 0, 0, 32000, true)))
+        }
+    }
+
+    @Test fun genericWordsWithoutLeadingSpacesCanStillAttributeRealTurns() {
+        val result = WindowResult(arrayOf("Hello", "again"), floatArrayOf(0f, 1f), "Hello again!")
+        DiarizedWindowProcessor(Backend(result), Frames(IntArray(200) { it / 100 }), 0, textOnly = true).use {
+            assertEquals(listOf(SpeechSpan("Hello", 0), SpeechSpan(" again!", 1)),
+                it.process(AudioWindow(ShortArray(32000), 0, 0, 32000, true)))
+        }
+    }
 }
