@@ -373,6 +373,21 @@ class SpeakerTimelineTest {
         }
     }
 
+    @Test fun speechIslandCanUseOrdinaryConfirmationWithoutBiasFromTheGlobalFirstVoice() {
+        for (competing in listOf(false, true)) {
+            val timeline = SpeakerTimeline(0, options = RuntimeOptions(unknownBridgeMs = 1000, strongSpeakerThreshold = .99f))
+            timeline.append(trackFrames(100, 4))
+            timeline.append(trackFrames(500, -1))
+            timeline.append(FloatArray(100 * 8) { i -> when {
+                i % 8 == 6 -> .95f
+                competing && i % 8 == 4 && i / 8 in 10..19 -> .8f
+                else -> .01f
+            } })
+            assertEquals(if (competing) -1 else 6,
+                timeline.speakerDuring(5540 * 16L, 5860 * 16L, previous = 4))
+        }
+    }
+
     private fun alignmentTimeline(tolerance: Int, probability: (Int, Int) -> Float) =
         SpeakerTimeline(0, options = RuntimeOptions(alignmentToleranceMs = tolerance)).apply {
             append(FloatArray(250 * 8) { probability(it / 8, it % 8) })
