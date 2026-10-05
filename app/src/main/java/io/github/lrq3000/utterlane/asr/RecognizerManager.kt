@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
+import io.github.lrq3000.utterlane.settings.RuntimeOptions
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +26,7 @@ class RecognizerManager(
     private val stateLock = Any()
     private var recognizer: RecognitionBackend? = null
     private var loadedModelId: String? = null
+    private val runtimeConfiguration = RecognitionRuntimeConfiguration()
     private var generation = 0L
     private val sessionIds = AtomicLong(0)
     private val sessions = mutableMapOf<Long, Job?>()
@@ -42,9 +44,14 @@ class RecognizerManager(
     val isLoading: StateFlow<Boolean> = _isLoading
     private val _failure = MutableStateFlow<String?>(null)
     val failure: StateFlow<String?> = _failure
+    private val _activity = MutableStateFlow(RecognitionActivity())
+    val activity: StateFlow<RecognitionActivity> = _activity
 
     suspend fun initialize(): Boolean = withModelOperation { expected ->
-        withContext(Dispatchers.IO) { mutex.withLock { initializeLocked(expected) } }
+        withContext(Dispatchers.IO) {
+            val options = UtterlaneApp.instance.settingsRepository.runtimeOptions.first().requireValid()
+            mutex.withLock { initializeLocked(expected, options) }
+        }
     }
 
     /** Reserve before waiting for the inference mutex, including session creation. */
@@ -106,13 +113,25 @@ class RecognizerManager(
         }
     }
 
-    private suspend fun initializeLocked(expected: Long): Boolean {
+    private suspend fun initializeLocked(expected: Long, options: RuntimeOptions): Boolean {
         synchronized(stateLock) { if (expected != generation) return false }
         modelManager.initializeSelection()
         val model = modelManager.selected.value
         synchronized(stateLock) {
             if (expected != generation) return false
-            if (_isReady.value && loadedModelId == model.id && recognizer?.isAvailable() == true) return true
+            if (_isReady.value && loadedModelId == model.id && recognizer?.isAvailable() == true) {
+                when (runtimeConfiguration.change(options, sessions.isNotEmpty())) {
+                    RecognitionRuntimeConfiguration.Change.KEEP -> return true
+                    RecognitionRuntimeConfiguration.Change.CONFIGURE -> {
+                        // No active session may have its recovery budget changed by
+                        // another caller. The inference mutex also excludes live JNI.
+                        checkNotNull(recognizer).configure(options)
+                        runtimeConfiguration.applied(options)
+                        return true
+                    }
+                    RecognitionRuntimeConfiguration.Change.RELOAD -> Unit
+                }
+            }
             _isLoading.value = true
             _failure.value = null
         }
@@ -125,6 +144,7 @@ class RecognizerManager(
                 check(sessions.isEmpty()) { "A transcription session is active" }
                 val old = recognizer
                 recognizer = null; loadedModelId = null; _isReady.value = false
+                _activity.value = RecognitionActivity()
                 old
             }
             previous?.close()
@@ -135,22 +155,40 @@ class RecognizerManager(
                     if (expected == generation && recognizer === ownedCandidate) {
                         _isReady.value = false
                         _failure.value = message
+                        _activity.value = _activity.value.copy(active = false, message = message)
                     }
                 }
             }
-            synchronized(stateLock) {
-                if (expected != generation) { candidate.close(); return false }
-                // Publish before preparation: reset can abort a blocked worker load.
-                recognizer = candidate
+            candidate.setActivityListener { activity ->
+                synchronized(stateLock) {
+                    // A request number is only unique within its worker. Both
+                    // generation and backend identity guard a replacement's status.
+                    if (expected == generation && recognizer === ownedCandidate) _activity.value = activity
+                }
             }
+            candidate.configure(options)
+            val published = synchronized(stateLock) {
+                if (expected != generation) false else {
+                    // Publish before preparation: reset can abort a blocked worker load.
+                    recognizer = candidate
+                    true
+                }
+            }
+            // close can deliver activity. Never call it while holding stateLock:
+            // a concurrent observer may be waiting for this lock on its own monitor.
+            if (!published) { candidate.close(); return false }
             runInterruptible(Dispatchers.IO) { candidate.prepare() }
             currentCoroutineContext().ensureActive()
-            synchronized(stateLock) {
-                if (expected != generation) { candidate.close(); return false }
-                check(candidate.isAvailable()) { "Recognition worker exited during initialization" }
-                loadedModelId = model.id
-                _isReady.value = true
+            val ready = synchronized(stateLock) {
+                if (expected != generation) false else {
+                    check(candidate.isAvailable()) { "Recognition worker exited during initialization" }
+                    loadedModelId = model.id
+                    runtimeConfiguration.applied(options)
+                    _isReady.value = true
+                    true
+                }
             }
+            if (!ready) { candidate.close(); return false }
             Log.i(TAG, "Recognizer validated: ${model.id}, elapsed=${android.os.SystemClock.elapsedRealtime() - start}ms")
             true
         } catch (e: CancellationException) {
@@ -158,6 +196,7 @@ class RecognizerManager(
             synchronized(stateLock) {
                 if (expected == generation && candidate != null && recognizer === candidate) {
                     recognizer = null; loadedModelId = null; _isReady.value = false
+                    _activity.value = RecognitionActivity()
                 }
             }
             throw e
@@ -171,6 +210,7 @@ class RecognizerManager(
                     // orphan the existing worker still owned by a draining session.
                     if (candidate != null && recognizer === candidate) {
                         recognizer = null; loadedModelId = null; _isReady.value = false
+                        _activity.value = RecognitionActivity(message = error.message)
                     }
                     _failure.value = "${model.name}: ${error.message ?: error.javaClass.simpleName}"
                 }
@@ -190,14 +230,17 @@ class RecognizerManager(
         try {
             withContext(Dispatchers.IO) {
                 mutex.withLock {
-                    check(initializeLocked(expected)) { _failure.value ?: context.getString(R.string.toast_model_load_failed) }
                     val app = UtterlaneApp.instance
+                    // One immutable snapshot feeds segmentation, attribution and
+                    // the first speaker request; saved edits affect later sessions.
+                    val options = app.settingsRepository.runtimeOptions.first().requireValid()
+                    check(initializeLocked(expected, options)) { _failure.value ?: context.getString(R.string.toast_model_load_failed) }
                     val rules = if (app.settingsRepository.dictionaryEnabled.first()) app.dictionaryManager.rules.value else emptyList()
                     val diarize = app.settingsRepository.diarizationEnabled.first()
                     val count = app.settingsRepository.speakerCount.first()
                     val speakerLabels = (1..8).map { context.getString(R.string.speaker_label, it) }
                     val unknownSpeaker = context.getString(R.string.speaker_unknown)
-                    if (diarize) check(app.diarizationModels.ensureVerified()) { context.getString(R.string.diarization_install_first) }
+                    if (diarize && count != 1) check(app.diarizationModels.ensureVerified()) { context.getString(R.string.diarization_install_first) }
                     val sessionBackend = checkNotNull(recognizer)
                     val directory = File(context.cacheDir, "transcripts").apply { mkdirs() }
                     val store = TranscriptStore(File.createTempFile("transcript-", ".txt", directory))
@@ -205,6 +248,7 @@ class RecognizerManager(
                     synchronized(stateLock) {
                         if (expected != generation) { store.dispose(); error("Model was unloaded") }
                         sessions[id] = owner
+                        refreshIdleTimerLocked()
                     }
                     TranscriptionSession(store, StreamingCorrections(rules), onSegment, decode = { window ->
                         withSessionBackend(expected, id) { backend ->
@@ -225,8 +269,9 @@ class RecognizerManager(
                             }
                         }
                     }, onProcessed = onProcessed,
-                        decodeSpeakers = if (diarize) { window -> withSessionBackend(expected, id) { it.transcribeSpeakers(id, window, count) } } else null,
-                        speakerLabel = { speaker -> speakerLabels.getOrElse(speaker) { unknownSpeaker } }
+                        decodeSpeakers = if (diarize) { window -> withSessionBackend(expected, id) { it.transcribeSpeakers(id, window, count, options) } } else null,
+                        speakerLabel = { speaker -> speakerLabels.getOrElse(speaker) { unknownSpeaker } },
+                        options = options
                     ).also { created = it }
                 }
             }
@@ -307,7 +352,28 @@ class RecognizerManager(
         idlePolicy.setIdle(false)
         val old = recognizer
         recognizer = null; loadedModelId = null; _isReady.value = false; _isLoading.value = false
+        _activity.value = RecognitionActivity()
         if (clearFailure) _failure.value = null
         return old
     }
+}
+
+/**
+ * The manager evaluates this only under its ownership lock. A saved ASR-thread
+ * change requires fresh native construction at the next idle initialization;
+ * active sessions keep their worker and budgets until every lease has drained.
+ */
+internal class RecognitionRuntimeConfiguration {
+    enum class Change { KEEP, CONFIGURE, RELOAD }
+    private var current: RuntimeOptions? = null
+
+    fun change(requested: RuntimeOptions, hasSessions: Boolean): Change = when {
+        current == null -> Change.RELOAD
+        hasSessions -> Change.KEEP
+        current?.asrThreads != requested.asrThreads -> Change.RELOAD
+        current != requested -> Change.CONFIGURE
+        else -> Change.KEEP
+    }
+
+    fun applied(options: RuntimeOptions) { current = options.requireValid() }
 }
