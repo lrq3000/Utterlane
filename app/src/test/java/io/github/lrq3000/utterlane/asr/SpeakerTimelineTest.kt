@@ -16,10 +16,14 @@ class SpeakerTimelineTest {
         assertEquals(0, timeline.speakerAt(40000))
         assertEquals(-1, timeline.speakerAt(56000))
     }
-    @Test fun explicitCountConstrainsTracksRatherThanInventingVoices() {
+    @Test fun explicitCountMapsAllNativeTracksRatherThanDiscardingHighChannels() {
         val timeline = SpeakerTimeline(2)
         timeline.append(FloatArray(800) { when (it % 8) { 0 -> .6f; 7 -> .9f; else -> .1f } })
         assertEquals(0, timeline.speakerAt(8000))
+        timeline.append(frames(4, 7, 2))
+        assertEquals(1, timeline.speakerAt(24000))
+        assertEquals(0, timeline.speakerAt(40000))
+        assertEquals(-1, timeline.speakerAt(56000))
         assertThrows(IllegalArgumentException::class.java) { SpeakerTimeline(9) }
         assertThrows(IllegalArgumentException::class.java) { SpeakerTimeline(-1) }
     }
@@ -41,5 +45,19 @@ class SpeakerTimelineTest {
         assertEquals(8000L, turns.first().start)
         assertEquals(40000L, turns.last().end)
         turns.zipWithNext().forEach { (a, b) -> assertEquals(a.end, b.start) }
+    }
+
+    @Test fun shortRealTurnIsNotAbsorbedByItsPredecessor() {
+        val timeline = SpeakerTimeline(0)
+        timeline.append(frames(0))
+        timeline.append(FloatArray(12 * 8) { if (it % 8 == 1) .95f else .01f })
+        timeline.append(frames(0))
+        assertEquals(listOf(0, 1, 0), timeline.turns(0, 33920).map { it.speaker })
+    }
+
+    @Test fun tiedProbabilitiesAreUnknownRatherThanAnArbitraryIdentity() {
+        val timeline = SpeakerTimeline(0)
+        timeline.append(FloatArray(100 * 8) { if (it % 8 < 2) .8f else .01f })
+        assertEquals(-1, timeline.speakerAt(8000))
     }
 }
