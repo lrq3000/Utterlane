@@ -30,6 +30,32 @@ class AudioPipelineTest {
         assertEquals("Hello world", "$first $second")
     }
 
+    @Test fun standaloneWhitespaceBpeStartsOwnedNumericWordsAfterLeftOverlap() {
+        val window = AudioWindow(ShortArray(64000), 205790, 221790, 269790)
+        val times = floatArrayOf(.88f, 1.36f, 1.52f, 1.68f, 1.84f, 2f, 2.16f, 2.32f, 2.48f)
+        for ((number, unit, fraction) in listOf(Triple("1", "h", "30"), Triple("2", "m", "45"))) {
+            for (separator in listOf(" ", "\t", "\u00a0")) {
+                val tokens = arrayOf(" context", separator, number, unit, ",", separator, number, unit, fraction)
+                assertEquals("$number$unit,$separator$number$unit$fraction", WindowText.select(tokens, times, window))
+            }
+        }
+    }
+
+    @Test fun punctuationOwnershipStillUsesItsOriginalWhitespaceBoundary() {
+        val window = AudioWindow(ShortArray(32000), 0, 16000, 32000)
+        val times = floatArrayOf(.8f, 1.1f, 1.4f)
+        assertEquals("! next", WindowText.select(arrayOf(" context", " !", " next"), times, window))
+        assertEquals("next", WindowText.select(arrayOf(" context", "!", " next"), times, window))
+    }
+
+    @Test fun numericOwnershipRetainsTheStandaloneWhitespaceTimestamp() {
+        val window = AudioWindow(ShortArray(32000), 0, 16000, 32000)
+        // The numeric word starts with its whitespace BPE token, just as in
+        // the original Off path, even when later digit pieces cross the cut.
+        assertEquals("next", WindowText.select(arrayOf(" context", " ", "4", "2", " next"),
+            floatArrayOf(.8f, .96f, 1.04f, 1.12f, 1.5f), window))
+    }
+
     @Test fun unicodePagesExcludePartialUtf8Characters() {
         val directory = java.nio.file.Files.createTempDirectory("unicode-pages").toFile()
         val store = TranscriptStore(java.io.File(directory, "result.txt"))

@@ -94,6 +94,32 @@ class DiarizedWindowProcessorTest {
         assertEquals(1, asr.calls)
     }
 
+    @Test fun whitespaceBpeNumericOwnershipMatchesOffWithOneRecognitionPass() {
+        val tokens = arrayOf(" context", " ", "1", "h", ",", " ", "1", "h", "30")
+        val times = floatArrayOf(.88f, 1.36f, 1.52f, 1.68f, 1.84f, 2f, 2.16f, 2.32f, 2.48f)
+        val window = AudioWindow(ShortArray(64000), 0, 16000, 64000, true)
+        for (nativeEnds in listOf(false, true)) for (count in listOf(0, 1)) {
+            val result = WindowResult(tokens, times, ends = if (nativeEnds) times.map { it + .08f }.toFloatArray() else floatArrayOf())
+            val asr = Backend(result)
+            DiarizedWindowProcessor(asr, Frames(IntArray(400) { 0 }), count).use { processor ->
+                assertEquals("1h, 1h30", WindowText.select(tokens, times, window))
+                assertEquals(listOf(SpeechSpan("1h, 1h30", 0)), processor.process(window))
+            }
+            assertEquals(1, asr.calls)
+        }
+    }
+
+    @Test fun ownedWhitespaceAndPunctuationKeepRawSpacingWithoutForcingASpeakerChange() {
+        val result = WindowResult(arrayOf(" lead", " ", " !", " next"), floatArrayOf(.1f, .3f, .5f, 1f))
+        val window = AudioWindow(ShortArray(32000), 0, 0, 32000, true)
+        val asr = Backend(result)
+        DiarizedWindowProcessor(asr, Frames(IntArray(200) { if (it < 40) 0 else 1 }), 0).use { processor ->
+            assertEquals("lead  ! next", WindowText.select(result.tokens, result.timestamps, window))
+            assertEquals(listOf(SpeechSpan("lead  !", 0), SpeechSpan(" next", 1)), processor.process(window))
+        }
+        assertEquals(1, asr.calls)
+    }
+
     @Test fun autoKeepsSixTurnsAndReturningIdentitiesIncludingBriefInterjection() {
         val starts = floatArrayOf(0f, .5f, 1f, 1.12f, 1.7f, 2.2f)
         val asr = Backend(WindowResult(arrayOf(" Bonjour", " hello", " Hein?", " yes", " retour", " bye"), starts))

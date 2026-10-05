@@ -69,10 +69,19 @@ class DiarizedWindowProcessor(
         fed = end
         finished = window.isFinal
         drain(output)
+        val lastText = words.indexOfLast { it.text.isNotBlank() }
+        val separator = StringBuilder()
+        var firstText = true
         for ((index, original) in words.withIndex()) {
-            var text = original.text
-            if (index == 0) text = text.trimStart()
-            if (index == words.lastIndex) text = text.trimEnd()
+            if (index > lastText) break
+            // Ownership has already been selected. Retain whitespace-only
+            // groups as separators on the following owned text, so they cannot
+            // disappear as blank spans or change a lexical group's ownership.
+            if (original.text.isBlank()) { separator.append(original.text); continue }
+            var text = separator.append(original.text).toString()
+            separator.setLength(0)
+            if (firstText) { text = text.trimStart(); firstText = false }
+            if (index == lastText) text = text.trimEnd()
             val word = original.copy(text = text)
             // Bound pathological metadata density too, independently of duration.
             while (pending.isNotEmpty() && (pending.size >= 8192 || pendingCharacters + word.text.length > 262144)) {
@@ -106,6 +115,9 @@ class DiarizedWindowProcessor(
         pendingCharacters -= word.text.length
         val speaker = when {
             count == 1 -> 0
+            // Punctuation follows the last owned lexical speaker. Its ASR
+            // timestamp still controls text ownership, not a new voice label.
+            word.text.none { it.isLetterOrDigit() } -> previous
             forceUnknown || word.end > timeline.endSample -> -1
             else -> timeline.speakerDuring(word.start, word.end, previous, word.coarse)
         }
