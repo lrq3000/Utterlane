@@ -99,4 +99,33 @@ class SpeakerTimelineTest {
         assertEquals(0, timeline.speakerAt(8000))
         assertEquals(1, timeline.speakerAt(24000))
     }
+
+    @Test fun mixedWeakAndStrongFramesCannotReserveAnIdentityBeforeTwoSustainedSpeakers() {
+        for (strengths in listOf(listOf(false, false, true), listOf(true, false, true, true))) {
+            val timeline = SpeakerTimeline(2)
+            for (strong in strengths) timeline.append(candidateFrame(strong))
+            timeline.append(frames(4, 6))
+            assertEquals("Mixed evidence must not permanently reserve a slot", -1, timeline.speakerAt(0))
+            val offset = strengths.size * 160L
+            assertEquals(0, timeline.speakerAt(offset + 8000))
+            assertEquals(1, timeline.speakerAt(offset + 24000))
+        }
+    }
+
+    @Test fun threeConsecutiveStrongFramesOrFullWeakConfirmationStillEstablishIdentity() {
+        for (strong in listOf(false, true)) {
+            val timeline = SpeakerTimeline(2)
+            val needed = if (strong) 3 else 20
+            repeat(needed) { index ->
+                timeline.append(candidateFrame(strong))
+                assertEquals(if (index + 1 == needed) 0 else -1, timeline.speakerAt(index * 160L))
+            }
+        }
+    }
+
+    private fun candidateFrame(strong: Boolean) = FloatArray(8) { channel -> when (channel) {
+        7 -> if (strong) .95f else .56f
+        0 -> if (strong) .01f else .46f
+        else -> .01f
+    } }
 }

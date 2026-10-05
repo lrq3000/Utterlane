@@ -19,6 +19,7 @@ class SpeakerTimeline(
     private var identityCount = 0
     private var candidate = -1
     private var candidateFrames = 0
+    private var strongCandidateFrames = 0
     private var first = 0L
     private var end = 0L
     val endSample: Long get() = end * 160
@@ -34,13 +35,19 @@ class SpeakerTimeline(
             probabilities.copyInto(this.probabilities, slot, offset, offset + 8)
             val best = channelAt(end)
             val confirmation = maxOf(3, (options.speakerConfirmationMs + 9) / 10)
-            candidateFrames = if (best == candidate) minOf(candidateFrames + 1, confirmation) else 1
-            candidate = best
+            val sameCandidate = best == candidate
+            candidateFrames = if (sameCandidate) minOf(candidateFrames + 1, confirmation) else 1
             // Three strong frames can establish a genuinely brief interjection;
             // a single-frame spike never consumes a scarce fixed-count identity.
             val strong = best >= 0 && channelAt(end, maxOf(.7f, options.speakerThreshold),
                 maxOf(.2f, options.speakerMargin)) == best
-            if (best >= 0 && candidateFrames >= (if (strong) 3 else confirmation) && identities[best] < 0 &&
+            // Weak support counts toward full confirmation only. One later
+            // strong frame must not retroactively promote that earlier support.
+            strongCandidateFrames = if (strong) {
+                if (sameCandidate) minOf(strongCandidateFrames + 1, 3) else 1
+            } else 0
+            candidate = best
+            if (best >= 0 && (strongCandidateFrames >= 3 || candidateFrames >= confirmation) && identities[best] < 0 &&
                 identityCount < speakerCount) {
                 identities[best] = identityCount++
             }
