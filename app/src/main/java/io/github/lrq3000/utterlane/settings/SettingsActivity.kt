@@ -815,6 +815,8 @@ fun SettingsScreen(
 
             DiarizationSettings(onPickModelFolder)
 
+            AdvancedRecognitionSettings(settingsRepository)
+
             // Appearance Section
             SettingsSection(title = stringResource(R.string.section_appearance)) {
                 AppLanguageSetting()
