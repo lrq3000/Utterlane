@@ -31,7 +31,11 @@ internal data class DiagnosticEnvironment(
 
 /** The queue can contain only these bounded, content-free values, never PCM/UI snapshots. */
 internal sealed class DiagnosticRecord(val options: RuntimeOptions) {
-    class Activity(options: RuntimeOptions, private val status: RecognitionStatus, private val operation: Long) : DiagnosticRecord(options) {
+    // `options` owns consent. A shared worker may still use an older configuration;
+    // keep it separately rather than replacing its diagnostics bit in the export.
+    open val configuration: RuntimeOptions get() = options
+    class Activity(options: RuntimeOptions, private val status: RecognitionStatus, private val operation: Long,
+        override val configuration: RuntimeOptions = options) : DiagnosticRecord(options) {
         override fun fields(): Map<String, Any> = mapOf(
             "kind" to "activity", "operation_id" to operation, "request_id" to status.requestId,
             "stage" to status.scope, "state" to status.stage.name.lowercase(), "active" to status.active,
@@ -56,10 +60,13 @@ internal sealed class DiagnosticRecord(val options: RuntimeOptions) {
         values.putAll(fields())
         // Repeat the small immutable configuration with each sample. Rotation/export
         // can then never detach metrics from the options actually used by that operation.
-        values["options"] = options.toMap()
+        values["options"] = configuration.toMap()
         values["options_scope"] = if (this is Activity) "worker_configuration" else "capture_preferences"
         if (this is Activity) {
-            values["effective_asr_threads"] = RuntimeOptions.resolveThreads(options.asrThreads)
+            // ASR threads/recovery belong to the shared worker, while diarization and
+            // diagnostic consent belong to this session's immutable starting snapshot.
+            values["operation_options"] = options.toMap()
+            values["effective_asr_threads"] = RuntimeOptions.resolveThreads(configuration.asrThreads)
             values["effective_diarization_threads"] = RuntimeOptions.resolveThreads(options.diarizationThreads)
         }
         values["environment"] = environment.fields()
