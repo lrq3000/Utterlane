@@ -139,3 +139,48 @@ The capture utility also supports section-level images. It hides fixed utility
 controls only in those crops to avoid Chromium projecting the offscreen skip
 link into a capture taller than the actual viewport. Live controls are checked
 separately. No material visual mismatch remained in the inspected layouts.
+
+## Approved evolution — Illustrated voice comparison
+
+Implemented on top of `origin/website` at `4d4e752`, including the persistent
+light/dark theme and the latest action/freedom copy. The accepted study is
+`.superpowers/brainstorm/voice-comparison/content/comparison-clean-copy.html`;
+the approved specification and execution plan live under `docs/superpowers/`.
+
+- New `#compare` after the speed interlude: sourced ≈4× speaking/typing example,
+  eight illustrated four-way cards, and a four-reference source disclosure.
+- The leaf-green speech bar keeps its subtle barber-pole loop. Both fills grow
+  once on entry, with the final time ratio of 22.6%. The site's existing global
+  motion button completes/pauses the chart, and Play does not replay entrances.
+- The later approved disclosure is initially closed, labelled “See how Utterlane
+  compares to other solutions.” It contains the comparison heading, legend and
+  all eight cards. Native details retain keyboard and no-JavaScript operation.
+- The maintainer removed the fifth explanatory source note and renamed the
+  closing releases button to “Get Utterlane”.
+
+### Fidelity and integration review
+
+| Point | Reference / rendered result |
+| --- | --- |
+| Copy and order | DOM comparison against the approved study matched all eight headings, descriptions, notes and 32 cells exactly. Latest footnote and collapse revisions are applied separately. |
+| Geometry | 1200px maximum composition; rounded 22px cards, 14px cells and four/two/one-column layout match the study. |
+| Typography | Approved headline, 29px card headings, 14px summaries and 12px cell copy retained, with original narrow-screen sizing. |
+| Artwork | Shared local SVG parts preserve the shield enclosing the phone, language bubbles, recovery audio and matching speaker colors. |
+| Timing panel | Navy panel, leaf-green gradient and striped highlight match desktop/phone references; removing the preview-only pause button is intentional because production has the global control. |
+| Theme / contrast | New upstream theme tokens govern surfaces and text. Tinted-panel body text darkened slightly to `#56667e` to fix measured 4.23–4.43:1 failures; light and dark axe audits pass. |
+| Visibility | All text remains static HTML; collapsed cards open without JavaScript. The card fold is the maintainer's implementation-stage revision. |
+| Existing copy | Hero/navigation wording retained; hero scroll cue now targets the comparison. Closing CTA label changed only as subsequently requested. |
+
+Reviewed reference and implementation captures at 1440×1000 and 390×844 with
+Read. Real browser-controller inspection exercised the production page, chart
+motion and global pause/play. Playwright supplies exact viewport captures because
+browser-controller has no viewport-emulation operation, as well as deterministic
+animation sampling and no-JS/print/fallback checks. No material visual mismatch
+remained in the inspected comparison surfaces.
+
+Verification: TypeScript and production build pass; 53 Playwright tests cover
+the comparison and existing site, including light/dark WCAG AA, responsive
+layouts down to 320px, source disclosures, keyboard folding, lazy assets,
+one-shot motion, pause-before/during-entry, print and missing-observer fallback.
+The longer page required the existing asset test to visit each displayed lazy
+image rather than relying on the browser's prefetch distance from the footer.

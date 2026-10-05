@@ -37,10 +37,22 @@
    green fill depth without changing its mathematically meaningful length. */
 .comparison-bar-speech::before { content: ""; position: absolute; inset: 0 -32px; background: linear-gradient(135deg, #cee6ad80 25%, #4d852d55 25%, #4d852d55 50%, #cee6ad80 50%, #cee6ad80 75%, #4d852d55 75%); background-size: 32px 32px; }
 .comparison-bar-speech::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, #ffffff33, transparent 45%, #2b4a1922); pointer-events: none; }
+/* Only a successfully initialized observer may hide the fills. No-JS and
+   missing-observer visits therefore keep the same complete time comparison. */
+[data-motion="running"] [data-pace-ready]:not([data-pace-entered]) .comparison-bar { transform: scaleX(0); }
+[data-motion="running"] [data-pace-ready][data-pace-entered] .comparison-bar:not([data-expanded]) { animation: comparison-grow 1.2s cubic-bezier(.2,.7,.2,1) both; }
+[data-motion="running"] [data-pace-ready] .comparison-bar-speech::before { animation: comparison-spiral 2.4s linear infinite; }
+@keyframes comparison-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes comparison-spiral { from { transform: translateX(-32px); } to { transform: translateX(0); } }
 .comparison-pace-note { color: #bdcce3; line-height: 1.7; font-size: 12px; margin: 24px 0 0; }
 .comparison-source-note { font-size: 12px; color: var(--muted); line-height: 1.8; max-width: 1020px; }
 .comparison a:not(.button) { color: var(--blue); text-decoration: underline; }
-.comparison-heading-row { display: flex; align-items: end; justify-content: space-between; gap: 32px; margin: 100px 0 25px; }
+.comparison-disclosure { margin-top: 56px; border-block: 1px solid var(--comparison-border); }
+.comparison-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 24px 0; min-height: 44px; font-size: 18px; line-height: 1.6; font-weight: 600; cursor: pointer; list-style: none; }
+.comparison-disclosure > summary::-webkit-details-marker { display: none; }
+.comparison-disclosure > summary:hover { color: var(--blue); }
+.comparison-disclosure > summary .disclosure { flex-shrink: 0; }
+.comparison-heading-row { display: flex; align-items: end; justify-content: space-between; gap: 32px; margin: 30px 0 25px; }
 .comparison-heading-row h3 { font-size: 38px; letter-spacing: -1.5px; line-height: 1.15; margin: 0; }
 .comparison-heading-row p { max-width: 410px; font-size: 13px; line-height: 1.8; color: var(--muted); margin: 0; }
 .comparison-legend { display: flex; gap: 22px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 24px; }
@@ -106,6 +118,8 @@
   .comparison-heading-row h3 { font-size: 33px; }
 }
 @media print {
+  .comparison-bar { animation: none !important; transform: none !important; }
+  .comparison-bar-speech::before { animation: none !important; }
   .comparison-pace { background: #fff; color: var(--ink); border: 1px solid var(--line); }
   .comparison-pace-hint, .comparison-pace-note, .comparison-multiplier { color: var(--ink); }
   .comparison-card { break-inside: avoid; }

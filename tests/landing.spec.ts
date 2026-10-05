@@ -204,7 +204,8 @@ test('shows complete content when viewport observers are unavailable', async ({ 
   await page.goto('./');
   await expect(page.locator('.speed-word')).toHaveCSS('opacity', '1');
   await expect(page.locator('.privacy-point').first()).toHaveCSS('opacity', '1');
-  await expect(page.locator('.closing')).toContainText('Explore GitHub releases');
+  await expect(page.locator('.closing').getByRole('link', { name: 'Get Utterlane' }))
+    .toHaveAttribute('href', 'https://github.com/lrq3000/Utterlane/releases');
 });
 
 test('keeps content and FAQ usable with JavaScript disabled', async ({ browser }) => {

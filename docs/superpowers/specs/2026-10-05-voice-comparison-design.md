@@ -36,6 +36,12 @@ Different participants, tasks, and word definitions make the ratio approximate.
 
 ## Comparison cards
 
+Implementation revision: wrap “Same thought. A different experience.”, its
+introduction, legend and all eight cards in a native `<details>` element,
+collapsed by default. Its summary is “See how Utterlane compares to other
+solutions.” The timing illustration, cross-app closing benefit, and four-source
+disclosure remain outside this fold. Keyboard and no-JS operation are required.
+
 Each card has a numbered topic, descriptive heading, short benefit explanation,
 an original local SVG illustration, and four labelled columns: Phone keyboard,
 Cloud transcription, Other offline transcription, Utterlane. Define the other

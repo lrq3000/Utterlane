@@ -35,12 +35,12 @@ the existing `MotionPreference` and visibility gates; no framework or remote dat
 - [x] Run `npm run check && npm run build && npm test` with `CI=true` so tests
   start their own server rather than reusing another worktree's process.
   Baseline: 44 tests passed.
-- [ ] Commit this plan and the approved spec:
+- [x] Commit this plan and the approved spec:
   `docs(website): record approved voice comparison design`.
 
 ## Task 2 — Ship the complete static illustrated section
 
-- [ ] Add `tests/comparison.spec.ts` with a no-JS contract first:
+- [x] Add `tests/comparison.spec.ts` with a no-JS contract first:
 
 ```ts
 test('comparison is usable without JavaScript', async ({ browser, baseURL }) => {
@@ -56,19 +56,19 @@ test('comparison is usable without JavaScript', async ({ browser, baseURL }) => 
 });
 ```
 
-- [ ] Run `npm test -- tests/comparison.spec.ts` against the built baseline;
+- [x] Run `npm test -- tests/comparison.spec.ts` against the built baseline;
   verify missing comparison content causes the failure.
-- [ ] Insert `#compare` after `#speed`, copying the approved final preview's
+- [x] Insert `#compare` after `#speed`, copying the approved final preview's
   copy and SVG scenes. Use a section h2, h3 card titles and per-cell `dl/dt/dd`
   labels. Put `aria-hidden` on decorative badges/art; status meaning gets
   screen-reader text. Do not render the section through client-side JavaScript.
-- [ ] Use shared phone/paper/cloud/person SVG symbols with `comparison-` IDs,
+- [x] Use shared phone/paper/cloud/person SVG symbols with `comparison-` IDs,
   retaining the green shield, language bubbles and matching speaker colors.
-- [ ] Use the approved 1200px section width, 22px card radii, four desktop
+- [x] Use the approved 1200px section width, 22px card radii, four desktop
   columns, two intermediate columns and one narrow column. Add local CSS tokens
   for cell/border/highlight backgrounds, overriding only their dark counterparts.
   Use existing `--ink`, `--muted`, `--surface`, `--blue` and `--violet`.
-- [ ] Preserve exact final recovery copy, Whisper/Vosk examples, KASROZ link,
+- [x] Preserve exact final recovery copy, Whisper/Vosk examples, KASROZ link,
   green speaking bar and expanded multilingual/meeting copy. Keep the study
   method notes in a native disclosure initially closed. Static chart structure:
 
@@ -84,30 +84,36 @@ test('comparison is usable without JavaScript', async ({ browser, baseURL }) => 
 </div>
 ```
 
-- [ ] Add tests for accessible column labels, sources navigation, theme colors
+- [x] Add tests for accessible column labels, sources navigation, theme colors
   and content bounds at 320/390/768/1440px. Include the new section in existing
   whole-page tests. Check the open source disclosure for axe contrast too.
-- [ ] Run `npm run check && npm run build && npm test`. Inspect the rendered
+- [x] Run `npm run check && npm run build && npm test`. Inspect the rendered
   site using browser-controller at `http://127.0.0.1:4352/Utterlane/#compare`.
   Capture exact desktop/mobile sizes using the existing Playwright tooling when
   browser-controller has no viewport-emulation operation.
-- [ ] Commit the complete static slice after its tests pass:
+- [x] Commit the complete static slice after its tests pass:
   `feat(website): add illustrated voice typing comparisons`.
 
 ## Task 3 — Add the approved chart motion
 
-- [ ] Test zero scale before entering the viewport, intermediate animation
+- [x] Apply the user's implementation-stage revision: a native, initially
+  closed `.comparison-disclosure` wraps the comparison heading, legend and eight
+  cards. Summary: “See how Utterlane compares to other solutions.” Add a failing
+  keyboard expand/collapse test before inserting the wrapper; open it explicitly
+  in no-JS, layout and contrast tests. Keep the speed chart and sources outside.
+
+- [x] Test zero scale before entering the viewport, intermediate animation
   samples, final 22.6% ratio, manual pause before/during entrance, later Play
   without collapse, offscreen stripe pause, and missing-observer fallback.
   Run the focused animation tests and observe failure on the static chart.
-- [ ] Implement `PaceComparison` in `src/pace.ts`, constructed with the existing
+- [x] Implement `PaceComparison` in `src/pace.ts`, constructed with the existing
   `MotionPreference`. Cache the chart and its two bars. Observe the chart with
   threshold 0.2; set `data-pace-entered` once visible. On `comparison-grow`
   animation end, mark each fill `data-expanded` so its entrance cannot restart.
   On manual pause, mark both expanded and the chart entered before resuming can
   recollapse it. No observer means complete static chart. One observer and event
   handlers only: bounded O(1) work, no animation-frame loop.
-- [ ] Add the transform-only rules:
+- [x] Add the transform-only rules:
 
 ```css
 [data-motion="running"] [data-pace-ready]:not([data-pace-entered]) .comparison-bar {
@@ -126,23 +132,23 @@ test('comparison is usable without JavaScript', async ({ browser, baseURL }) => 
   Existing `[data-in-view]` / `[data-page-hidden]` rules pause the loop. Print
   rules disable motion and expose complete fills. Site autoplay policy is kept;
   the existing global Play/Pause button controls the chart too.
-- [ ] Add `import { PaceComparison } from './pace';` and
+- [x] Add `import { PaceComparison } from './pace';` and
   `new PaceComparison(motion);` to `src/main.ts` after motion initialization.
-- [ ] Run focused motion tests, then the full check/build/browser suite. Verify
+- [x] Run focused motion tests, then the full check/build/browser suite. Verify
   the real Chrome scroll → grow → pause → play path, source disclosure and theme
   control. Compare reference and implementation screenshots using Read.
-- [ ] Record five fidelity points in `docs/design.md`: copy/order, card geometry,
+- [x] Record five fidelity points in `docs/design.md`: copy/order, card geometry,
   artwork/green shield, typography, green-bar timing/ratio, and theme adaptation.
-- [ ] Commit behavior and tests:
-  `feat(website): animate the speech speed comparison`.
+- [x] Commit behavior and tests with the requested collapsible comparison:
+  `feat(website): add animated and expandable comparisons`.
 
 ## Completion
 
-- [ ] Fetch `origin website` again. If upstream advanced, merge its new commits
+- [x] Fetch `origin website` again. If upstream advanced, merge its new commits
   without rewriting history, preserving all upstream hunks; validate affected
   behavior before adding a conventional integration commit.
-- [ ] Inspect status, commits and diff from `origin/website`; run `git diff --check`.
-- [ ] Report local commits, actual check results, preview URL and worktree path.
+- [x] Inspect status, commits and diff from `origin/website`; run `git diff --check`.
+- [x] Report local commits, actual check results, preview URL and worktree path.
   Do not push or deploy without a request.
 
 Self-review: all eight approved cards and wording revisions are assigned to
@@ -150,3 +156,6 @@ Task 2; motion and edge cases to Task 3. Theme support is the required adaptatio
 to the freshly fetched website. Existing autoplay and section content remain
 under their current contracts. Commits must include motivation and the footer
 `Harness: OpenCode; Model: OpenAI gpt-6-astra`.
+
+Implementation-stage copy changes: remove the fifth comparison footnote and
+rename the closing action to “Get Utterlane”, retaining its releases URL.
