@@ -135,6 +135,31 @@ class SpeakerTextTest {
         assertEquals(listOf("again"), formatter.accept(listOf(SpeechSpan("again", -1))))
     }
 
+    @Test fun incomingOpeningPunctuationStaysWithItsWordAndSpeaker() {
+        val phrases = listOf("¿Qué tal?", "¡Hola!", "“Quoted.”", "‘Quoted.’", "«Bonjour.»",
+            "\"Quoted.\"", "'Quoted.'", "(aside)", "[aside]", "{aside}", "「文」", "(“Quoted.”)")
+        for (phrase in phrases) for (split in listOf(false, true)) {
+            val formatter = formatterFor()
+            val spans = listOf(SpeechSpan("Hola.", 0), SpeechSpan(" $phrase", 1))
+            val batches = if (split) spans.map { listOf(it) } else listOf(spans)
+            val text = (batches.flatMap { formatter.accept(it) } + formatter.finish()).joinToString("")
+            assertEquals("phrase=$phrase split=$split", "Speaker 1: Hola.\nSpeaker 2: $phrase", text)
+        }
+    }
+
+    @Test fun replacementTrailingPunctuationAndIncomingOpeningPrefixStayOnTheirOwnSides() {
+        val cases = listOf("!" to "¿Qué tal?", "!" to "¡Hola!", "!" to "“Next.”",
+            "!" to "\"Next.\"", "!)" to "[Next.]", "!\"" to "Next.", "!”" to "«Next.»")
+        for ((trailing, incoming) in cases) {
+            val formatter = formatterFor(listOf(DictionaryManager.ReplacementRule("hello world", "greetings")))
+            val text = (formatter.accept(listOf(SpeechSpan("hello", 0),
+                SpeechSpan(" world$trailing $incoming", 1))) + formatter.finish()).joinToString("")
+            assertEquals("trailing=$trailing incoming=$incoming",
+                "Unknown speaker: greetings$trailing\nSpeaker 2: $incoming", text)
+            assertEquals("greetings$trailing $incoming", stripLabels(text))
+        }
+    }
+
     private fun formatterFor(rules: List<DictionaryManager.ReplacementRule> = emptyList()) =
         SpeakerText(StreamingCorrections(rules)) { if (it < 0) "Unknown speaker" else "Speaker ${it + 1}" }
 }
