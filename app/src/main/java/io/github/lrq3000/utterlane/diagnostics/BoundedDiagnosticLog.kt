@@ -51,7 +51,9 @@ internal class BoundedDiagnosticLog(
     fun offer(record: DiagnosticRecord): Boolean {
         if (!record.options.diagnostics) return false
         // Invalid/unbounded configuration strings are rejected before entering the queue.
-        if (record.options.diarizationMode.length > 32 || record.options.validationErrors().isNotEmpty()) return false
+        if (listOf(record.options, record.configuration).any {
+            it.diarizationMode.length > 32 || it.validationErrors().isNotEmpty()
+        }) return false
         val accepted = commands.trySend(Command.Append(record, System.nanoTime() / 1000000)).isSuccess
         if (!accepted) dropped.incrementAndGet()
         return accepted

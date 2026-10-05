@@ -18,7 +18,7 @@ class LocalRecognitionDiagnostics internal constructor(
     private var operation = 0L
     private val captureIds = AtomicLong()
 
-    @Synchronized fun activity(activity: RecognitionActivity, options: RuntimeOptions) {
+    @Synchronized fun activity(activity: RecognitionActivity, options: RuntimeOptions, workerOptions: RuntimeOptions = options) {
         if (!options.diagnostics) return
         val status = RecognitionStatus.from(activity)
         val old = last
@@ -34,7 +34,7 @@ class LocalRecognitionDiagnostics internal constructor(
         // A terminal/error sample is emitted once, even if the 250 ms ticker repeats it.
         val terminal = !status.active && (old == null || old.active || old.stage != status.stage || newRequest)
         if (terminal || (status.active && (lastLogged == Long.MIN_VALUE || now - lastLogged >= 1000))) {
-            log.offer(DiagnosticRecord.Activity(options, status, operation))
+            log.offer(DiagnosticRecord.Activity(options, status, operation, workerOptions))
             lastLogged = now
         }
         last = status
