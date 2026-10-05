@@ -71,4 +71,33 @@ class SpeakerTextTest {
         emittedWords += stripLabels(formatter.finish()).split(' ').size
         assertEquals(5000, emittedWords)
     }
+
+    @Test fun orderedReplacementRulesCannotChangeWordsWhenLabelLookaheadChangesDeliveryBatches() {
+        val rules = listOf(DictionaryManager.ReplacementRule("a", "hello"),
+            DictionaryManager.ReplacementRule("hello b", "combined"))
+        val off = StreamingCorrections(rules)
+        val on = SpeakerText(StreamingCorrections(rules)) { if (it < 0) "Unknown speaker" else "Speaker ${it + 1}" }
+        val baseline = listOf(off.accept("a b c d e"), off.accept("f g h"), off.finish()).joinToString(" ")
+        // Native lookahead can deliver these same words in a single later batch.
+        val labeled = (on.accept(listOf(SpeechSpan("a", 0), SpeechSpan("b c d e f g h", 1))) + on.finish()).joinToString(" ")
+        assertEquals(stripLabels(baseline), stripLabels(labeled))
+        assertEquals("combined c d e f g h", stripLabels(labeled))
+    }
+
+    @Test fun orderedExpansionAndDeletionMatchWholeTextRulesForEveryWordPartition() {
+        val rules = listOf(DictionaryManager.ReplacementRule("red blue", "blue green"),
+            DictionaryManager.ReplacementRule("green tail", "fused"),
+            DictionaryManager.ReplacementRule("drop", ""), DictionaryManager.ReplacementRule("NY", "New York"),
+            DictionaryManager.ReplacementRule("New York city", "NYC"))
+        val raw = "red blue tail drop NY city red blue tail"
+        var expected = raw
+        for (rule in rules) expected = Regex("\\b${Regex.escape(rule.from)}\\b", RegexOption.IGNORE_CASE)
+            .replace(expected) { rule.to }
+        val words = raw.split(' ')
+        for (size in 1..words.size) {
+            val corrections = StreamingCorrections(rules)
+            val chunks = words.chunked(size).map { corrections.accept(it.joinToString(" ")) } + corrections.finish()
+            assertEquals("Word partition $size", stripLabels(expected), stripLabels(chunks.joinToString(" ")))
+        }
+    }
 }
