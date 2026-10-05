@@ -13,13 +13,23 @@ class SpeakerText(private val corrections: StreamingCorrections, private val lab
     private fun format(spans: List<SpeechSpan>): String {
         val output = StringBuilder()
         for (span in spans) {
-            if (span.text.isBlank()) {
+            val lexicalStart = span.text.indexOfFirst { it.isLetterOrDigit() }
+            // A correction can change a word's owner while its original trailing
+            // punctuation keeps source metadata. Punctuation belongs to the
+            // corrected lexical owner and cannot establish a separate turn.
+            if (lexicalStart < 0) {
                 output.append(span.text)
                 continue
             }
             if (speaker != span.speaker) {
-                if (emitted) output.append('\n')
-                output.append(label(span.speaker)).append(": ").append(span.text.trimStart())
+                var text = span.text
+                if (emitted) {
+                    // One source span may contain both trailing punctuation
+                    // and the next speaker's words: switch only at the words.
+                    output.append(text.take(lexicalStart).trimEnd()).append('\n')
+                    text = text.drop(lexicalStart)
+                }
+                output.append(label(span.speaker)).append(": ").append(text.trimStart())
                 speaker = span.speaker
             } else output.append(span.text)
             emitted = true
