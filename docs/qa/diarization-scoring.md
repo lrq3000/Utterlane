@@ -40,6 +40,26 @@ candidate is a valid **total omission**, not a perfect result. Gold must contain
 words, each with a known speaker. Punctuation-only blocks are counted in raw
 block totals but have no words or word-derived turns.
 
+### Concatenated recordings
+
+For a recording made by concatenating the same fixture N times, pass
+`--repeat-reference N` (integer **1..100**, default 1):
+
+```console
+python tools/qa/diarization_regression.py /path/to/fixtures /path/to/concatenated-on.txt --recording recording-id --repeat-reference 2 --format json --check
+```
+
+The scorer repeats the gold words and blocks **in memory**, preserving speaker
+IDs, then performs one recording-wide alignment and speaker mapping. It does
+not remap identities separately for each copy. Adjacent same-speaker words at
+a copy boundary naturally form one turn: six alternating turns repeated twice
+give twelve turns, while a single-speaker fixture remains one speaker/turn.
+`reference_repetitions` records the count in each candidate's JSON result.
+
+The optional fixture `*_transcript_no-diarization.txt` is repeated for its
+gold-consistency comparison too. Candidate output is always read exactly as
+supplied, never repeated. Original fixture files are read-only throughout.
+
 ## Metrics and denominators
 
 JSON has `schema_version: 1`, a `recordings` array, and an `acceptance` object.

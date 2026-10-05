@@ -28,6 +28,13 @@ class Transcript:
     def tokens(self):
         return [word.text for word in self.words]
 
+    def repeated(self, count):
+        if type(count) is not int or not 1 <= count <= 100:
+            raise ValueError("repeat-reference must be an integer between 1 and 100")
+        # Keep IDs stable across copies. Scoring the combined words once makes
+        # returning-speaker swaps visible and merges same-speaker seams naturally.
+        return Transcript(self.words * count, self.block_speakers * count, list(self.warnings))
+
 
 class TranscriptParser:
     """Labels start lines; unlabeled lines continue the preceding block."""
@@ -308,7 +315,7 @@ class FixtureRunner:
         self.parser = TranscriptParser()
         self.scorer = DiarizationScorer()
 
-    def run(self, fixture_dir, candidates, recording=None):
+    def run(self, fixture_dir, candidates, recording=None, repeat_reference=1):
         gold_paths = {path.name.removesuffix(self.GOLD_SUFFIX): path
                       for path in sorted(fixture_dir.glob(f"*{self.GOLD_SUFFIX}"))}
         all_gold_paths = gold_paths
@@ -340,14 +347,15 @@ class FixtureRunner:
         reports, references, baselines = [], {}, {}
         for name, path in inputs:
             if name not in references:
-                references[name] = self.parser.read(gold_paths[name])
+                references[name] = self.parser.read(gold_paths[name]).repeated(repeat_reference)
                 baseline = fixture_dir / f"{name}_transcript_no-diarization.txt"
                 if baseline.exists():
-                    tokens = self.parser.read(baseline).tokens
+                    tokens = self.parser.read(baseline).repeated(repeat_reference).tokens
                     gold = references[name].tokens
                     baselines[name] = self.scorer.aligner.summary(gold, tokens, self.scorer.aligner.align(gold, tokens))
             report = self.scorer.score(references[name], self.parser.read(path))
-            report.update(recording=name, candidate=str(path), no_diarization_text=baselines.get(name))
+            report.update(recording=name, candidate=str(path), reference_repetitions=repeat_reference,
+                          no_diarization_text=baselines.get(name))
             if baselines.get(name, {}).get("wer", 0):
                 report["warnings"].append("No-diarization text differs from gold; gold remains the scoring reference.")
             reports.append(report)
@@ -479,6 +487,8 @@ class ScorerCli:
         parser.add_argument("fixture_dir", type=Path)
         parser.add_argument("candidates", type=Path, nargs="*", help="Text files or directories; default: fixture current-diarization files")
         parser.add_argument("--recording", help="Select one reference recording (also permits arbitrary candidate filenames)")
+        parser.add_argument("--repeat-reference", type=int, default=1, metavar="N",
+                            help="Repeat fixture references in memory for concatenated audio (1..100; default 1)")
         parser.add_argument("--format", choices=("text", "json"), default="text")
         parser.add_argument("--performance-jsonl", type=Path, action="append", default=[],
                             help="Optional timing records; repeat for multiple files (schema in docs/qa/diarization-scoring.md)")
@@ -497,7 +507,7 @@ class ScorerCli:
             if not float(getattr(args, name)).is_integer():
                 parser.error(f"--{name.replace('_', '-')} must be an integer")
         try:
-            reports = FixtureRunner().run(args.fixture_dir, args.candidates, args.recording)
+            reports = FixtureRunner().run(args.fixture_dir, args.candidates, args.recording, args.repeat_reference)
             failures = []
             for report in reports:
                 for name, section, metric, _, minimum in self.LIMITS:
@@ -530,6 +540,8 @@ class ScorerCli:
         for report in output["recordings"]:
             text, speakers, turns = report["text"], report["speakers"], report["turns"]
             print(f"\n{report['recording']} [{Path(report['candidate']).name}]")
+            if report["reference_repetitions"] != 1:
+                print(f"  Reference repetitions: {report['reference_repetitions']}")
             print(f"  Words: {text['candidate_words']}/{text['reference_words']}; WER {text['wer']:.2%} "
                   f"(S={text['substitutions']}, D={text['deletions']}, I={text['insertions']})")
             print(f"  Matched reference coverage: {text['matched_reference_coverage']:.2%}; "
