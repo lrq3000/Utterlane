@@ -7,6 +7,10 @@ import io.github.lrq3000.utterlane.asr.*
 import io.github.lrq3000.utterlane.settings.RuntimeOptions
 import io.github.lrq3000.utterlane.transcribe.AudioDecoder
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -20,6 +24,58 @@ import java.nio.ByteOrder
 /** Local acoustic replay, including raw timing/posterior evidence, never bundled private audio. */
 @RunWith(AndroidJUnit4::class)
 class DiarizationFixtureAndroidTest {
+    @Test fun workerReportsCompletedProgressDuringLongRequests(): Unit = runBlocking {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as UtterlaneApp
+        app.modelManager.initializeSelection()
+        val oldModel = app.modelManager.selected.value
+        val oldOptions = app.settingsRepository.runtimeOptions.first()
+        val oldEnabled = app.settingsRepository.diarizationEnabled.first()
+        val oldCount = app.settingsRepository.speakerCount.first()
+        val maxAwake = java.util.concurrent.atomic.AtomicLong()
+        val nativeProgress = java.util.concurrent.atomic.AtomicBoolean()
+        val observer = launch(Dispatchers.Default) {
+            app.recognizerManager.activity.collect { state ->
+                maxAwake.updateAndGet { maxOf(it, state.elapsedMillis) }
+                if (state.stage.startsWith("speaker/") && state.completedUnits > 0) nativeProgress.set(true)
+            }
+        }
+        try {
+            app.recognizerManager.forceUnload()
+            app.recognizerManager.selectModel(ModelCatalog.DEFAULT)
+            val weights = File(app.modelManager.directory().apply { mkdirs() }, "model.gguf")
+            if (!weights.exists()) File("/sdcard/Download/parakeet-qa/parakeet-ultra-q8_0.gguf").copyTo(weights)
+            val speakerWeights = File(app.diarizationModels.directory().apply { mkdirs() }, "model.gguf")
+            if (!speakerWeights.exists()) File("/sdcard/Download/Nemotron-3-Diarization.q8_0.gguf").copyTo(speakerWeights)
+            val options = RuntimeOptions(diarizationBatch = 1, unknownBridgeMs = 1000,
+                inferenceStallSeconds = 45, absoluteOperationSeconds = 0, diagnostics = true)
+            app.settingsRepository.setRuntimeOptions(options)
+            app.settingsRepository.setDiarizationEnabled(true)
+            app.settingsRepository.setSpeakerCount(0)
+            TranscriptionPower(app).use {
+                val session = app.recognizerManager.createSession()
+                try {
+                    AudioDecoder(app).decode("/sdcard/Download/diarization-qa/test-1-speaker-french.m4a", { session.accept(it) })
+                    session.finish()
+                    val text = session.store.readForTransfer()!!
+                    assertTrue(text, text.contains("capture bien ou pas"))
+                    assertTrue("No genuine native stage progress reached the client", nativeProgress.get())
+                    val result = File(app.getExternalFilesDir(null), "diarization-runs/worker-progress.json")
+                    result.parentFile!!.mkdirs()
+                    result.writeText(JSONObject().put("stall_seconds", 45).put("maximum_request_awake_ms", maxAwake.get())
+                        .put("native_progress", nativeProgress.get()).put("complete_transcript", true).toString(2))
+                    android.util.Log.i("DiarizationFixture", "Worker survived: maximum awake=${maxAwake.get()}ms, stall budget=45000ms, genuine progress=${nativeProgress.get()}")
+                } finally { session.close(); session.store.dispose() }
+            }
+        } finally {
+            observer.cancel()
+            app.recognizerManager.forceUnload()
+            app.recognizerManager.selectModel(oldModel)
+            app.settingsRepository.setRuntimeOptions(oldOptions)
+            app.settingsRepository.setDiarizationEnabled(oldEnabled)
+            app.settingsRepository.setSpeakerCount(oldCount)
+        }
+    }
+
     @Test fun replay(): Unit = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp
