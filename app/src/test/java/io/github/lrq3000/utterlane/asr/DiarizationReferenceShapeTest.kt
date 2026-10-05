@@ -78,12 +78,15 @@ class DiarizationReferenceShapeTest {
         }
     }
 
-    @Test fun sixTurns4683SecondsKeep128WordsAndReturningIdsWithMaximumConfiguredLag(): Unit = runBlocking {
+    @Test fun sixTurns4683SecondsKeep128WordsWithMaximumLookaheadAndCatchup(): Unit = runBlocking {
         val duration = 749280
         val starts = IntArray(128) { it * (duration - 320) / 127 }
         val options = RuntimeOptions(diarizationMode = "low_latency", diarizationBatch = 16, labelLookaheadMs = 10000)
         for (count in listOf(0, 2)) {
-            val script = Script(duration, starts, true, 11840 * 16)
+            // Catch-up is a maximum for ALREADY buffered complete steps, not a
+            // request to wait for 16 chunks. Native residual lag stays <= one
+            // low-latency chunk/context plus its FFT scheduling allowance.
+            val script = Script(duration, starts, true, 1060 * 16)
             val (text, calls) = transcript(script, duration, 997, count, options)
             assertEquals(script.words.joinToString(" ") { it.trim() }, plain(text))
             val labels = Regex("Speaker (\\d+):").findAll(text).map { it.groupValues[1].toInt() }.toList()

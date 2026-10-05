@@ -18,12 +18,13 @@ class DiarizedWindowProcessor(
 ) : Closeable {
     init { require(count in 0..8); options.requireValid() }
 
-    // The pinned model schedules encoder frames at 80 ms. Account for the whole
-    // batched chunk plus right context, not only nominal attention lookahead.
+    // Catch-up merges ALREADY complete steps; drain continues until less than
+    // ONE base step remains. Increasing its cap must not add artificial latency
+    // or enlarge the pending-word lifetime in proportion to the batch factor.
     private val nativeLagMs = when (options.diarizationMode) {
-        "low_latency" -> (9 * options.diarizationBatch + 4) * 80
-        "ultra_low_latency" -> (3 * options.diarizationBatch + 1) * 80
-        else -> (6 * options.diarizationBatch + 2) * 80
+        "low_latency" -> (9 + 4) * 80
+        "ultra_low_latency" -> (3 + 1) * 80
+        else -> (6 + 2) * 80
     }
     private val paddingMs = maxOf(options.alignmentToleranceMs, options.unknownBridgeMs, options.speakerConfirmationMs)
     private val waitSamples = (nativeLagMs + options.labelLookaheadMs + paddingMs + 20) * 16L
