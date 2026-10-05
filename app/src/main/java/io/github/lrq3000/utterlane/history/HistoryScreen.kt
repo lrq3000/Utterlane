@@ -44,7 +44,7 @@ fun HistoryRetention.label(): Int = when (this) {
 fun HistorySettings() {
     val app = UtterlaneApp.instance
     val scope = rememberCoroutineScope()
-    val retention by app.settingsRepository.historyRetention.collectAsStateWithLifecycle(initialValue = HistoryRetention.NONE)
+    val retention by app.settingsRepository.historyRetention.collectAsStateWithLifecycle(initialValue = HistoryRetention.DEFAULT)
     var choose by remember { mutableStateOf(false) }
     var browse by remember { mutableStateOf(false) }
     ListItem(headlineContent = { Text(stringResource(R.string.history_retention)) },
@@ -67,7 +67,7 @@ fun HistoryDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val history = app.recordingHistory
-    val retention by app.settingsRepository.historyRetention.collectAsStateWithLifecycle(initialValue = HistoryRetention.NONE)
+    val retention by app.settingsRepository.historyRetention.collectAsStateWithLifecycle(initialValue = HistoryRetention.DEFAULT)
     var entries by remember { mutableStateOf(emptyList<HistoryEntry>()) }
     var page by remember { mutableStateOf(0) }
     var refresh by remember { mutableStateOf(0) }

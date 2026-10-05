@@ -127,9 +127,10 @@ Pauses, the selected model, and device speed affect how soon results appear.
 The recording panel provides a waveform, low/no-signal feedback, processing
 progress, and an estimated remaining time after stopping.
 
-Microphone history is **disabled by default**. When enabled, you can replay,
-share, delete, or retranscribe saved recordings and choose how long to keep
-them—from one hour to forever. Recordings use approximately **115 MB per hour**.
+Microphone history defaults to **one-hour retention**, so saved audio is available
+for recovery, replay, sharing, or retranscription. You can delete recordings,
+disable history, or change retention from one hour to forever. Existing retention
+choices, including disabled history, are preserved. Recordings use approximately **115 MB per hour**.
 Android can delay background cleanup while asleep or force-stopped.
 
 If your device cannot keep up with recognition while history is disabled,

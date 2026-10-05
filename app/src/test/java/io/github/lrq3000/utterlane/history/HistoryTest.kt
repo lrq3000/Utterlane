@@ -7,6 +7,19 @@ import java.io.RandomAccessFile
 import java.nio.file.Files
 
 class HistoryTest {
+    @Test fun unsetHistoryKeepsAudioForOneHourAndPreservesExplicitChoices() {
+        val retention = HistoryRetention.fromKey(null)
+        assertEquals(HistoryRetention.HOUR, retention)
+        assertFalse(retention.expired(1000, 3600999))
+        assertTrue(retention.expired(1000, 3601000))
+        for (choice in HistoryRetention.entries) {
+            assertEquals(choice, HistoryRetention.fromKey(choice.key))
+        }
+        // An unrecognized stored value remains conservative; only an absent
+        // preference opts into the new default, never an explicit opt-out.
+        assertEquals(HistoryRetention.NONE, HistoryRetention.fromKey("unknown"))
+    }
+
     @Test fun sharedSnapshotSurvivesPruningOriginalAudio() {
         val directory = Files.createTempDirectory("history-share").toFile()
         try {

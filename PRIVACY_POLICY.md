@@ -11,7 +11,7 @@ Utterlane is a voice-to-text application maintained by Stephen Karl Larroque tha
 **We do not collect any personal data.**
 
 - Audio and text are processed locally and are not automatically uploaded
-- Microphone audio is saved locally only when you enable recording history
+- Microphone audio is saved locally with one-hour history retention by default; you can disable history or change retention, and existing choices are preserved
 - Transcription uses temporary local text files for bounded-memory display, recovery, and export
 - No usage analytics or remote metrics reporting
 - No account required
@@ -73,7 +73,7 @@ Utterlane processes and stores application data locally. Android may back up eli
 - Speech recognition model stored in app's private storage
 - User preferences stored locally
 - Word correction rules stored locally
-- Optional microphone history stored in private files and excluded from Android cloud backup and device transfer. Retention is configurable from No history to Forever; imported/shared audio is not duplicated
+- Microphone history stored in private files and excluded from Android cloud backup and device transfer. Retention defaults to one hour and is configurable from No history to Forever; existing choices are preserved and imported/shared audio is not duplicated
 - Successful delivered/dismissed transcripts are removed once active readers finish. Recoverable temporary transcripts expire after seven days, with best-effort scheduled and startup cleanup
 - User-requested audio and text export snapshots remain temporarily available for the receiving app and expire after one day. These copies are separate from recording-history retention
 - Android may defer background deletion while asleep or force-stopped. Active capture, playback, transcription, and export readers are protected from cleanup

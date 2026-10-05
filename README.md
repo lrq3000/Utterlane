@@ -95,8 +95,9 @@ in your file manager.
   account is required.
 - Network access is used for requested model downloads; local model import is
   also available.
-- Recording history is **off by default**. When enabled, it stays private to the
-  app and is excluded from Android cloud backup and device transfer.
+- Recording history defaults to **one-hour retention**. You can disable it or
+  change retention in Settings; existing choices are preserved. Saved audio stays
+  private to the app and is excluded from Android cloud backup and device transfer.
 - Exporting or copying a transcript shares it with the receiving app.
 
 Read the [privacy policy](PRIVACY_POLICY.md) for permissions and retention details.

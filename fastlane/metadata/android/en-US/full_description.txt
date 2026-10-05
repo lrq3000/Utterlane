@@ -23,7 +23,7 @@ Share or open audio files from any app to transcribe them. Supports OPUS, AAC, O
 Custom dictionary to fix recurring recognition errors. Define rules like "Tamtam" → "Tamdam" and they're applied automatically.
 
 <b>Privacy First</b>
-All speech recognition happens locally. No audio is uploaded to a speech service, and there are no analytics or tracking. Microphone history is off by default; enable it to replay or retranscribe recordings with configurable local retention. Explicitly sharing audio or text gives it to your chosen receiving app.
+All speech recognition happens locally. No audio is uploaded to a speech service, and there are no analytics or tracking. Microphone history defaults to one-hour local retention for replay and retranscription; you can disable it or change retention, and existing choices are preserved. Explicitly sharing audio or text gives it to your chosen receiving app.
 
 <b>Accessibility</b>
 This app uses Android's Accessibility Service to help users who have difficulty typing on touchscreens. Voice input is directly inserted into any text field, making the device more accessible for users with motor impairments or other conditions that make typing challenging.

@@ -8,5 +8,11 @@ enum class HistoryRetention(val key: String, val millis: Long) {
     fun expired(referenceMs: Long, nowMs: Long): Boolean =
         this != FOREVER && (this == NONE || (nowMs >= referenceMs && nowMs - referenceMs >= millis))
 
-    companion object { fun fromKey(key: String?) = entries.find { it.key == key } ?: NONE }
+    companion object {
+        val DEFAULT = HOUR
+
+        // Enable a short recovery window only when no preference was saved.
+        // Preserve explicit opt-outs and the conservative unknown-key fallback.
+        fun fromKey(key: String?) = if (key == null) DEFAULT else entries.find { it.key == key } ?: NONE
+    }
 }
