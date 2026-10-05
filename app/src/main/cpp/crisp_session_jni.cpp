@@ -40,6 +40,20 @@ struct SpeakerWorkLease {
     nemotron3_diar_context* model;
     ~SpeakerWorkLease() { utterlane_n3d_set_work_callback(model, nullptr, nullptr); }
 };
+struct AsrWork {
+    JNIEnv* env;
+    jobject owner;
+    jmethodID method;
+    static void report(int processed, int, void* pointer) {
+        auto& self = *static_cast<AsrWork*>(pointer);
+        if (processed > 0 && !self.env->ExceptionCheck())
+            self.env->CallVoidMethod(self.owner, self.method, static_cast<jlong>(processed));
+    }
+};
+struct AsrWorkLease {
+    crispasr_session* session;
+    ~AsrWorkLease() { crispasr_session_set_progress_callback(session, nullptr, nullptr); }
+};
 std::vector<float> audio(JNIEnv* env, jfloatArray input, bool allowEmpty = false) {
     const int n = env->GetArrayLength(input);
     if (n > 192000 || n < (allowEmpty ? 0 : 1)) throw std::runtime_error("Invalid bounded audio input");
@@ -77,13 +91,24 @@ Java_io_github_lrq3000_utterlane_asr_CrispGenericBackend_openNative(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_io_github_lrq3000_utterlane_asr_CrispGenericBackend_decodeNative(JNIEnv* env, jobject, jlong handle, jfloatArray input) {
+Java_io_github_lrq3000_utterlane_asr_CrispGenericBackend_decodeNative(JNIEnv* env, jobject object, jlong handle, jfloatArray input) {
     try {
         if (!handle) throw std::runtime_error("Model is closed");
+        auto* session = reinterpret_cast<crispasr_session*>(handle);
+        auto cls = env->GetObjectClass(object);
+        auto method = env->GetMethodID(cls, "onNativeProgress", "(J)V");
+        env->DeleteLocalRef(cls);
+        if (!method) return nullptr;
+        AsrWork work{env, object, method};
+        // Only supporting backends emit this callback. Opaque single-pass
+        // inference remains explicitly protected by its configurable fallback.
+        crispasr_session_set_progress_callback(session, AsrWork::report, &work);
+        AsrWorkLease lease{session};
         auto pcm = audio(env, input);
         std::unique_ptr<crispasr_session_result, decltype(&crispasr_session_result_free)> result(
             crispasr_session_transcribe(reinterpret_cast<crispasr_session*>(handle), pcm.data(), pcm.size()), crispasr_session_result_free);
         if (!result) throw std::runtime_error("CrispASR speech transcription failed");
+        if (env->ExceptionCheck()) return nullptr;
         const int n = crispasr_session_result_n_segments(result.get());
         if (n < 0 || n > 8192) throw std::runtime_error("Invalid transcription result");
         std::string text;

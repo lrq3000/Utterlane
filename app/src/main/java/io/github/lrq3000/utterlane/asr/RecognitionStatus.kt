@@ -25,6 +25,8 @@ data class RecognitionStatus private constructor(
             "model_load" to RecognitionStage.LOADING, "model_load_complete" to RecognitionStage.LOADING,
             "warmup" to RecognitionStage.WARMUP, "warmup_complete" to RecognitionStage.WARMUP,
             "asr" to RecognitionStage.ASR, "asr_complete" to RecognitionStage.ASR,
+            "asr/encoded_audio" to RecognitionStage.ASR,
+            "warmup/encoded_audio" to RecognitionStage.WARMUP,
             "speaker_load" to RecognitionStage.SPEAKER_LOAD, "speaker_load_complete" to RecognitionStage.SPEAKER_LOAD,
             "speaker_inference" to RecognitionStage.SPEAKERS, "speaker_push_complete" to RecognitionStage.SPEAKERS,
             "speaker/features" to RecognitionStage.SPEAKER_FEATURES,

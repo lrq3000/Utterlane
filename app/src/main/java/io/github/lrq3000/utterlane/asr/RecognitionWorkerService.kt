@@ -182,7 +182,11 @@ class RecognitionWorkerService : Service() {
             val progress = checkNotNull(activeProgress)
             progress.stage("speaker_inference")
             callback = progress.callback("speaker")
-            return try { stream.push(samples, final).also { progress.completeStage("speaker_push_complete") } }
+            return try { stream.push(samples, final).also {
+                // An empty result may only have buffered PCM. Do not advertise
+                // completed inference merely because a buffering call returned.
+                if (it.isNotEmpty()) progress.completeStage("speaker_push_complete")
+            } }
             finally { progress.endCallback("speaker"); callback = { _, _ -> } }
         }
         override fun close() { callback = { _, _ -> }; stream.close() }
