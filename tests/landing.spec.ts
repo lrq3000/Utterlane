@@ -1,6 +1,44 @@
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
+test('meeting speech flows into matching transcript rows and respects motion controls', async ({ page }) => {
+  await page.goto('./');
+  const scene = page.locator('.meeting-scene');
+  const bubbles = scene.locator('.meeting-bubble');
+  const rows = scene.locator('.meeting-row');
+  await expect(bubbles).toHaveCount(3);
+  await expect(rows).toHaveCount(3);
+  // Reduced motion presents the complete story, rather than freezing a partial transcript.
+  for (const row of await rows.all()) await expect(row).toHaveCSS('opacity', '1');
+  await page.getByRole('button', { name: 'Play animations' }).click();
+  await scene.scrollIntoViewIfNeeded();
+  await expect(bubbles.first()).toHaveCSS('animation-play-state', 'running');
+  // Sample one shared cycle deterministically: a bubble travels first, then
+  // its row arrives, and all three rows accumulate before the cycle restarts.
+  const sample = async (time: number) => scene.evaluate((element, currentTime) => {
+    for (const animation of element.getAnimations({ subtree: true })) {
+      animation.pause();
+      animation.currentTime = currentTime;
+    }
+    return {
+      transforms: [...element.querySelectorAll('.meeting-bubble')].map(bubble => getComputedStyle(bubble).transform),
+      opacity: [...element.querySelectorAll('.meeting-row')].map(row => Number(getComputedStyle(row).opacity)),
+    };
+  }, time);
+  const start = await sample(0);
+  const transit = await sample(1500);
+  expect(transit.transforms[0]).not.toBe(start.transforms[0]);
+  expect((await sample(3300)).transforms[1]).not.toBe(start.transforms[1]);
+  expect((await sample(5100)).transforms[2]).not.toBe(start.transforms[2]);
+  expect(start.opacity).toEqual([0, 0, 0]);
+  expect((await sample(3000)).opacity).toEqual([1, 0, 0]);
+  expect((await sample(5000)).opacity).toEqual([1, 1, 0]);
+  expect((await sample(7000)).opacity).toEqual([1, 1, 1]);
+  await page.getByRole('button', { name: 'Pause animations' }).click();
+  for (const row of await rows.all()) await expect(row).toHaveCSS('opacity', '1');
+  await expect(bubbles.first()).toHaveCSS('animation-name', 'none');
+});
+
 test('presents the promised product and usable download route', async ({ page }) => {
   await page.goto('./');
   await expect(page.getByRole('heading', { level: 1 })).toContainText(
@@ -14,7 +52,7 @@ test('presents the promised product and usable download route', async ({ page })
 
 test('places the speed interlude before the complete on-device and everyday story', async ({ page }) => {
   await page.goto('./');
-  await expect(page.locator('#speed').getByRole('heading')).toHaveText(
+  await expect(page.locator('#speed').getByRole('heading', { level: 2 })).toHaveText(
     'Experience the fastest accurate offline transcription on Android.',
   );
   const sectionIds = await page.locator('main > section[id]').evaluateAll(sections => sections.map(section => section.id));

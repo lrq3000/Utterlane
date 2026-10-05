@@ -44,6 +44,7 @@
         <symbol id="pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
         <symbol id="play" viewBox="0 0 24 24"><path d="m8 4 12 8-12 8Z"/></symbol>
         <symbol id="voice-wave" viewBox="0 0 240 54"><path d="M10 22v10m12-16v22m12-28v34m12-23v12m12-29v46m12-33v20m12-27v34m12-42v50m12-31v12m12-22v32m12-40v48m12-37v26m12-20v14m12-29v44m12-33v22m12-16v10m12-21v32m12-24v16m12-12v8"/></symbol>
+        <symbol id="scene-person" viewBox="0 0 60 84"><circle cx="30" cy="18" r="14" fill="currentColor"/><path d="M5 84V59a25 25 0 0 1 50 0v25" fill="currentColor"/><path d="M19 15q11-10 22 0" fill="none" stroke="#fff" stroke-opacity=".65" stroke-width="3" stroke-linecap="round"/></symbol>
         <symbol id="github" viewBox="0 0 24 24"><path stroke="none" fill="currentColor" d="M12 .7a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.2.8-.5v-2c-3.2.7-3.9-1.3-3.9-1.3-.5-1.3-1.3-1.6-1.3-1.6-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.3 1 .1-.8.4-1.3.7-1.6-2.5-.3-5.2-1.3-5.2-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11.2 11.2 0 0 1 5.8 0C17.3 5.4 18.3 5.7 18.3 5.7c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.2 5.7.4.3.8 1 .8 2.1v2.9c0 .3.2.6.8.5A11.5 11.5 0 0 0 12 .7Z"/></symbol>
       </defs>
     </svg>
@@ -87,10 +88,10 @@
               <div class="float-card private-badge"><svg class="icon"><use href="#shield"/></svg><div><strong>Stays on your phone.</strong><small>No speech uploads. No account.</small></div></div>
               <div class="float-card transcript-card"><div class="tiny-label"><span>From voice to text</span><svg class="icon"><use href="#arrow-up-right"/></svg></div><p>“I will meet you at the usual place.” <i class="cursor"></i></p></div>
             </div>
-            <figcaption>Illustrative demo · no microphone access</figcaption>
+            <figcaption>Illustrative demo</figcaption>
           </figure>
         </div>
-        <div class="container hero-footer"><ul class="qualities"><li><svg class="icon" aria-hidden="true"><use href="#check"/></svg>On-device recognition</li><li><svg class="icon" aria-hidden="true"><use href="#check"/></svg>25 languages</li><li><svg class="icon" aria-hidden="true"><use href="#check"/></svg>No subscription</li></ul><a class="scroll-cue" href="#on-device">A little less typing. A lot more freedom. <svg class="icon" aria-hidden="true"><use href="#arrow-down"/></svg></a></div>
+        <div class="container hero-footer"><ul class="qualities"><li><svg class="icon" aria-hidden="true"><use href="#check"/></svg>On-device recognition</li><li><svg class="icon" aria-hidden="true"><use href="#check"/></svg>25 languages</li><li><svg class="icon" aria-hidden="true"><use href="#check"/></svg>No subscription</li></ul><a class="scroll-cue" href="#on-device">Less typing. More freedom. <svg class="icon" aria-hidden="true"><use href="#arrow-down"/></svg></a></div>
       </section>
 
       <section class="speed-interlude" id="speed" aria-labelledby="speed-title" data-motion-surface>
@@ -109,6 +110,10 @@
             <div data-reveal><strong>Dependable.</strong><span>No connection to depend on.</span></div>
             <div data-reveal><strong>25 languages.</strong><span>Automatically understood.</span></div>
           </div>
+          <div class="recovery-note" data-reveal>
+            <svg class="icon" aria-hidden="true"><use href="#shield"/></svg>
+            <div><h3>Robust by design. Your progress, saved.</h3><p>Completed transcript segments are saved as you go. If transcription crashes, recovery can preserve the words already processed, while recording history keeps saved audio available to replay or transcribe again.</p><p class="recovery-detail">Recording history defaults to one-hour retention. Keep recordings longer or turn history off in Settings.</p></div>
+          </div>
         </div>
       </section>
 
@@ -123,11 +128,101 @@
       </section>
 
       <section class="uses section-pad" id="everyday" aria-labelledby="uses-title" data-motion-surface>
-        <div class="container"><p class="section-kicker" data-reveal>02 / Made for the everyday</p><div class="section-heading-row" data-reveal><h2 id="uses-title">Less typing.<br>More living.</h2><p class="section-summary">For the little moments when speaking is simply easier.</p></div>
+        <div class="container"><p class="section-kicker" data-reveal>02 / Ideas, study, and work</p><div class="section-heading-row" data-reveal><h2 id="uses-title">For your<br>everyday needs.</h2><p class="section-summary">Keep a thought. Read a recording. Follow a meeting. All on your device.</p></div>
           <div class="use-grid">
-            <article class="use-card" data-motion-surface data-reveal data-demo="dictation"><div class="use-art" aria-hidden="true"><div class="mini-sheet"><strong>A thought, before it disappears.</strong><p class="demo-text"><span>Remember to bring the camera.</span><span>The light will be beautiful today.</span></p><div class="mini-line short"></div></div><div class="microphone-dot"><svg class="icon"><use href="#mic"/></svg></div></div><div class="use-copy"><h3>Say it. Keep it.</h3><p>Capture ideas, write messages, and make notes with your keyboard mic or a floating button.</p></div></article>
-            <article class="use-card" data-motion-surface data-reveal data-demo="audio"><div class="use-art" aria-hidden="true"><div class="mini-sheet audio-sheet"><div class="audio-file"><svg class="icon"><use href="#file"/></svg><span>Voice message.opus</span><span class="chip">AUDIO → TEXT</span></div><div class="mini-wave" data-bars="29"><svg class="wave-fallback" preserveAspectRatio="none" viewBox="0 0 240 54"><use href="#voice-wave"/></svg></div><p class="demo-text"><span>“The train arrives at six.</span><span>I will call when I am nearby.”</span></p></div></div><div class="use-copy"><h3>Read the voice note.</h3><p>Some moments call for quiet. Share an audio file with Utterlane and read it at your own pace.</p></div></article>
-            <article class="use-card" data-motion-surface data-reveal data-demo="offline"><div class="use-art" aria-hidden="true"><div class="travel-orbit"></div><div class="mini-sheet travel-sheet"><div class="audio-file"><strong>A little off the grid.</strong><span class="chip"><svg class="icon"><use href="#plane"/></svg>OFFLINE</span></div><p>Ideas do not wait for a signal.<br>Neither should your notebook.</p><div class="mini-line"></div><div class="mini-line short"></div></div></div><div class="use-copy"><h3>Go where life takes you.</h3><p>On a flight, underground, or somewhere peaceful. After model setup, recognition needs no connection.</p></div></article>
+            <article class="use-card" data-motion-surface data-reveal>
+              <figure class="use-art everyday-art">
+                <svg class="everyday-scene idea-scene" viewBox="0 0 440 280" aria-hidden="true">
+                  <ellipse cx="214" cy="235" rx="178" ry="16" fill="#dce7f7"/>
+                  <path d="M38 217Q89 67 219 90T407 211" class="scene-orbit"/>
+                  <path d="M65 225v-59m0 28q-30-8-25-31 29 1 25 31m0 13q29-5 26-29-24 0-26 29" fill="#c0d4ef" stroke="#8caed8" stroke-width="2"/>
+                  <use href="#scene-person" x="97" y="114" width="81" height="114" class="speaker-one"/>
+                  <path d="m144 175 34 17 21-36" fill="none" stroke="#155ecc" stroke-width="16" stroke-linecap="round"/>
+                  <rect x="184" y="129" width="28" height="47" rx="7" fill="#15263f" transform="rotate(14 198 152)"/>
+                  <path d="m194 147 2 9m5-13 2 15" stroke="#a4c7ff" stroke-width="3" stroke-linecap="round"/>
+                  <g class="idea-spark">
+                    <circle cx="139" cy="66" r="35" fill="#fff" stroke="#d5e2f5"/>
+                    <path d="M128 66a15 15 0 1 1 22 0l-4 6v7h-14v-7Zm7 20h8m-4-64v-7m-33 24-6-4m71 4 6-4" fill="none" stroke="#7750bc" stroke-width="3" stroke-linecap="round"/>
+                    <circle cx="112" cy="106" r="5" fill="#ddd3f4"/><circle cx="106" cy="121" r="3" fill="#ddd3f4"/>
+                  </g>
+                  <path d="M215 156q28-23 46-15" class="scene-route"/>
+                  <g transform="rotate(5 320 148)">
+                    <rect x="259" y="85" width="128" height="143" rx="15" fill="#fff" stroke="#c6d9f2"/>
+                    <text x="276" y="113" class="scene-label">MY NEXT IDEA</text>
+                    <path d="M278 134h87m-87 15h69m-69 15h78m-78 15h47" class="scene-writing"/>
+                    <rect x="275" y="195" width="95" height="19" rx="9" fill="#eaf1ff"/>
+                    <text x="322" y="208" text-anchor="middle" class="scene-small">ON MY DEVICE</text>
+                  </g>
+                  <circle cx="369" cy="80" r="24" fill="#7750bc"/>
+                  <use href="#lock" x="357" y="68" width="24" height="24" fill="none" stroke="#fff" stroke-width="1.7"/>
+                </svg>
+                <figcaption class="sr-only">Illustration: a person captures a bright idea as a private note on their phone.</figcaption>
+              </figure>
+              <div class="use-copy"><h3>Capture ideas that stay yours.</h3><p>Speak a passing thought, a research idea, or your next big plan. Turn it into a note on your device, without handing it to a cloud transcription service where it could be scooped.</p></div>
+            </article>
+            <article class="use-card" data-motion-surface data-reveal>
+              <figure class="use-art everyday-art">
+                <svg class="everyday-scene study-scene" viewBox="0 0 440 280" aria-hidden="true">
+                  <ellipse cx="217" cy="235" rx="177" ry="16" fill="#dce7f7"/>
+                  <rect x="39" y="32" width="177" height="109" rx="10" fill="#fff" stroke="#c6d9f2"/>
+                  <rect x="50" y="43" width="155" height="13" rx="5" fill="#eaf1ff"/>
+                  <use href="#scene-person" x="58" y="65" width="47" height="66" class="speaker-two"/>
+                  <path d="M119 78h65m-65 15h47m-47 15h57" class="scene-writing"/>
+                  <path d="M64 144v22m5-28v34m6-41v48m6-37v26m6-21v16m6-27v38m6-44v50m6-37v25" class="lecture-wave"/>
+                  <path d="M127 163q63 2 80-50t65-26" class="scene-route"/>
+                  <path d="m264 80 9 7-10 6" fill="none" stroke="#7750bc" stroke-width="2" stroke-linecap="round"/>
+                  <g transform="rotate(5 328 130)">
+                    <rect x="279" y="55" width="109" height="150" rx="12" fill="#fff" stroke="#c6d9f2"/>
+                    <text x="293" y="82" class="scene-label">LECTURE NOTES</text>
+                    <path d="M295 101h74m-74 14h60m-60 14h69m-69 14h48m-48 14h63" class="scene-writing"/>
+                    <path d="m341 180 6 6 13-15" fill="none" stroke="#155ecc" stroke-width="3" stroke-linecap="round"/>
+                  </g>
+                  <use href="#scene-person" x="168" y="145" width="64" height="89" class="speaker-one"/>
+                  <path d="M134 214q32-15 64 0 32-15 64 0v24q-32-14-64 0-32-14-64 0Z" fill="#fff" stroke="#8caed8" stroke-width="2"/>
+                  <path d="M198 214v24m-48-14 30 2m37 0 29-2" stroke="#b7cce9" stroke-width="2"/>
+                </svg>
+                <figcaption class="sr-only">Illustration: a student turns a recorded lecture into written notes to study.</figcaption>
+              </figure>
+              <div class="use-copy"><h3>Turn recordings into something you can read.</h3><p>A voice message, a recorded lecture, or audio saved from a video: share it to Utterlane and get the words in writing. Revisit your professor’s explanations or read a message when listening is inconvenient.</p></div>
+            </article>
+            <article class="use-card" data-motion-surface data-reveal>
+              <figure class="use-art everyday-art">
+                <!-- Matching colors and numbers connect three speakers to their
+                     transcript rows. A single CSS timeline shows whole segments,
+                     not a misleading word-by-word transcription benchmark. -->
+                <svg class="everyday-scene meeting-scene" viewBox="0 0 440 280" aria-hidden="true">
+                  <ellipse cx="220" cy="246" rx="184" ry="14" fill="#dce7f7"/>
+                  <use href="#scene-person" x="109" y="92" width="58" height="81" class="speaker-two"/>
+                  <use href="#scene-person" x="40" y="140" width="62" height="87" class="speaker-one"/>
+                  <use href="#scene-person" x="195" y="141" width="62" height="87" class="speaker-three"/>
+                  <path d="m90 196-5 43m118-43 6 43" fill="none" stroke="#9cb8de" stroke-width="8" stroke-linecap="round"/>
+                  <ellipse cx="147" cy="186" rx="93" ry="31" fill="#fff" stroke="#b6cdec" stroke-width="2"/>
+                  <path d="m119 175 23-6 17 11-23 7Zm49 10 22-4 14 10-22 4Z" fill="#eaf1ff"/>
+                  <path d="M77 82Q205 46 311 111M153 42Q265 32 311 151M238 92Q287 111 311 191" class="scene-route"/>
+                  <g class="meeting-bubble speaker-one" style="--flow-x: 242px; --flow-y: 39px">
+                    <path d="M35 51h58a9 9 0 0 1 9 9v23a9 9 0 0 1-9 9H62l-12 11V92H35a9 9 0 0 1-9-9V60a9 9 0 0 1 9-9Z" fill="currentColor"/>
+                    <text x="40" y="77" class="bubble-number">1</text><path d="M55 67h32m-32 10h22" class="bubble-lines"/>
+                  </g>
+                  <g class="meeting-bubble speaker-two" style="--flow-x: 158px; --flow-y: 106px">
+                    <path d="M120 21h58a9 9 0 0 1 9 9v23a9 9 0 0 1-9 9h-30l-12 11V62h-16a9 9 0 0 1-9-9V30a9 9 0 0 1 9-9Z" fill="currentColor"/>
+                    <text x="125" y="47" class="bubble-number">2</text><path d="M140 37h32m-32 10h22" class="bubble-lines"/>
+                  </g>
+                  <g class="meeting-bubble speaker-three" style="--flow-x: 76px; --flow-y: 103px">
+                    <path d="M205 66h58a9 9 0 0 1 9 9v23a9 9 0 0 1-9 9h-30l-12 11v-11h-16a9 9 0 0 1-9-9V75a9 9 0 0 1 9-9Z" fill="currentColor"/>
+                    <text x="210" y="92" class="bubble-number">3</text><path d="M225 82h32m-32 10h22" class="bubble-lines"/>
+                  </g>
+                  <rect x="297" y="69" width="118" height="176" rx="20" fill="#15263f"/>
+                  <rect x="303" y="76" width="106" height="161" rx="15" fill="#fff"/>
+                  <rect x="341" y="81" width="29" height="4" rx="2" fill="#c6d9f2"/>
+                  <text x="315" y="103" class="scene-label">UTTERLANE</text>
+                  <g class="meeting-row speaker-one"><rect x="311" y="115" width="90" height="31" rx="6" fill="#eaf1ff"/><text x="318" y="128" class="speaker-label">Speaker 1</text><path d="M318 136h68" class="transcript-stroke"/></g>
+                  <g class="meeting-row speaker-two"><rect x="311" y="152" width="90" height="31" rx="6" fill="#f0eafa"/><text x="318" y="165" class="speaker-label">Speaker 2</text><path d="M318 173h55" class="transcript-stroke"/></g>
+                  <g class="meeting-row speaker-three"><rect x="311" y="189" width="90" height="31" rx="6" fill="#e4f3fa"/><text x="318" y="202" class="speaker-label">Speaker 3</text><path d="M318 210h63" class="transcript-stroke"/></g>
+                </svg>
+                <figcaption class="sr-only">Illustration: three meeting participants’ speech bubbles flow into a phone, building a transcript with a matching label for each speaker.</figcaption>
+              </figure>
+              <div class="use-copy"><h3>Follow the meeting, keep the words.</h3><p>Get a running transcript while the conversation continues, with speaker labels to help you follow who said what. Text arrives in completed segments, right on your device, keeping the discussion local.</p></div>
+            </article>
           </div>
           <div class="feature-strip"><div data-reveal><strong>25 languages.</strong><span>Automatically detected. Mix languages naturally.</span></div><div data-reveal><strong>Your own vocabulary.</strong><span>Custom word corrections.</span></div><div data-reveal><strong>More ways to speak.</strong><span>Keyboard, accessibility, floating mic.</span></div></div>
         </div>
@@ -135,12 +230,12 @@
 
       <section class="privacy section-pad" id="privacy" aria-labelledby="privacy-title" data-motion-surface><div class="container privacy-grid">
         <div data-reveal><p class="section-kicker">03 / Local by design</p><h2 id="privacy-title">Your words are yours.<br>Let’s keep it that way.</h2><p class="section-summary">A thought does not need to travel to a server to become text. Utterlane keeps speech recognition where it belongs: on your device.</p><a class="text-link" href="https://github.com/lrq3000/Utterlane/blob/main/PRIVACY_POLICY.md">Read the privacy policy <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a></div>
-        <div class="privacy-points"><div class="privacy-point" data-reveal><svg class="icon" aria-hidden="true"><use href="#shield"/></svg><div><h3>No speech uploads.</h3><p>Your audio and transcripts are not sent to a speech service. Recognition runs locally, even in airplane mode.</p></div></div><div class="privacy-point" data-reveal><svg class="icon" aria-hidden="true"><use href="#lock"/></svg><div><h3>No account. No analytics.</h3><p>There is nothing to sign up for. Optional microphone history is off by default, and you control what you keep or export.</p></div></div><div class="privacy-point" data-reveal><svg class="icon" aria-hidden="true"><use href="#code"/></svg><div><h3>Open source. Open to scrutiny.</h3><p>The code is available under Apache-2.0. Read it, build it, improve it. Good tools should be accessible to everyone.</p></div></div></div>
+        <div class="privacy-points"><div class="privacy-point" data-reveal><svg class="icon" aria-hidden="true"><use href="#shield"/></svg><div><h3>No speech uploads.</h3><p>Your audio and transcripts are not sent to a speech service. Recognition runs locally, even in airplane mode.</p></div></div><div class="privacy-point" data-reveal><svg class="icon" aria-hidden="true"><use href="#lock"/></svg><div><h3>No account. No analytics.</h3><p>There is nothing to sign up for. Recording history stays on your device, with one-hour retention by default. You control what you keep or export.</p></div></div><div class="privacy-point" data-reveal><svg class="icon" aria-hidden="true"><use href="#code"/></svg><div><h3>Open source. Open to scrutiny.</h3><p>The code is available under Apache-2.0. Read it, build it, improve it. Good tools should be accessible to everyone.</p></div></div></div>
       </div></section>
 
       <section class="setup section-pad" id="setup" aria-labelledby="setup-title" data-motion-surface><div class="container">
-        <p class="section-kicker" data-reveal>04 / A little setup. A lot of possibility.</p><div class="section-heading-row" data-reveal><h2 id="setup-title">Quickstart</h2><p class="section-summary">An Android phone. A local speech model. And something to say.</p></div>
-        <ol class="setup-steps"><li data-reveal><span class="step-number">01</span><h3>Get the app.</h3><p>Choose an Utterlane APK from GitHub Releases when available, or build it from source.</p><a class="text-link" href="https://github.com/lrq3000/Utterlane/releases">View releases <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a></li><li data-reveal><span class="step-number">02</span><h3>Choose your model.</h3><p>Download a speech model in the app, or import existing model files. Utterlane supports the latest state-of-the-art speech-to-text models, including Moondream Parakeet Ultra models and any model supported by the CrispASR backend, such as R2T2, MegaASR, and Qwen3. Recognition works offline from then on.</p><span class="step-detail">Size varies by model</span></li><li data-reveal><span class="step-number">03</span><h3>Tap. Speak. Done.</h3><p>Allow microphone access and enable your preferred input method. Focus a text field, tap the mic, and speak.</p><a class="text-link" href="https://github.com/lrq3000/Utterlane#your-first-dictation">See the setup guide <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a></li></ol>
+        <p class="section-kicker" data-reveal>04 / A little setup. A lot of possibility.</p><div class="section-heading-row" data-reveal><h2 id="setup-title">Quickstart</h2></div>
+        <ol class="setup-steps"><li data-reveal><span class="step-number">01</span><h3>Get the app.</h3><p>Choose an Utterlane APK from GitHub Releases when available, or build it from source.</p><a class="text-link" href="https://github.com/lrq3000/Utterlane/releases">View releases <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a></li><li data-reveal><span class="step-number">02</span><h3>Choose your model.</h3><p>Download a speech model in the app, or import existing model files. Utterlane supports the latest state-of-the-art speech-to-text models, including Moondream Parakeet Ultra models and any model supported by the CrispASR backend, such as R2T2, MegaASR, and Qwen3. Recognition works offline from then on.</p><span class="step-detail">Size varies by model</span></li><li data-reveal><span class="step-number">03</span><h3>Tap. Speak. Done.</h3><p>Allow microphone access and enable your preferred input method. Focus a text field, tap the mic, and speak.</p><p>Already have a recording? Share it from another app to Utterlane to transcribe it directly.</p><a class="text-link" href="https://github.com/lrq3000/Utterlane#your-first-dictation">See the setup guide <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a></li></ol>
         <div class="requirements"><span><svg class="icon" aria-hidden="true"><use href="#check"/></svg>Android 8.0 or later</span><span><svg class="icon" aria-hidden="true"><use href="#check"/></svg>ARM64 device</span><span><svg class="icon" aria-hidden="true"><use href="#check"/></svg>Space for a speech model</span><a href="https://github.com/lrq3000/Utterlane#build-from-source">Prefer to build it yourself? <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a></div>
       </div></section>
 
@@ -150,7 +245,7 @@
           <details><summary>What does “near real-time” mean?<span class="disclosure" aria-hidden="true"></span></summary><div class="faq-answer"><p>Completed text segments arrive while microphone capture continues. This is not instantaneous word-by-word output. Timing depends on your phone, the selected model, and pauses in your speech.</p><p>The default Parakeet v3 backend simulates streaming over an offline model. <a href="https://github.com/lrq3000/Utterlane#how-streaming-works">Read how streaming works.</a></p></div></details>
           <details><summary>Can I dictate into other apps?<span class="disclosure" aria-hidden="true"></span></summary><div class="faq-answer"><p>Use a compatible keyboard’s microphone button, the accessibility button, or the floating mic. Utterlane inserts text into the focused field and can fall back to clipboard or transcript recovery when insertion is unavailable.</p><p>Integration depends on the receiving app and keyboard. <a href="https://github.com/Helium314/HeliBoard">HeliBoard</a> is one compatible keyboard; AOSP Keyboard does not offer this voice-input integration.</p></div></details>
           <details><summary>Which languages and audio files are supported?<span class="disclosure" aria-hidden="true"></span></summary><div class="faq-answer"><p>Utterlane automatically detects 25 recognition languages: Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Spanish, Swedish, and Ukrainian.</p><p>Share or open OPUS, AAC, OGG, M4A, MP3, and WAV files, subject to your device’s codec support. You can also monitor selected folders for newly saved audio.</p></div></details>
-          <details><summary>What happens to my recordings?<span class="disclosure" aria-hidden="true"></span></summary><div class="faq-answer"><p>Microphone history is disabled by default. Enable it if you want to replay or retranscribe recordings, with configurable retention. Saved history is private to the app and excluded from Android cloud backup and device transfer.</p><p>Temporary text files support long transcripts and recovery. When you choose to copy, share, or export, the receiving app has its own privacy behavior.</p></div></details>
+          <details><summary>What happens to my recordings?<span class="disclosure" aria-hidden="true"></span></summary><div class="faq-answer"><p>Microphone history defaults to one-hour retention, so you can replay or retranscribe saved recordings. Change retention or disable history in Settings; existing choices are preserved. Saved history is private to the app and excluded from Android cloud backup and device transfer.</p><p>Completed transcript segments are saved as they arrive, and interrupted recordings can be recovered from saved audio. A segment still being processed may need to be transcribed again. Temporary text files support long transcripts and recovery. When you choose to copy, share, or export, the receiving app has its own privacy behavior.</p></div></details>
           <details><summary>Is it really free?<span class="disclosure" aria-hidden="true"></span></summary><div class="faq-answer"><p>Yes. No account or subscription is required. Utterlane is open source under Apache-2.0; models and third-party libraries retain their own licenses.</p><p>If it helps you, help it grow: report a bug, improve a translation, or contribute code. <a href="https://github.com/lrq3000/Utterlane/blob/main/CONTRIBUTING.md">Contributions are welcome.</a></p></div></details>
         </div>
       </div></section>
@@ -158,7 +253,7 @@
       <section class="closing" aria-labelledby="closing-title" data-motion-surface><div class="container" data-reveal><p class="section-kicker">Built with care. Given freely.</p><h2 id="closing-title">Your voice deserves<br>this much freedom.</h2><p>No account. No subscription. Open-source speech recognition that runs on the phone you already own.</p><a class="button primary" href="https://github.com/lrq3000/Utterlane/releases">Explore GitHub releases <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a><div class="closing-detail">Offline after setup. Open source from the start.</div></div></section>
     </main>
 
-    <footer class="site-footer"><div class="container"><div class="footer-top"><a class="brand" href="#" aria-label="Utterlane home"><img src="./brand/wordmark.png" alt="Utterlane — Fast. Offline. Transcription." width="175" height="53" loading="lazy"></a><nav aria-label="Footer navigation"><a href="https://github.com/lrq3000/Utterlane">Source code</a><a href="https://github.com/lrq3000/Utterlane/blob/main/PRIVACY_POLICY.md">Privacy</a><a href="https://github.com/lrq3000/Utterlane/blob/main/LICENSE">License</a><a href="https://github.com/lrq3000/Utterlane/blob/main/CONTRIBUTING.md">Contribute</a></nav></div><div class="footer-bottom"><p>Independently maintained by <a href="https://github.com/lrq3000">Stephen Karl Larroque</a>.<br>A fork of <a href="https://github.com/hatsch/TranSlander">TranSlander</a> by hatsch and contributors.</p><p>Built on NVIDIA Parakeet, sherpa-onnx, CrispASR & ggml.<br>© 2026 Utterlane contributors. Apache-2.0.</p></div></div></footer>
+    <footer class="site-footer"><div class="container"><div class="footer-top"><a class="brand" href="#" aria-label="Utterlane home"><img src="./brand/wordmark.png" alt="Utterlane — Fast. Offline. Transcription." width="175" height="53" loading="lazy"></a><nav aria-label="Footer navigation"><a href="https://github.com/lrq3000/Utterlane">Source code</a><a href="https://github.com/lrq3000/Utterlane/blob/main/PRIVACY_POLICY.md">Privacy</a><a href="https://github.com/lrq3000/Utterlane/blob/main/LICENSE">License</a><a href="https://github.com/lrq3000/Utterlane/blob/main/CONTRIBUTING.md">Contribute</a></nav></div><div class="footer-bottom"><p>Maintained by <a href="https://github.com/lrq3000">Stephen Karl Larroque</a>.</p><p>Built on NVIDIA Parakeet, sherpa-onnx, CrispASR & ggml.<br>© 2026 Utterlane contributors. Apache-2.0.</p></div></div></footer>
     <button class="motion-toggle" type="button" aria-label="Play animations" aria-pressed="false" title="Play animations" hidden><svg class="icon" aria-hidden="true"><use href="#play"/></svg><span>Play animations</span></button>
   </body>
 </html>

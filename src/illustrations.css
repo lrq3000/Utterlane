@@ -67,6 +67,45 @@
 .local-seal .icon { width: 15px; height: 15px; }
 
 .use-art { height: 245px; background: linear-gradient(150deg, #f8faff, #eaf1ff); display: grid; place-items: center; padding: 30px; position: relative; overflow: hidden; }
+/* Original situational scenes share the brand palette, not app screenshots.
+   Inline vectors let the meeting bubbles and transcript share one pause gate. */
+.use-art.everyday-art { height: 280px; padding: 8px; }
+.everyday-scene { display: block; width: 100%; max-width: 440px; height: auto; overflow: visible; }
+.scene-orbit { fill: none; stroke: #c6d9f2; stroke-width: 1.5; stroke-dasharray: 4 7; }
+.scene-route { fill: none; stroke: #b8aed7; stroke-width: 1.5; stroke-dasharray: 3 5; }
+.scene-label { font-size: 10px; font-weight: 700; letter-spacing: .7px; fill: #526581; }
+.scene-small { font-size: 9px; font-weight: 600; fill: #155ecc; }
+.scene-writing { fill: none; stroke: #bacce5; stroke-width: 4; stroke-linecap: round; }
+.speaker-one { color: #155ecc; }
+.speaker-two { color: #7750bc; }
+.speaker-three { color: #0675a6; }
+.lecture-wave { fill: none; stroke: #7750bc; stroke-width: 3; stroke-linecap: round; }
+.idea-spark { transform-box: fill-box; transform-origin: center; }
+.bubble-number { fill: #fff; font-size: 14px; font-weight: 700; }
+.bubble-lines { stroke: #fff; stroke-opacity: .85; stroke-width: 3; stroke-linecap: round; }
+.speaker-label { fill: currentColor; font-size: 10px; font-weight: 650; }
+.transcript-stroke { stroke: currentColor; stroke-opacity: .5; stroke-width: 3; stroke-linecap: round; }
+.meeting-bubble { transform-box: fill-box; transform-origin: center; }
+/* Whole phrases travel, then rows accumulate. One nine-second cycle is purely
+   illustrative; it does not assert a device-independent recognition latency.
+   Animations exist only in running mode, so Pause reveals the complete story. */
+[data-motion="running"] .idea-spark { animation: idea-glow 5s ease-in-out infinite; }
+[data-motion="running"] .meeting-bubble { animation: meeting-flow 9s ease-in-out infinite; }
+[data-motion="running"] .meeting-bubble.speaker-two { animation-delay: 1.8s; }
+[data-motion="running"] .meeting-bubble.speaker-three { animation-delay: 3.6s; }
+[data-motion="running"] .meeting-row { animation: meeting-row-one 9s ease infinite; }
+[data-motion="running"] .meeting-row.speaker-two { animation-name: meeting-row-two; }
+[data-motion="running"] .meeting-row.speaker-three { animation-name: meeting-row-three; }
+@keyframes idea-glow { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes meeting-flow {
+  0%, 8% { opacity: 1; transform: translate(0, 0) scale(1); }
+  24% { opacity: 0; transform: translate(var(--flow-x), var(--flow-y)) scale(.3); }
+  25%, 94% { opacity: 0; transform: translate(0, 0) scale(1); }
+  100% { opacity: 1; transform: translate(0, 0) scale(1); }
+}
+@keyframes meeting-row-one { 0%, 23% { opacity: 0; } 28%, 90% { opacity: 1; } 98%, 100% { opacity: 0; } }
+@keyframes meeting-row-two { 0%, 43% { opacity: 0; } 48%, 90% { opacity: 1; } 98%, 100% { opacity: 0; } }
+@keyframes meeting-row-three { 0%, 63% { opacity: 0; } 68%, 90% { opacity: 1; } 98%, 100% { opacity: 0; } }
 .mini-sheet { background: white; padding: 18px; border: 1px solid var(--line); border-radius: 12px; width: 100%; box-shadow: 0 14px 26px #233e6114; font-size: 11px; color: var(--muted); transform: rotate(-4deg); z-index: 1; }
 .mini-sheet strong { display: block; color: var(--ink); font-size: 12px; font-weight: 600; margin-bottom: 16px; }
 .mini-sheet p { line-height: 1.65; margin: 8px 0; }
