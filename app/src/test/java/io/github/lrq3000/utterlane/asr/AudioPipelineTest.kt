@@ -6,6 +6,7 @@ import kotlinx.coroutines.channels.toList
 import org.junit.Assert.*
 import org.junit.Test
 import android.speech.SpeechRecognizer
+import io.github.lrq3000.utterlane.settings.RuntimeOptions
 
 class AudioPipelineTest {
     @Test fun interruptedFinalWindowCanBeFinishedWithoutLosingOrDuplicatingTail() = runBlocking {
@@ -54,6 +55,23 @@ class AudioPipelineTest {
         // the original Off path, even when later digit pieces cross the cut.
         assertEquals("next", WindowText.select(arrayOf(" context", " ", "4", "2", " next"),
             floatArrayOf(.8f, .96f, 1.04f, 1.12f, 1.5f), window))
+    }
+
+    @Test fun configuredFallbackOnlyChangesEndsAndClipsToNextWordAndAudioWindow() {
+        val window = AudioWindow(ShortArray(16000), 1000, 1000, 17000)
+        val tokens = arrayOf(" first", " second")
+        val times = floatArrayOf(.1f, .6f)
+        val small = WindowText.ownedWords(tokens, times, window, options = RuntimeOptions(wordFallbackMs = 10))
+        val large = WindowText.ownedWords(tokens, times, window, options = RuntimeOptions(wordFallbackMs = 2000))
+        assertEquals(listOf(2760L, 10760L), small.map { it.end })
+        assertEquals(listOf(10600L, 17000L), large.map { it.end })
+        assertEquals(small.map { it.start }, large.map { it.start })
+        for (words in listOf(small, large)) {
+            assertEquals(WindowText.select(tokens, times, window), words.joinToString("") { it.text }.trim())
+        }
+        val native = WindowText.ownedWords(tokens, times, window, floatArrayOf(.8f, .9f),
+            options = RuntimeOptions(wordFallbackMs = 10))
+        assertEquals(listOf(13800L, 15400L), native.map { it.end })
     }
 
     @Test fun unicodePagesExcludePartialUtf8Characters() {

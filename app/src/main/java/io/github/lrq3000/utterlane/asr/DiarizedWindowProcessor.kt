@@ -53,8 +53,8 @@ class DiarizedWindowProcessor(
         ) else window
         val result = backend.transcribeWindow(recognitionWindow.samples)
         val words = when {
-            textOnly && result.text != null -> WindowText.alignRawText(result, recognitionWindow) ?: rawText(result, recognitionWindow)
-            WindowText.hasTimings(result) -> WindowText.ownedWords(result.tokens, result.timestamps, recognitionWindow, result.ends)
+            textOnly && result.text != null -> WindowText.alignRawText(result, recognitionWindow, options) ?: rawText(result, recognitionWindow)
+            WindowText.hasTimings(result) -> WindowText.ownedWords(result.tokens, result.timestamps, recognitionWindow, result.ends, options = options)
             else -> rawText(result, recognitionWindow)
         }
         val output = SpanCollector()
