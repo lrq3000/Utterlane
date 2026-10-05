@@ -20,7 +20,7 @@ go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= -pyflakes
 git diff --check
 ```
 
-- **41 JVM tests passed**, no failures/errors/skips: pipeline 16, telemetry 4,
+- **41 JVM tests passed**, no failures/errors/skips: pipeline 16, metrics 4,
   model catalog 5, sleep/recovery 9, history 7.
 - **10 Python tooling tests passed**, covering ELF/digest validation and publishing
   guards. The initial ELF test run failed because the new validator did not exist;

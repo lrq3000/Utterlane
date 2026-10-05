@@ -30,7 +30,7 @@ git diff --check
 ```
 
 - Baseline JVM tests passed before the rename.
-- **29 JVM tests passed** under the new namespace: 15 pipeline, 4 telemetry,
+- **29 JVM tests passed** under the new namespace: 15 pipeline, 4 metrics,
   3 model-catalog, and 7 history tests; zero failures/errors/skips.
 - Debug application and instrumentation APK builds passed.
 - The minified **unsigned release APK** built successfully, including vital lint.

@@ -2,7 +2,7 @@ package io.github.lrq3000.utterlane
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.github.lrq3000.utterlane.asr.CaptureTelemetry
+import io.github.lrq3000.utterlane.asr.CaptureMetrics
 import io.github.lrq3000.utterlane.ui.RecordingPanel
 import kotlinx.coroutines.*
 import org.junit.Assert.*
@@ -19,15 +19,15 @@ class CapturePanelAndroidTest {
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         var clock = 0L
-        val telemetry = CaptureTelemetry { clock }
+        val metrics = CaptureMetrics { clock }
         var stopped = false
         lateinit var panel: RecordingPanel
         instrumentation.runOnMainSync {
-            panel = RecordingPanel(app, { stopped = true; telemetry.stopping(); telemetry.captureEnded() }, {})
-            panel.bind(scope, telemetry.state)
+            panel = RecordingPanel(app, { stopped = true; metrics.stopping(); metrics.captureEnded() }, {})
+            panel.bind(scope, metrics.state)
         }
         try {
-            telemetry.started(); clock = 2000; telemetry.samples(ShortArray(800), true)
+            metrics.started(); clock = 2000; metrics.samples(ShortArray(800), true)
             instrumentation.waitForIdleSync()
             instrumentation.runOnMainSync {
                 assertTrue("Active capture must prevent screen timeout", panel.keepScreenOn)
@@ -43,7 +43,7 @@ class CapturePanelAndroidTest {
                 assertEquals(View.GONE, panel.findViewById<View>(R.id.recording_done).visibility)
                 assertTrue("Draining audio must still prevent timeout", panel.keepScreenOn)
             }
-            telemetry.completed(null)
+            metrics.completed(null)
             instrumentation.waitForIdleSync()
             instrumentation.runOnMainSync {
                 assertTrue(texts(panel).any { it.text.toString() == "100%" })

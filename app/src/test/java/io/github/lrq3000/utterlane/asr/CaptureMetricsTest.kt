@@ -4,10 +4,10 @@ import org.junit.Assert.*
 import org.junit.Test
 import kotlinx.coroutines.runBlocking
 
-class CaptureTelemetryTest {
+class CaptureMetricsTest {
     @Test fun waveformReflectsActualPcmAndSilenceClearsOnSignal() {
         var clock = 0L
-        val meter = CaptureTelemetry { clock }
+        val meter = CaptureMetrics { clock }
         meter.started()
         meter.samples(ShortArray(800), true)
         clock = 2000
@@ -24,7 +24,7 @@ class CaptureTelemetryTest {
     }
     @Test fun noFramesAndSystemSilencingHaveDistinctStates() {
         var clock = 0L
-        val meter = CaptureTelemetry { clock }
+        val meter = CaptureMetrics { clock }
         meter.started(); clock = 2000; meter.tick()
         assertEquals(CaptureSignal.NO_FRAMES, meter.state.value.signal)
         meter.silenced(true)
@@ -34,7 +34,7 @@ class CaptureTelemetryTest {
     }
     @Test fun stopProgressIncludesLiveWorkButNeverFinishesEarly() {
         var clock = 0L
-        val meter = CaptureTelemetry { clock }
+        val meter = CaptureMetrics { clock }
         meter.started(); repeat(200) { meter.samples(ShortArray(800) { 1000 }, true) }
         clock = 5000; meter.processed(80000, 2000)
         assertNull(meter.state.value.percent)
