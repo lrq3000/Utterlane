@@ -116,7 +116,7 @@ object WindowText {
      * separators/punctuation. Missing lexical text or unusable timestamps makes
      * the entire alignment unavailable, never a license to discard ASR words.
      */
-    fun alignRawText(result: WindowResult, window: AudioWindow): List<Word>? {
+    fun alignRawText(result: WindowResult, window: AudioWindow, options: RuntimeOptions = RuntimeOptions()): List<Word>? {
         val text = result.text ?: return null
         if (!hasTimings(result) || result.timestamps.any { it * 16000 >= window.samples.size }) return null
         val aligned = Array(result.tokens.size) { "" }
@@ -141,7 +141,7 @@ object WindowText {
         // The caller supplies the actual recognition PCM window. For custom
         // models this is disjoint ownership, with timestamps rebased to its
         // origin; raw-text alignment must not expand it back into overlap.
-        return ownedWords(aligned, result.timestamps, window, result.ends)
+        return ownedWords(aligned, result.timestamps, window, result.ends, options = options)
     }
 
     fun select(tokens: Array<String>, timestamps: FloatArray, window: AudioWindow, sampleRate: Int = 16000): String {
@@ -156,9 +156,10 @@ object WindowText {
         for (word in ownedWords(tokens, timestamps, window, sampleRate = sampleRate)) consume(word.text, word.start)
     }
 
-    /** Native ends are optional. Inference is capped at 400 ms, never stretched over a silence. */
+    /** Native ends take precedence. Only inferred intervals use the configurable cap (default 400 ms). */
     fun ownedWords(tokens: Array<String>, timestamps: FloatArray, window: AudioWindow,
-                   ends: FloatArray = floatArrayOf(), sampleRate: Int = 16000): List<Word> {
+                   ends: FloatArray = floatArrayOf(), sampleRate: Int = 16000,
+                   options: RuntimeOptions = RuntimeOptions()): List<Word> {
         require(tokens.size == timestamps.size) { "Recognizer did not return token timestamps" }
         val words = mutableListOf<Word>()
         val word = StringBuilder()
@@ -186,7 +187,7 @@ object WindowText {
         return words.mapIndexedNotNull { index, item ->
             if (item.start < window.ownedStart || item.start >= window.ownedEnd) null else {
                 val next = words.getOrNull(index + 1)?.start ?: audioEnd
-                val inferred = minOf(next, item.start + sampleRate * 4 / 10)
+                val inferred = minOf(next, item.start + sampleRate.toLong() * options.wordFallbackMs / 1000)
                 item.copy(end = (if (item.end > item.start) item.end else inferred)
                     .coerceIn(item.start, audioEnd))
             }

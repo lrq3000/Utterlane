@@ -266,6 +266,30 @@ class DiarizedWindowProcessorTest {
         }
     }
 
+    @Test fun inferredIntervalCapControlsAttributionWithoutChangingAsrWordsForBuiltInOrGenericResults() {
+        for (generic in listOf(false, true)) for ((cap, expected) in listOf(100 to 0, 800 to 1)) {
+            val result = WindowResult(arrayOf(" token"), floatArrayOf(.1f), if (generic) "token" else null)
+            val asr = Backend(result)
+            DiarizedWindowProcessor(asr, Frames(IntArray(100) { if (it < 30) 0 else 1 }), 0,
+                textOnly = generic, options = RuntimeOptions(wordFallbackMs = cap)).use { processor ->
+                assertEquals(listOf(SpeechSpan("token", expected)),
+                    processor.process(AudioWindow(ShortArray(16000), 0, 0, 16000, true)))
+            }
+            assertEquals(1, asr.calls)
+        }
+    }
+
+    @Test fun nativeEndsTakePrecedenceOverEveryConfiguredFallbackCap() {
+        for (generic in listOf(false, true)) for (cap in listOf(10, 2000)) {
+            val result = WindowResult(arrayOf(" token"), floatArrayOf(.1f), if (generic) "token" else null, floatArrayOf(.2f))
+            DiarizedWindowProcessor(Backend(result), Frames(IntArray(100) { if (it < 30) 0 else 1 }), 0,
+                textOnly = generic, options = RuntimeOptions(wordFallbackMs = cap)).use { processor ->
+                assertEquals(listOf(SpeechSpan("token", 0)),
+                    processor.process(AudioWindow(ShortArray(16000), 0, 0, 16000, true)))
+            }
+        }
+    }
+
     @Test fun maximumLabelLookaheadRetainsNeededHistoryAcrossManyWindows() {
         val stream = Frames(IntArray(3000) { 0 })
         val asr = Backend(WindowResult(arrayOf(" word"), floatArrayOf(0f)))
