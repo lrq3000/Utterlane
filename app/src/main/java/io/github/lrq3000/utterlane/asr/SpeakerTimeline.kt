@@ -84,6 +84,17 @@ class SpeakerTimeline(
         if (coarse && evidence.support.count { it >= 3 * 160 } > 1) return -1
         val winner = evidence.winner(previous)
         if (winner >= 0) return identity(winner)
+
+        val tolerance = options.alignmentToleranceMs * 16L
+        // ASR endpoints can straddle an unvoiced onset/offset. Inspect only
+        // their configured uncertainty, not the whole gap to another turn.
+        // A long silent interior outside both endpoint tolerances still obeys
+        // the unknown-gap bound; untimed whole-window text has no such timing.
+        if (!coarse && tolerance > 0 && stop - start <= options.unknownBridgeMs * 16L + 2 * tolerance) {
+            val expanded = this.evidence(maxOf(first * 160, start - tolerance), minOf(endSample, stop + tolerance))
+            val aligned = expanded.unambiguousWinner(previous)
+            if (aligned >= 0) return identity(aligned)
+        }
         // An actual conflict is not silence. Never bridge overlapping voices or
         // sustained competing evidence merely because nearby labels agree.
         if (evidence.voiced >= 3 * 160) return -1
@@ -97,7 +108,6 @@ class SpeakerTimeline(
         // A clipped first/last word has no two-sided neighbor. Permit only the
         // explicit timestamp tolerance at the retained audio edges, not a long
         // unbounded propagation of the last known identity into silence.
-        val tolerance = options.alignmentToleranceMs * 16L
         if (start < first * 160 + tolerance && left == null && right != null &&
             right.second * 160 - start <= tolerance) return identity(right.first)
         if (stop > endSample - tolerance && right == null && left != null &&
@@ -108,6 +118,7 @@ class SpeakerTimeline(
     private inner class Evidence {
         val mass = DoubleArray(8)
         val support = LongArray(8)
+        val active = LongArray(8)
         var voiced = 0L
         fun winner(previous: Int): Int {
             if (voiced == 0L) return -1
@@ -124,6 +135,16 @@ class SpeakerTimeline(
                 else maxOf(3 * 160L, options.speakerConfirmationMs * 16L)
             return if (voiced >= required) best else -1
         }
+
+        fun unambiguousWinner(previous: Int): Int {
+            val winner = winner(previous)
+            // Count every credible channel, including tied/overlapping frames
+            // with no decisive frame winner. Since this interval contains the
+            // original word, conflicting word evidence cannot be outvoted by
+            // extra surrounding audio. Isolated frame spikes remain insufficient.
+            return if (winner >= 0 && active[winner] >= 3 * 160 &&
+                active.indices.none { it != winner && active[it] >= 3 * 160 }) winner else -1
+        }
     }
 
     private fun evidence(start: Long, stop: Long): Evidence {
@@ -137,7 +158,10 @@ class SpeakerTimeline(
             result.voiced += weight
             val channel = channelAt(frame)
             if (channel >= 0) result.support[channel] += weight
-            for (i in 0..7) result.mass[i] += probabilities[offset + i] * weight.toDouble()
+            for (i in 0..7) {
+                result.mass[i] += probabilities[offset + i] * weight.toDouble()
+                if (probabilities[offset + i] > options.speakerThreshold) result.active[i] += weight
+            }
         }
         return result
     }
