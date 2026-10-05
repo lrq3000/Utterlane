@@ -113,6 +113,7 @@ private fun AdvancedGroupEditor(
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(groupHelp(group)))
+                if (group == RuntimeOptionGroup.DIARIZATION) Text(stringResource(R.string.advanced_attribution_policy_help))
                 Text(stringResource(R.string.advanced_draft_help), style = MaterialTheme.typography.bodySmall)
                 fields.forEach { field ->
                     AdvancedOptionEditor(field, draft.getValue(field.key), initial.getValue(field.key), defaults.getValue(field.key),
@@ -245,5 +246,9 @@ private val fieldLabels = mapOf(
     "native_cache_frames" to R.string.advanced_native_cache,
     "native_fifo_frames" to R.string.advanced_native_fifo,
     "native_update_frames" to R.string.advanced_native_update,
-    "diagnostics" to R.string.advanced_diagnostics
+    "diagnostics" to R.string.advanced_diagnostics,
+    "strong_speaker_threshold" to R.string.advanced_strong_speaker_threshold,
+    "strong_speaker_margin" to R.string.advanced_strong_speaker_margin,
+    "strong_confirmation_ms" to R.string.advanced_strong_confirmation,
+    "word_fallback_ms" to R.string.advanced_word_fallback
 )

@@ -48,6 +48,11 @@
     <string name="advanced_unknown_bridge">Unknown gap bridge (ms)</string>
     <string name="advanced_label_lookahead">Label lookahead (ms)</string>
     <string name="advanced_alignment_tolerance">Alignment tolerance (ms)</string>
+    <string name="advanced_strong_speaker_threshold">Strong speaker activity threshold</string>
+    <string name="advanced_strong_speaker_margin">Strong speaker winning margin</string>
+    <string name="advanced_strong_confirmation">Strong speaker confirmation (ms)</string>
+    <string name="advanced_word_fallback">Inferred word interval cap (ms)</string>
+    <string name="advanced_attribution_policy_help">Strong activity and margin accept 0–1. Each effective value is max(ordinary, strong), so ordinary thresholds remain floors. Strong confirmation accepts 0–10000 ms and uses min(ordinary, strong); it never waits longer than ordinary confirmation. Both durations round up to 10 ms model frames, with a one-frame minimum. Ordinary confirmation 0 means one frame with no extra wait. The inferred word interval cap accepts 10–2000 ms and clips to the audio window; native end timings take precedence. These controls affect attribution, not ASR words or text ownership. New speech-island backfill requires a fully retained silent lookback of max(twice the unknown-gap bridge, alignment tolerance) before using the following voice.</string>
     <string name="advanced_audio">Audio windows and buffering</string>
     <string name="advanced_audio_help">Minimum window must not exceed maximum. Windows are 0.001–12 s; left/right context can be 0–12 s, but maximum window plus both contexts must fit within 12 s. Silence duration (1–60000 ms) and PCM16 amplitude (1–32767) guide segment boundaries. Queue budget caps accepted audio in memory at 1–300 s. A separate block-count bound can stop unusually small partial reads earlier. Overflow stops capture and drains accepted audio rather than silently dropping it; changes never resize a running queue.</string>
     <string name="advanced_asr_window">Maximum ASR window (s)</string>

@@ -32,7 +32,11 @@ data class RuntimeOptions(
     val nativeCacheFrames: Int = 264,
     val nativeFifoFrames: Int = 264,
     val nativeUpdateFrames: Int = 222,
-    val diagnostics: Boolean = false
+    val diagnostics: Boolean = false,
+    val strongSpeakerThreshold: Float = 0.7f,
+    val strongSpeakerMargin: Float = 0.2f,
+    val strongConfirmationMs: Int = 30,
+    val wordFallbackMs: Int = 400
 ) {
     // Explicit wire keys survive property renames and are shared by DataStore and worker IPC.
     fun toMap(): Map<String, String> = mapOf(
@@ -53,7 +57,9 @@ data class RuntimeOptions(
         "wake_reopen_ms" to wakeReopenMs.toString(), "download_connect_seconds" to downloadConnectSeconds.toString(),
         "download_read_seconds" to downloadReadSeconds.toString(), "native_cache_frames" to nativeCacheFrames.toString(),
         "native_fifo_frames" to nativeFifoFrames.toString(), "native_update_frames" to nativeUpdateFrames.toString(),
-        "diagnostics" to diagnostics.toString()
+        "diagnostics" to diagnostics.toString(),
+        "strong_speaker_threshold" to strongSpeakerThreshold.toString(), "strong_speaker_margin" to strongSpeakerMargin.toString(),
+        "strong_confirmation_ms" to strongConfirmationMs.toString(), "word_fallback_ms" to wordFallbackMs.toString()
     )
 
     /** Field-keyed messages let an editor keep invalid drafts without ever persisting them. */
@@ -119,6 +125,10 @@ data class RuntimeOptions(
             listOf("native_cache_frames", "native_fifo_frames").forEach { integer(it, RuntimeOptionGroup.EXPERIMENTAL, 16, 1024) }
             integer("native_update_frames", RuntimeOptionGroup.EXPERIMENTAL, 1, 1024)
             add(RuntimeOptionField("diagnostics", RuntimeOptionGroup.EXPERIMENTAL, RuntimeOptionKind.BOOLEAN))
+            listOf("strong_speaker_threshold", "strong_speaker_margin")
+                .forEach { decimal(it, RuntimeOptionGroup.DIARIZATION, 0.0, 1.0) }
+            integer("strong_confirmation_ms", RuntimeOptionGroup.DIARIZATION, 0, 10000)
+            integer("word_fallback_ms", RuntimeOptionGroup.DIARIZATION, 10, 2000)
         }
 
         /**
@@ -178,7 +188,11 @@ data class RuntimeOptions(
             wakeReopenMs = v.getValue("wake_reopen_ms").toInt(), downloadConnectSeconds = v.getValue("download_connect_seconds").toLong(),
             downloadReadSeconds = v.getValue("download_read_seconds").toLong(), nativeCacheFrames = v.getValue("native_cache_frames").toInt(),
             nativeFifoFrames = v.getValue("native_fifo_frames").toInt(), nativeUpdateFrames = v.getValue("native_update_frames").toInt(),
-            diagnostics = v.getValue("diagnostics").toBooleanStrict()
+            diagnostics = v.getValue("diagnostics").toBooleanStrict(),
+            strongSpeakerThreshold = v.getValue("strong_speaker_threshold").toFloat(),
+            strongSpeakerMargin = v.getValue("strong_speaker_margin").toFloat(),
+            strongConfirmationMs = v.getValue("strong_confirmation_ms").toInt(),
+            wordFallbackMs = v.getValue("word_fallback_ms").toInt()
         )
     }
 }

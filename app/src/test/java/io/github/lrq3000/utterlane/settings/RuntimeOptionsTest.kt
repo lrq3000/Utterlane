@@ -29,10 +29,40 @@ class RuntimeOptionsTest {
         val options = RuntimeOptions(12, 13, 14, 15, 0, 8, "low_latency", 2,
             0.7f, 0.1f, 250, 400, 350, 150, 8.0, 2.0, 0.5, 1.5, 700, 250,
             30, 2.0, 100, 2000, 6000, 45, 90, 128, 128, 100, true)
-        assertEquals(31, options.toMap().size)
+        assertEquals(35, options.toMap().size)
         assertEquals("12", options.toMap()["worker_connect_seconds"])
         assertEquals("true", options.toMap()["diagnostics"])
         assertEquals(options, RuntimeOptions.fromMap(options.toMap()))
+    }
+
+    @Test fun attributionPolicyKeysHaveDefaultsAndRoundTripInTheDiarizationGroup() {
+        val defaults = mapOf("strong_speaker_threshold" to "0.7", "strong_speaker_margin" to "0.2",
+            "strong_confirmation_ms" to "30", "word_fallback_ms" to "400")
+        val configured = mapOf("strong_speaker_threshold" to "0.85", "strong_speaker_margin" to "0.25",
+            "strong_confirmation_ms" to "60", "word_fallback_ms" to "900")
+        assertEquals(defaults, RuntimeOptions().toMap().filterKeys { it in defaults })
+        val snapshot = RuntimeOptions.fromMap(configured)
+        assertEquals(configured, snapshot.toMap().filterKeys { it in configured })
+        assertEquals(snapshot, RuntimeOptions.fromMap(snapshot.toMap()))
+        assertEquals(defaults.keys, RuntimeOptions.fields.filter { it.key in defaults && it.group == RuntimeOptionGroup.DIARIZATION }
+            .map { it.key }.toSet())
+        assertEquals(RuntimeOptions(), snapshot.resetGroup(RuntimeOptionGroup.DIARIZATION))
+        assertEquals(RuntimeOptions().toMap().keys, RuntimeOptions.fields.map { it.key }.toSet())
+    }
+
+    @Test fun attributionPolicyBoundsAreValidatedWithoutRejectingEffectiveFloorsAndDurationClamps() {
+        for ((key, invalid) in listOf("strong_speaker_threshold" to "NaN", "strong_speaker_threshold" to "1.1",
+            "strong_speaker_margin" to "-0.1", "strong_confirmation_ms" to "-1", "strong_confirmation_ms" to "10001",
+            "word_fallback_ms" to "9", "word_fallback_ms" to "2001")) {
+            assertNull("$key=$invalid", RuntimeOptions.parseDraft(mapOf(key to invalid)).options)
+            assertEquals(RuntimeOptions(), RuntimeOptions.fromMap(mapOf(key to invalid)))
+        }
+        val values = mapOf("speaker_threshold" to "0.9", "strong_speaker_threshold" to "0.6",
+            "speaker_margin" to "0.3", "strong_speaker_margin" to "0.1",
+            "speaker_confirmation_ms" to "0", "strong_confirmation_ms" to "10000", "word_fallback_ms" to "2000")
+        assertNotNull(RuntimeOptions.parseDraft(values).options)
+        assertEquals(values, RuntimeOptions.fromMap(values).toMap().filterKeys { it in values })
+        assertNotNull(RuntimeOptions.parseDraft(mapOf("strong_confirmation_ms" to "0", "word_fallback_ms" to "10")).options)
     }
 
     @Test fun strictWritesRejectNonFiniteAndUnsafeValues() {

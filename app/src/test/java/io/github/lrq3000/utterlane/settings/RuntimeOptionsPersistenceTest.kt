@@ -30,9 +30,12 @@ class RuntimeOptionsPersistenceTest {
         val repository = SettingsRepository(store)
             repository.setThemeMode(SettingsRepository.THEME_DARK)
             assertEquals(RuntimeOptions(), repository.runtimeOptions.first())
-            val options = RuntimeOptions(nativeFifoFrames = 32, nativeUpdateFrames = 32, diagnostics = true)
-            repository.setRuntimeOptions(options)
-            assertEquals(options, repository.runtimeOptions.first())
+             val policy = mapOf("strong_speaker_threshold" to "0.8", "strong_speaker_margin" to "0.25",
+                 "strong_confirmation_ms" to "50", "word_fallback_ms" to "800")
+             val options = RuntimeOptions.fromMap(RuntimeOptions(nativeFifoFrames = 32, nativeUpdateFrames = 32, diagnostics = true).toMap() + policy)
+             repository.setRuntimeOptions(options)
+             assertEquals(options, repository.runtimeOptions.first())
+             assertEquals(policy, repository.runtimeOptions.first().toMap().filterKeys { it in policy })
             try {
                 repository.setRuntimeOptions(options.copy(nativeUpdateFrames = 33))
                 fail("An invalid snapshot must not be written")
