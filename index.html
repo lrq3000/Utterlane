@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-motion="paused">
+<html lang="en" data-motion="paused" data-theme="light">
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -21,6 +21,19 @@
     <meta property="og:image:height" content="640">
     <meta property="og:image:alt" content="Utterlane — fast, offline transcription on your Android phone">
     <meta name="twitter:card" content="summary_large_image">
+    <script>
+      // Restore before the stylesheets paint. Keep this key in sync with
+      // ThemePreference; slow or unavailable module downloads must not flash
+      // the light palette over a visitor's explicitly saved dark preference.
+      try {
+        const theme = localStorage.getItem('utterlane-theme');
+        if (theme === 'light' || theme === 'dark') {
+          document.documentElement.dataset.theme = theme;
+          document.querySelector('meta[name="theme-color"]').content =
+            theme === 'dark' ? '#0E1727' : '#F1F5FB';
+        }
+      } catch (_) { /* Storage restrictions leave the initial light theme intact. */ }
+    </script>
     <link rel="stylesheet" href="./src/styles.css">
     <link rel="stylesheet" href="./src/illustrations.css">
     <script type="module" src="./src/main.ts"></script>
@@ -43,6 +56,8 @@
         <symbol id="code" viewBox="0 0 24 24"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18"/></symbol>
         <symbol id="pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
         <symbol id="play" viewBox="0 0 24 24"><path d="m8 4 12 8-12 8Z"/></symbol>
+        <symbol id="moon" viewBox="0 0 24 24"><path d="M20.8 13.2A9 9 0 0 1 10.8 3.2 9 9 0 1 0 20.8 13.2Z"/></symbol>
+        <symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
         <symbol id="voice-wave" viewBox="0 0 240 54"><path d="M10 22v10m12-16v22m12-28v34m12-23v12m12-29v46m12-33v20m12-27v34m12-42v50m12-31v12m12-22v32m12-40v48m12-37v26m12-20v14m12-29v44m12-33v22m12-16v10m12-21v32m12-24v16m12-12v8"/></symbol>
         <symbol id="scene-person" viewBox="0 0 60 84"><circle cx="30" cy="18" r="14" fill="currentColor"/><path d="M5 84V59a25 25 0 0 1 50 0v25" fill="currentColor"/><path d="M19 15q11-10 22 0" fill="none" stroke="#fff" stroke-opacity=".65" stroke-width="3" stroke-linecap="round"/></symbol>
         <symbol id="github" viewBox="0 0 24 24"><path stroke="none" fill="currentColor" d="M12 .7a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.2.8-.5v-2c-3.2.7-3.9-1.3-3.9-1.3-.5-1.3-1.3-1.6-1.3-1.6-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.3 1 .1-.8.4-1.3.7-1.6-2.5-.3-5.2-1.3-5.2-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11.2 11.2 0 0 1 5.8 0C17.3 5.4 18.3 5.7 18.3 5.7c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.2 5.7.4.3.8 1 .8 2.1v2.9c0 .3.2.6.8.5A11.5 11.5 0 0 0 12 .7Z"/></symbol>
@@ -51,12 +66,13 @@
 
     <header class="site-header">
       <nav class="container nav" aria-label="Main navigation">
-        <a class="brand" href="#" aria-label="Utterlane home"><img src="./brand/wordmark.png" alt="Utterlane — Fast. Offline. Transcription." width="175" height="53" fetchpriority="high"></a>
+        <a class="brand" href="#" aria-label="Utterlane home"><img class="wordmark-light" src="./brand/wordmark.png" alt="Utterlane — Fast. Offline. Transcription." width="175" height="53" fetchpriority="high"><img class="wordmark-dark" src="./brand/wordmark-dark.png" alt="Utterlane — Fast. Offline. Transcription." width="175" height="53"></a>
         <div class="nav-links">
           <a class="desktop-link" href="#everyday">Everyday uses</a>
           <a class="desktop-link" href="#privacy">Why local?</a>
           <a class="github-link desktop-link" href="https://github.com/lrq3000/Utterlane"><svg class="icon" aria-hidden="true"><use href="#github"/></svg>GitHub</a>
           <a class="nav-cta" href="#setup">Get Utterlane <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a>
+          <button class="theme-toggle" type="button" aria-label="Switch to dark mode" title="Switch to dark mode" hidden><svg class="icon" aria-hidden="true"><use href="#moon"/></svg></button>
         </div>
       </nav>
     </header>
@@ -253,7 +269,7 @@
       <section class="closing" aria-labelledby="closing-title" data-motion-surface><div class="container" data-reveal><p class="section-kicker">Built with care. Given freely.</p><h2 id="closing-title">Your voice deserves<br>this much freedom.</h2><p>No account. No subscription. Open-source speech recognition that runs on the phone you already own.</p><a class="button primary" href="https://github.com/lrq3000/Utterlane/releases">Explore GitHub releases <svg class="icon" aria-hidden="true"><use href="#arrow-up-right"/></svg></a><div class="closing-detail">Offline after setup. Open source from the start.</div></div></section>
     </main>
 
-    <footer class="site-footer"><div class="container"><div class="footer-top"><a class="brand" href="#" aria-label="Utterlane home"><img src="./brand/wordmark.png" alt="Utterlane — Fast. Offline. Transcription." width="175" height="53" loading="lazy"></a><nav aria-label="Footer navigation"><a href="https://github.com/lrq3000/Utterlane">Source code</a><a href="https://github.com/lrq3000/Utterlane/blob/main/PRIVACY_POLICY.md">Privacy</a><a href="https://github.com/lrq3000/Utterlane/blob/main/LICENSE">License</a><a href="https://github.com/lrq3000/Utterlane/blob/main/CONTRIBUTING.md">Contribute</a></nav></div><div class="footer-bottom"><p>Made with ❤️ by <a href="https://github.com/lrq3000">Stephen Karl Larroque</a>.</p><p>Built on NVIDIA Parakeet, sherpa-onnx, CrispASR & ggml.<br>© 2026 Utterlane contributors. Apache-2.0.</p></div></div></footer>
+    <footer class="site-footer"><div class="container"><div class="footer-top"><a class="brand" href="#" aria-label="Utterlane home"><img class="wordmark-light" src="./brand/wordmark.png" alt="Utterlane — Fast. Offline. Transcription." width="175" height="53" loading="lazy"><img class="wordmark-dark" src="./brand/wordmark-dark.png" alt="Utterlane — Fast. Offline. Transcription." width="175" height="53" loading="lazy"></a><nav aria-label="Footer navigation"><a href="https://github.com/lrq3000/Utterlane">Source code</a><a href="https://github.com/lrq3000/Utterlane/blob/main/PRIVACY_POLICY.md">Privacy</a><a href="https://github.com/lrq3000/Utterlane/blob/main/LICENSE">License</a><a href="https://github.com/lrq3000/Utterlane/blob/main/CONTRIBUTING.md">Contribute</a></nav></div><div class="footer-bottom"><p>Made with ❤️ by <a href="https://github.com/lrq3000">Stephen Karl Larroque</a>.</p><p>Built on NVIDIA Parakeet, sherpa-onnx, CrispASR & ggml.<br>© 2026 Utterlane contributors. Apache-2.0.</p></div></div></footer>
     <button class="motion-toggle" type="button" aria-label="Play animations" aria-pressed="false" title="Play animations" hidden><svg class="icon" aria-hidden="true"><use href="#play"/></svg><span>Play animations</span></button>
   </body>
 </html>

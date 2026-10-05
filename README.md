@@ -81,6 +81,7 @@ Graph URLs in `index.html`, `public/robots.txt`, and `public/sitemap.xml`.
 - `index.html`: complete semantic content, native FAQ disclosures, metadata.
 - `src/styles.css`: Blue harmony tokens, typography, layout and breakpoints.
 - `src/illustrations.css`: original CSS phone and on-device processing scenes.
+- `src/theme.ts`: explicit light/dark choice, local persistence and header control.
 - `src/motion.ts`: autoplay and manual Play/Pause, offscreen/background pausing.
 - `ViewportReveals` in `src/motion.ts`: one-shot section entrances that settle on
   completion, pause, or keyboard focus; resuming does not replay
@@ -92,9 +93,16 @@ Graph URLs in `index.html`, `public/robots.txt`, and `public/sitemap.xml`.
 
 Animations start automatically on every visit, even when `prefers-reduced-motion`
 is enabled. The fixed control lets a visitor explicitly play or pause them for
-that visit; OS preference changes do not override this control. No preference is stored. Without
+that visit; OS preference changes do not override this control. No motion preference is stored. Without
 JavaScript, all content, download links, and FAQs remain available. On small or
 short screens, the story uses normal page flow rather than a pinned viewport.
+
+The header's moon/sun button switches the complete website between light and dark
+mode, independently of device appearance. Light is the initial default. A choice
+is remembered locally in `localStorage` under `utterlane-theme` and restored in
+the HTML head before the first paint. If browser storage is unavailable, switching
+still works for the current visit. No preference is sent to a server. Without
+JavaScript the light page remains readable and the theme control is hidden.
 
 The illustrations are labeled demonstrations. Text arrives in **segments** to
 reflect the app's behavior; no unsupported latency benchmark is implied.
