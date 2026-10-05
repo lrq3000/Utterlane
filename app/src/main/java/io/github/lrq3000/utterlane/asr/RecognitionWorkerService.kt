@@ -164,10 +164,9 @@ class RecognitionWorkerService : Service() {
         }
     }
 
-    /** Native integration replaces this constructor with the options/progress overload. */
-    @Suppress("UNUSED_PARAMETER")
+    /** One native cache per recording; progress is scoped to the current invocation. */
     private fun getSpeakerStream(path: String, options: RuntimeOptions, progress: (Long, String) -> Unit): SpeakerProbabilityStream =
-        CrispSpeakerStream(path)
+        CrispSpeakerStream(path, options, progress)
 
     private inner class ObservedSpeakerStream(path: String, options: RuntimeOptions) : SpeakerProbabilityStream {
         @Volatile private var callback: (Long, String) -> Unit = checkNotNull(activeProgress).callback("speaker_load")

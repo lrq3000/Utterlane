@@ -5,6 +5,7 @@
 #include <vector>
 #include <cstdlib>
 #include <stdexcept>
+#include <array>
 
 // Exact versioned POD layout from the pinned crispasr_c_api.cpp. Upstream's
 // public header only forward-declares it; v2 allows an explicitly CPU-only open.
@@ -20,6 +21,24 @@ struct SpeakerStream {
         if (stream) nemotron3_diar_stream_free(stream);
         if (model) nemotron3_diar_free(model);
     }
+};
+// The callback is invocation-scoped and runs on the current native inference
+// thread after completed work. It never lets a merely responsive thread renew
+// the watchdog, and no JNIEnv/global Java reference survives the call.
+struct SpeakerWork {
+    JNIEnv* env;
+    jobject owner;
+    jmethodID method;
+    std::array<jlong, 3> completed{};
+    static void report(void* pointer, int stage) {
+        auto& self = *static_cast<SpeakerWork*>(pointer);
+        if (stage >= 0 && stage < 3 && !self.env->ExceptionCheck())
+            self.env->CallVoidMethod(self.owner, self.method, ++self.completed[stage], static_cast<jint>(stage));
+    }
+};
+struct SpeakerWorkLease {
+    nemotron3_diar_context* model;
+    ~SpeakerWorkLease() { utterlane_n3d_set_work_callback(model, nullptr, nullptr); }
 };
 std::vector<float> audio(JNIEnv* env, jfloatArray input, bool allowEmpty = false) {
     const int n = env->GetArrayLength(input);
@@ -111,27 +130,41 @@ Java_io_github_lrq3000_utterlane_asr_CrispGenericBackend_closeNative(JNIEnv*, jo
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_io_github_lrq3000_utterlane_asr_CrispSpeakerStream_openNative(JNIEnv* env, jobject, jstring path) {
+Java_io_github_lrq3000_utterlane_asr_CrispSpeakerStream_openNative(JNIEnv* env, jobject, jstring path,
+    jint threads, jstring mode, jint batch, jint cache, jint fifo, jint update) {
+    if (threads < 1 || threads > 32 || batch < 1 || batch > 16) { error(env, "Invalid speaker runtime options"); return 0; }
     const char* filename = env->GetStringUTFChars(path, nullptr);
+    const char* preset = env->GetStringUTFChars(mode, nullptr);
     std::unique_ptr<SpeakerStream> owner(new SpeakerStream());
     try {
         auto params = nemotron3_diar_default_params();
-        params.n_threads = 4; params.use_gpu = false; params.verbosity = 0;
+        params.n_threads = threads; params.use_gpu = false; params.verbosity = 0;
         owner->model = nemotron3_diar_init_from_file(filename, params);
         if (!owner->model || nemotron3_diar_n_speakers(owner->model) != 8) throw std::runtime_error("Cannot load the eight-speaker diarization model");
-        // 0.64 s lookahead fits inside the ASR pipeline's one-second right context.
-        owner->stream = nemotron3_diar_stream_begin(owner->model, "very_low_latency");
+        if (utterlane_n3d_options_v1(owner->model, cache, fifo, update) != 0)
+            throw std::runtime_error("Invalid speaker cache/FIFO/update configuration");
+        owner->stream = nemotron3_diar_stream_begin(owner->model, preset);
         if (!owner->stream) throw std::runtime_error("Cannot start speaker stream");
+        // Explicitly override environment defaults; only buffered audio is merged.
+        nemotron3_diar_stream_set_catchup(owner->stream, batch);
     } catch (const std::exception& e) { error(env, e.what()); }
     env->ReleaseStringUTFChars(path, filename);
+    env->ReleaseStringUTFChars(mode, preset);
     return env->ExceptionCheck() ? 0 : reinterpret_cast<jlong>(owner.release());
 }
 
 extern "C" JNIEXPORT jfloatArray JNICALL
-Java_io_github_lrq3000_utterlane_asr_CrispSpeakerStream_pushNative(JNIEnv* env, jobject, jlong handle, jfloatArray input, jboolean final) {
+Java_io_github_lrq3000_utterlane_asr_CrispSpeakerStream_pushNative(JNIEnv* env, jobject object, jlong handle, jfloatArray input, jboolean final) {
     try {
         auto* owner = reinterpret_cast<SpeakerStream*>(handle);
         if (!owner || !owner->stream) throw std::runtime_error("Speaker stream is closed");
+        auto cls = env->GetObjectClass(object);
+        auto method = env->GetMethodID(cls, "onNativeProgress", "(JI)V");
+        env->DeleteLocalRef(cls);
+        if (!method) return nullptr;
+        SpeakerWork work{env, object, method};
+        utterlane_n3d_set_work_callback(owner->model, SpeakerWork::report, &work);
+        SpeakerWorkLease lease{owner->model};
         auto pcm = audio(env, input, true);
         std::vector<float> combined;
         auto collect = [&](float* raw, int rows) {
@@ -142,6 +175,7 @@ Java_io_github_lrq3000_utterlane_asr_CrispSpeakerStream_pushNative(JNIEnv* env, 
         int rows = 0;
         if (!pcm.empty()) { float* out = nemotron3_diar_stream_push(owner->stream, pcm.data(), pcm.size(), &rows); collect(out, rows); }
         if (final) { rows = 0; float* out = nemotron3_diar_stream_end(owner->stream, &rows); collect(out, rows); }
+        if (env->ExceptionCheck()) return nullptr;
         auto output = env->NewFloatArray(combined.size());
         if (!combined.empty()) env->SetFloatArrayRegion(output, 0, combined.size(), combined.data());
         return output;

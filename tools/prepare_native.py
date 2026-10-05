@@ -6,6 +6,7 @@ CMake embedding adaptation; any other dirty checkout is never overwritten.
 import argparse
 import pathlib
 import subprocess
+from native_stream_options import adapt_header, adapt_source
 
 CRISP_REVISION = "966561aa596cfc653aa0e9885d44117fad9cca35"
 GGML_REVISION = "2f5a80d258c46e6ac8eee95f1328c0f58376d7ee"
@@ -26,6 +27,8 @@ class NativeSources:
         if cache.count(entry) != 1:
             raise RuntimeError("Pinned native download entry point changed; review the Android offline adaptation")
         return {
+            "src/nemotron3_diar.h": adapt_header(self.git("show", "HEAD:src/nemotron3_diar.h") + "\n").strip(),
+            "src/nemotron3_diar.cpp": adapt_source(self.git("show", "HEAD:src/nemotron3_diar.cpp") + "\n").strip(),
             "src/CMakeLists.txt": cmake.replace("${CMAKE_SOURCE_DIR}", "${PROJECT_SOURCE_DIR}"),
             # Missing companion weights must be imported by the user, not fetched
             # by a hidden native curl/wget subprocess on rooted Android devices.
