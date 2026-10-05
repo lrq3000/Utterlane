@@ -108,6 +108,16 @@ class TranscriptScoringTests(ScorerTestCase):
         self.assertEqual(report["text"]["reference_words"], 9)
         self.assertEqual(self.score("Speaker 1: été", "Speaker 1: ete")["text"]["wer"], 1)
 
+    def test_canonically_equivalent_greek_marks_match_before_casefold(self):
+        # Case folding turns ypogegrammeni into a letter; canonical mark
+        # reordering must happen first so the acute stays on the alpha.
+        for decomposed in ("\u03b1\u0345\u0301", "\u03b1\u0301\u0345"):
+            with self.subTest(decomposed=ascii(decomposed)):
+                report = self.score("Speaker 1: \u1fb4", f"Speaker 7: {decomposed}")
+                self.assertEqual(report["text"]["wer"], 0)
+                self.assertEqual(report["text"]["matched_reference_coverage"], 1)
+                self.assertEqual(report["speakers"]["correct_reference_word_rate"], 1)
+
     def test_wrapped_lines_and_punctuation_only_blocks(self):
         report = self.score("Speaker 1: alpha beta", "Speaker 01: alpha\nbeta\nUnknown speaker: ?")
         self.assertEqual(report["text"]["wer"], 0)

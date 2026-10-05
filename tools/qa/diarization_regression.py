@@ -39,7 +39,10 @@ class TranscriptParser:
     def tokenize(self, text):
         # Unlike regex \w, Unicode categories retain combining marks in scripts
         # where NFC cannot compose them, without treating underscores as words.
-        text = unicodedata.normalize("NFC", text.translate(self.APOSTROPHES).casefold())
+        # Canonicalize before folding: Greek ypogegrammeni becomes a letter,
+        # after which normalization can no longer reorder its neighboring marks.
+        text = unicodedata.normalize("NFC", text.translate(self.APOSTROPHES))
+        text = unicodedata.normalize("NFC", text.casefold())
         tokens, word = [], []
         for index, char in enumerate(text):
             category = unicodedata.category(char)[0]
