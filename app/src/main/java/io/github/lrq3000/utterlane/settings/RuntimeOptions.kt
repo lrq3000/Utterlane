@@ -9,11 +9,15 @@ data class RuntimeOptions(
     val asrThreads: Int = 4,
     val diarizationThreads: Int = 4,
     val diarizationMode: String = "very_low_latency",
-    val diarizationBatch: Int = 1,
+    // Batch only already-buffered native steps; preserves live ASR cadence.
+    // Acoustic replay reduced 53 native forwards to 8 on the 25 s fixture.
+    val diarizationBatch: Int = 8,
     val speakerThreshold: Float = 0.5f,
     val speakerMargin: Float = 0.08f,
     val speakerConfirmationMs: Int = 200,
-    val unknownBridgeMs: Int = 350,
+    // A recognized word may span a brief pause in the diarizer's activity mask.
+    // Bridging still requires agreeing sustained speakers on both sides.
+    val unknownBridgeMs: Int = 1000,
     val labelLookaheadMs: Int = 300,
     val alignmentToleranceMs: Int = 120,
     val asrWindowSeconds: Double = 10.0,

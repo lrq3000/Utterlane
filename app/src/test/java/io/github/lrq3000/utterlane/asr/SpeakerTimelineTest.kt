@@ -82,7 +82,7 @@ class SpeakerTimelineTest {
     }
 
     @Test fun ambiguityAndLongGapsCannotBeHiddenByMatchingNeighbors() {
-        val timeline = SpeakerTimeline(0)
+        val timeline = SpeakerTimeline(0, options = RuntimeOptions(unknownBridgeMs = 350))
         timeline.append(frames(0, -1, 0))
         assertEquals(-1, timeline.speakerDuring(16000, 32000))
         val overlap = SpeakerTimeline(0)
@@ -271,7 +271,8 @@ class SpeakerTimelineTest {
     private fun trackFrames(count: Int, channel: Int) = FloatArray(count * 8) { if (it % 8 == channel) .95f else .01f }
 
     private fun alignmentTimeline(tolerance: Int, probability: (Int, Int) -> Float) =
-        SpeakerTimeline(0, options = RuntimeOptions(alignmentToleranceMs = tolerance)).apply {
+        // Isolate timestamp tolerance from independently configurable gap bridging.
+        SpeakerTimeline(0, options = RuntimeOptions(alignmentToleranceMs = tolerance, unknownBridgeMs = 350)).apply {
             append(FloatArray(250 * 8) { probability(it / 8, it % 8) })
         }
 
