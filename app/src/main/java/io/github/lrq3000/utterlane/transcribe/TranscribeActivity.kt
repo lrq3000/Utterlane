@@ -140,6 +140,14 @@ fun TranscribeScreen(
     var pageOffset by remember { mutableStateOf<Long?>(null) }
     var processingJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var preserveResult by remember { mutableStateOf(false) }
+    val captureMetrics = remember { io.github.lrq3000.utterlane.asr.CaptureMetrics() }
+    val capture by captureMetrics.state.collectAsState()
+    val manager = remember { UtterlaneApp.instance.recognizerManager }
+    LaunchedEffect(manager, running) {
+        if (running && transcriptPath == null) manager.activity.collect {
+            if (it.active || captureMetrics.state.value.recognition.active) captureMetrics.recognition(it)
+        }
+    }
 
     val view = androidx.compose.ui.platform.LocalView.current
     DisposableEffect(view, running) {
@@ -184,14 +192,19 @@ fun TranscribeScreen(
                 val app = UtterlaneApp.instance
                 check(app.modelManager.isModelReady()) { context.getString(R.string.transcribe_error_no_model) }
                 var session: io.github.lrq3000.utterlane.asr.TranscriptionSession? = null
-                session = app.recognizerManager.createSession {
+                session = app.recognizerManager.createSession(onProcessed = captureMetrics::processed) {
                     val tail = session!!.store.preview()
                     withContext(Dispatchers.Main) { if (pageOffset == null) preview = tail }
                 }
                 activeSession = session
                 withContext(Dispatchers.Main) { store = session.store }
                 val decoder = AudioDecoder(app)
-                val onProgress: (Int?) -> Unit = { value -> scope.launch { progress = value } }
+                // Decoder completion is not transcript finalization (speaker/ASR tail may remain).
+                val onProgress: (Int?) -> Unit = { value -> scope.launch { progress = value?.coerceIn(0, 99) } }
+                val accept: suspend (ShortArray) -> Unit = { samples ->
+                    captureMetrics.captured(samples.size)
+                    session.accept(samples)
+                }
                 if (historyId != null) {
                     app.recordingHistory.acquire(historyId).use {
                         val entry = app.recordingHistory.get(historyId)
@@ -199,22 +212,27 @@ fun TranscribeScreen(
                         while (offset < entry.samples) {
                             kotlinx.coroutines.currentCoroutineContext().ensureActive()
                             val samples = app.recordingHistory.read(historyId, offset, 3200)
-                            session.accept(samples)
+                            accept(samples)
                             offset += samples.size
                             onProgress((offset * 100 / entry.samples).toInt())
                         }
                         session.finish()
                     }
-                } else if (filePath != null) decoder.decode(filePath, { session.accept(it) }, onProgress)
-                else decoder.decode(audioUri!!, { session.accept(it) }, onProgress)
+                } else if (filePath != null) decoder.decode(filePath, accept, onProgress)
+                else decoder.decode(audioUri!!, accept, onProgress)
+                captureMetrics.captureEnded()
                 session.finish()
+                captureMetrics.completed(null)
+                withContext(Dispatchers.Main) { progress = 100 }
                 if (session.store.segments == 0) withContext(Dispatchers.Main) { message = context.getString(R.string.toast_no_speech) }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
+            captureMetrics.cancelled()
             preserveResult = true
             message = context.getString(R.string.stream_cancelled)
             throw e
         } catch (e: Exception) {
+            captureMetrics.completed(context.getString(R.string.recognition_error))
             preserveResult = true
             android.util.Log.e("TranscribeActivity", "Incremental transcription failed", e)
             message = e.message ?: context.getString(R.string.transcribe_error_failed)
@@ -250,6 +268,10 @@ fun TranscribeScreen(
                         if (progress == null) LinearProgressIndicator(Modifier.fillMaxWidth())
                         else LinearProgressIndicator(progress = { progress!! / 100f }, modifier = Modifier.fillMaxWidth())
                         TextButton(onClick = { processingJob?.cancel() }) { Text(stringResource(R.string.overlay_cancel)) }
+                    }
+                    if (transcriptPath == null) {
+                        Text(io.github.lrq3000.utterlane.ui.RecognitionStatusText.activity(context, capture.recognition), style = MaterialTheme.typography.bodySmall)
+                        Text(io.github.lrq3000.utterlane.ui.RecognitionStatusText.backlog(context, capture), style = MaterialTheme.typography.bodySmall)
                     }
                     message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     if (preview.isNotEmpty()) {

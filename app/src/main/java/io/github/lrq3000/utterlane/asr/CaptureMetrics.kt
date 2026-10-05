@@ -17,8 +17,15 @@ data class CaptureSnapshot(
     val percent: Int? = null,
     val remainingSeconds: Double? = null,
     val modelName: String = "",
-    val error: String? = null
-)
+    val error: String? = null,
+    val recognition: RecognitionStatus = RecognitionStatus.from(RecognitionActivity())
+) {
+    val capturedSeconds: Double get() = capturedSamples.coerceAtLeast(0) / 16000.0
+    val processedSeconds: Double get() = processedSamples.coerceIn(0, capturedSamples.coerceAtLeast(0)) / 16000.0
+    // Ownership counts exclude overlapping ASR context and include disk-backed backlog.
+    // This is outstanding accepted audio, not a claim about native queue occupancy.
+    val backlogSeconds: Double get() = (capturedSeconds - processedSeconds).coerceAtLeast(0.0)
+}
 
 /**
  * PCM-derived, in-memory feedback for the recording UI; no persistence or network reporting.
@@ -35,6 +42,16 @@ class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 10000
     private var processingRate: Double? = null
 
     @Synchronized fun model(name: String) { mutable.value = mutable.value.copy(modelName = name) }
+    @Synchronized fun recognition(activity: RecognitionActivity) {
+        if (mutable.value.phase in setOf(CapturePhase.COMPLETE, CapturePhase.FAILED, CapturePhase.CANCELLED)) return
+        mutable.value = mutable.value.copy(recognition = RecognitionStatus.from(activity))
+    }
+    /** File decoding can count accepted PCM without computing or retaining a waveform. */
+    @Synchronized fun captured(samples: Int) {
+        require(samples >= 0)
+        if (mutable.value.phase == CapturePhase.LOADING) started()
+        mutable.value = mutable.value.copy(capturedSamples = mutable.value.capturedSamples + samples)
+    }
     @Synchronized fun started() {
         if (mutable.value.phase != CapturePhase.LOADING) return
         lastFrames = clock(); lastAudible = lastFrames
@@ -72,12 +89,13 @@ class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 10000
     @Synchronized fun stopping() { mutable.value = mutable.value.copy(phase = CapturePhase.STOPPING) }
     @Synchronized fun captureEnded() { mutable.value = mutable.value.copy(phase = CapturePhase.PROCESSING); progress() }
     @Synchronized fun processed(endSample: Long, milliseconds: Long) {
-        val delta = endSample - mutable.value.processedSamples
+        val end = endSample.coerceIn(mutable.value.processedSamples, mutable.value.capturedSamples)
+        val delta = end - mutable.value.processedSamples
         if (delta > 0 && milliseconds > 0) {
             val rate = milliseconds / 1000.0 / delta
             processingRate = processingRate?.let { it * 0.8 + rate * 0.2 } ?: rate
         }
-        mutable.value = mutable.value.copy(processedSamples = endSample.coerceAtMost(mutable.value.capturedSamples))
+        mutable.value = mutable.value.copy(processedSamples = end)
         progress()
     }
     private fun progress() {
@@ -87,6 +105,14 @@ class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 10000
         mutable.value = snapshot.copy(percent = percent,
             remainingSeconds = processingRate?.times((snapshot.capturedSamples - snapshot.processedSamples).coerceAtLeast(0)))
     }
-    @Synchronized fun completed(error: String?) { mutable.value = mutable.value.copy(phase = if (error == null) CapturePhase.COMPLETE else CapturePhase.FAILED, percent = if (error == null) 100 else mutable.value.percent, error = error) }
-    @Synchronized fun cancelled() { mutable.value = mutable.value.copy(phase = CapturePhase.CANCELLED) }
+    @Synchronized fun completed(error: String?) {
+        mutable.value = mutable.value.copy(phase = if (error == null) CapturePhase.COMPLETE else CapturePhase.FAILED,
+            percent = if (error == null) 100 else mutable.value.percent?.coerceAtMost(99), error = error,
+            recognition = mutable.value.recognition.copy(active = false, opaque = false,
+                stage = if (error == null) RecognitionStage.FINISHED else RecognitionStage.ERROR))
+    }
+    @Synchronized fun cancelled() {
+        mutable.value = mutable.value.copy(phase = CapturePhase.CANCELLED,
+            recognition = mutable.value.recognition.copy(active = false, opaque = false))
+    }
 }

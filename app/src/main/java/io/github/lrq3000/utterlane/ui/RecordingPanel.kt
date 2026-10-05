@@ -34,6 +34,7 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
     private val secondary = initialPalette.muted.toArgb()
     private val title = label(20f, foreground)
     private val details = label(13f, secondary)
+    private val recognition = label(13f, secondary)
     private val signal = label(14f, initialPalette.warning.toArgb())
     val statusText = label(15f, foreground).apply { id = R.id.recording_status; maxLines = 3; ellipsize = android.text.TextUtils.TruncateAt.END }
     private val waveform = WaveformButton(context).apply {
@@ -61,7 +62,7 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
             cornerRadii = floatArrayOf(dp(26).toFloat(), dp(26).toFloat(), dp(26).toFloat(), dp(26).toFloat(), 0f, 0f, 0f, 0f)
         }
         elevation = dp(12).toFloat()
-        addView(title); addView(details); addView(signal)
+        addView(title); addView(details); addView(recognition); addView(signal)
         addView(waveform, LayoutParams(LayoutParams.MATCH_PARENT, dp(136)).apply { topMargin = dp(12) })
         processing.addView(percent)
         processing.addView(bar, LayoutParams(LayoutParams.MATCH_PARENT, dp(16)).apply { topMargin = dp(16) })
@@ -96,6 +97,7 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         (background as GradientDrawable).setColor(palette.surface.toArgb())
         title.setTextColor(palette.text.toArgb())
         details.setTextColor(palette.muted.toArgb())
+        recognition.setTextColor(palette.muted.toArgb())
         signal.setTextColor(palette.warning.toArgb())
         statusText.setTextColor(palette.text.toArgb())
         percent.setTextColor(palette.text.toArgb())
@@ -124,10 +126,9 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
             CapturePhase.FAILED -> R.string.capture_failed
             CapturePhase.CANCELLED -> R.string.stream_cancelled
         })
-        val total = snapshot.capturedSamples / 16000.0
-        val done = snapshot.processedSamples / 16000.0
-        details.text = snapshot.modelName + if (capturing) " · ${formatTime(total)}" else if (snapshot.phase == CapturePhase.PROCESSING)
-            " · " + context.getString(R.string.capture_audio_progress, done.toInt(), total.toInt()) else ""
+        details.text = snapshot.modelName + "\n" + RecognitionStatusText.backlog(context, snapshot)
+        recognition.text = RecognitionStatusText.activity(context, snapshot.recognition)
+        recognition.visibility = if (recognition.text.isEmpty()) View.GONE else View.VISIBLE
         signal.visibility = if (capturing && snapshot.signal in listOf(CaptureSignal.LOW, CaptureSignal.NO_FRAMES, CaptureSignal.BLOCKED)) View.VISIBLE else View.GONE
         signal.text = context.getString(when (snapshot.signal) {
             CaptureSignal.BLOCKED -> R.string.capture_blocked
@@ -145,7 +146,6 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
     }
     private fun label(size: Float, color: Int) = TextView(context).apply { textSize = size; setTextColor(color); gravity = Gravity.CENTER }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
-    private fun formatTime(seconds: Double): String = "%02d:%02d".format(seconds.toInt() / 60, seconds.toInt() % 60)
 }
 
 /** The whole waveform is a native accessible Button. Only actual PCM levels drive its bars. */
