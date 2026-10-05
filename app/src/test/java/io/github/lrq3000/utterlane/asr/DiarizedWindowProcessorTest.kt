@@ -208,12 +208,12 @@ class DiarizedWindowProcessorTest {
         }
     }
 
-    @Test fun genericWordArraysKeepFullRawTextSpacingPunctuationAndContextLikeOff() {
+    @Test fun genericWordArraysKeepFullRawTextSpacingAndPunctuationFromOwnedPcm() {
         val result = WindowResult(arrayOf("Hello", "world", "keep", "everything"),
-            floatArrayOf(0f, .5f, 1f, 1.5f), "Hello,  world! keep everything.")
+            floatArrayOf(0f, .2f, .4f, .6f), "Hello,  world! keep everything.")
         DiarizedWindowProcessor(Backend(result), Frames(IntArray(200) { 0 }), 0, textOnly = true).use {
-            // Generic Off uses result.text, including context. Optional arrays
-            // must not silently remove its leading/trailing recognized words.
+            // Native timings are relative to the one-second owned PCM slice.
+            // Optional arrays must preserve its complete authoritative text.
             assertEquals(listOf(SpeechSpan(result.text!!, 0)),
                 it.process(AudioWindow(ShortArray(32000), 0, 8000, 24000, true)))
         }
@@ -296,5 +296,45 @@ class DiarizedWindowProcessorTest {
         assertEquals(-1, output.first().speaker)
         assertEquals(0, output.last().speaker)
         assertEquals(100, asr.calls)
+    }
+
+    @Test fun customOverlappingWindowsDecodeOwnedPcmOnceAndRebaseOptionalTimingsLikeOff() {
+        val pcm = ShortArray(96000) { (100 + it / 160).toShort() }
+        val windows = listOf(AudioWindow(pcm.copyOfRange(0, 64000), 0, 0, 48000),
+            AudioWindow(pcm.copyOfRange(32000, 96000), 32000, 48000, 96000, true))
+        val starts = listOf(8000, 56000, 88000)
+        val words = listOf("First,", "once!", "Last.")
+        for (timed in listOf(false, true)) for (count in listOf(0, 1)) {
+            class CustomBackend : RecognitionBackend {
+                val calls = mutableListOf<ShortArray>()
+                override fun transcribeWindow(samples: ShortArray): WindowResult {
+                    calls += samples
+                    val start = (samples.first().toInt() - 100) * 160
+                    val selected = starts.indices.filter { starts[it] in start until start + samples.size }
+                    return WindowResult(
+                        if (timed) selected.map { words[it] }.toTypedArray() else emptyArray(),
+                        if (timed) selected.map { (starts[it] - start) / 16000f }.toFloatArray() else floatArrayOf(),
+                        selected.joinToString("  ") { words[it] },
+                        if (timed) selected.map { (starts[it] - start + 3200) / 16000f }.toFloatArray() else floatArrayOf())
+                }
+                override fun close() {}
+            }
+            val off = CustomBackend()
+            val baseline = windows.joinToString(" ") { window ->
+                off.transcribeWindow(window.samples.copyOfRange((window.ownedStart - window.startSample).toInt(),
+                    (window.ownedEnd - window.startSample).toInt())).text!!
+            }
+            val on = CustomBackend()
+            val stream = Frames(IntArray(600) { if (it < 300) 0 else 1 })
+            val spans = DiarizedWindowProcessor(on, stream, count, textOnly = true).use { processor ->
+                windows.flatMap { processor.process(it) }
+            }
+            assertEquals("First, once!  Last.", baseline)
+            assertEquals("timed=$timed count=$count", baseline, spans.joinToString(" ") { it.text.trim() })
+            assertEquals(2, on.calls.size)
+            off.calls.zip(on.calls).forEach { (expected, actual) -> assertArrayEquals(expected, actual) }
+            assertEquals(if (count == 1) listOf(0, 0) else listOf(0, 1), spans.map { it.speaker })
+            assertEquals(if (count == 1) 0 else pcm.size, stream.fed)
+        }
     }
 }
