@@ -234,4 +234,67 @@ class DiarizedWindowProcessorTest {
                 it.process(AudioWindow(ShortArray(32000), 0, 0, 32000, true)))
         }
     }
+
+    @Test fun trailingTokenWhitespaceIsPartOfTheSameBaselineText() {
+        val result = WindowResult(arrayOf(" one ", " two"), floatArrayOf(0f, 1f))
+        DiarizedWindowProcessor(Backend(result), Frames(IntArray(200) { 0 }), 0).use {
+            val window = AudioWindow(ShortArray(32000), 0, 0, 32000, true)
+            assertEquals(listOf(SpeechSpan(WindowText.select(result.tokens, result.timestamps, window), 0)), it.process(window))
+        }
+    }
+
+    @Test fun closeDiscardsPendingMetadataAndNeverPushesAgain() {
+        var pushes = 0
+        var closes = 0
+        val stream = object : SpeakerProbabilityStream {
+            override fun push(samples: ShortArray, final: Boolean): FloatArray { pushes++; return floatArrayOf() }
+            override fun close() { closes++ }
+        }
+        val asr = Backend(WindowResult(arrayOf(" pending"), floatArrayOf(0f)))
+        val processor = DiarizedWindowProcessor(asr, stream, 0)
+        assertTrue(processor.process(AudioWindow(ShortArray(16000), 0, 0, 16000)).isEmpty())
+        processor.close()
+        processor.close()
+        assertThrows(IllegalStateException::class.java) {
+            processor.process(AudioWindow(ShortArray(16000), 16000, 16000, 32000, true))
+        }
+        assertEquals(1, pushes)
+        assertEquals(1, asr.calls)
+        assertEquals(1, closes)
+    }
+
+    @Test fun oversizedUntimedMetadataIsEmittedUnknownInsteadOfRetainedWithoutABound() {
+        val text = "x".repeat(262145)
+        val stream = object : SpeakerProbabilityStream {
+            override fun push(samples: ShortArray, final: Boolean) = floatArrayOf()
+            override fun close() {}
+        }
+        DiarizedWindowProcessor(Backend(WindowResult(emptyArray(), floatArrayOf(), text)), stream, 0).use {
+            assertEquals(listOf(SpeechSpan(text, -1)), it.process(AudioWindow(ShortArray(16000), 0, 0, 16000)))
+        }
+    }
+
+    @Test fun stalledNativeOutputExpiresMetadataAndFinalOversizedBatchStillKeepsAllWords() {
+        var fed = 0
+        val stream = object : SpeakerProbabilityStream {
+            override fun push(samples: ShortArray, final: Boolean): FloatArray {
+                fed += samples.size
+                return if (final) FloatArray(fed / 160 * 8) { if (it % 8 == 0) .95f else .01f } else floatArrayOf()
+            }
+            override fun close() {}
+        }
+        val output = mutableListOf<SpeechSpan>()
+        val asr = Backend(WindowResult(arrayOf(" word"), floatArrayOf(0f)))
+        DiarizedWindowProcessor(asr, stream, 0).use { processor ->
+            repeat(100) { i ->
+                output += processor.process(AudioWindow(ShortArray(16000), i * 16000L, i * 16000L,
+                    (i + 1) * 16000L, i == 99))
+                assertTrue("Never retain words in proportion to recording length", output.sumOf { it.text.trim().split(' ').size } >= i - 2)
+            }
+        }
+        assertEquals(100, output.sumOf { it.text.trim().split(' ').size })
+        assertEquals(-1, output.first().speaker)
+        assertEquals(0, output.last().speaker)
+        assertEquals(100, asr.calls)
+    }
 }

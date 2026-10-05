@@ -26,9 +26,12 @@ class TranscriptionSession(
         Log.i("TranscriptionSession", "Segment ${window.ownedStart}..${window.ownedEnd}; input=${window.samples.size}; completed=${store.segments}")
     }
     private var finished = false
-    suspend fun accept(samples: ShortArray) = segmenter.accept(samples)
+    suspend fun accept(samples: ShortArray) {
+        check(!closed.get()) { "Transcription session is closed" }
+        segmenter.accept(samples)
+    }
     suspend fun finish() {
-        if (finished) return
+        if (finished || closed.get()) return
         try {
             segmenter.finish()
             emit(speakerText?.finish() ?: corrections.finish())

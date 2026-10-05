@@ -90,4 +90,13 @@ class SpeakerTimelineTest {
         overlap.append(frames(0))
         assertEquals(-1, overlap.speakerDuring(16000, 19200))
     }
+
+    @Test fun briefWeakChannelCannotConsumeAFixedCountIdentity() {
+        val timeline = SpeakerTimeline(2)
+        timeline.append(FloatArray(3 * 8) { when (it % 8) { 7 -> .56f; 0 -> .46f; else -> .01f } })
+        timeline.append(frames(4, 6))
+        assertEquals(-1, timeline.speakerAt(0))
+        assertEquals(0, timeline.speakerAt(8000))
+        assertEquals(1, timeline.speakerAt(24000))
+    }
 }

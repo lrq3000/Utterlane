@@ -33,11 +33,14 @@ class SpeakerTimeline(
             val slot = (end % capacity).toInt() * 8
             probabilities.copyInto(this.probabilities, slot, offset, offset + 8)
             val best = channelAt(end)
-            candidateFrames = if (best == candidate) minOf(candidateFrames + 1, 3) else 1
+            val confirmation = maxOf(3, (options.speakerConfirmationMs + 9) / 10)
+            candidateFrames = if (best == candidate) minOf(candidateFrames + 1, confirmation) else 1
             candidate = best
             // Three strong frames can establish a genuinely brief interjection;
             // a single-frame spike never consumes a scarce fixed-count identity.
-            if (best >= 0 && candidateFrames >= 3 && identities[best] < 0 &&
+            val strong = best >= 0 && channelAt(end, maxOf(.7f, options.speakerThreshold),
+                maxOf(.2f, options.speakerMargin)) == best
+            if (best >= 0 && candidateFrames >= (if (strong) 3 else confirmation) && identities[best] < 0 &&
                 identityCount < speakerCount) {
                 identities[best] = identityCount++
             }
@@ -153,7 +156,7 @@ class SpeakerTimeline(
         else -> identities[channel]
     }
 
-    private fun channelAt(frame: Long): Int {
+    private fun channelAt(frame: Long, threshold: Float = options.speakerThreshold, margin: Float = options.speakerMargin): Int {
         val offset = (frame % capacity).toInt() * 8
         var best = 0
         var runnerUp = 0f
@@ -164,7 +167,7 @@ class SpeakerTimeline(
             } else runnerUp = maxOf(runnerUp, probabilities[offset + channel])
         }
         val confidence = probabilities[offset + best]
-        return if (confidence > options.speakerThreshold && confidence - runnerUp >= options.speakerMargin &&
+        return if (confidence > threshold && confidence - runnerUp >= margin &&
             confidence > runnerUp) best else -1
     }
 
