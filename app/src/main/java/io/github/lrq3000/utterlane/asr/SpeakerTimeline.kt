@@ -12,6 +12,14 @@ class SpeakerTimeline(
     private val options: RuntimeOptions = RuntimeOptions()
 ) {
     init { require(speakerCount in 0..8 && capacity in 1..20000); options.requireValid() }
+    // Thresholds cannot weaken the ordinary policy. Confirmation is quantized
+    // to structural 10 ms frames: even zero requires one observed frame, and
+    // the strong shortcut can never take longer than ordinary confirmation.
+    private val strongThreshold = maxOf(options.speakerThreshold, options.strongSpeakerThreshold)
+    private val strongMargin = maxOf(options.speakerMargin, options.strongSpeakerMargin)
+    private val confirmationFrames = maxOf(1, (options.speakerConfirmationMs + 9) / 10)
+    private val strongFrames = minOf(confirmationFrames, maxOf(1, (options.strongConfirmationMs + 9) / 10))
+    private val minimumEvidenceSamples = strongFrames * 160L
     // Keep every posterior, including channels beyond an explicit count. A count
     // constrains output identities, not the native model's eight-channel evidence.
     private val probabilities = FloatArray(capacity * 8)
@@ -39,26 +47,24 @@ class SpeakerTimeline(
             probabilities.copyInto(this.probabilities, slot, offset, offset + 8)
             if (firstConfirmed == null) for (channel in 0..7) {
                 if (probabilities[offset + channel] > options.speakerThreshold) {
-                    initialActiveFrames[channel] = minOf(3, initialActiveFrames[channel] + 1)
+                    initialActiveFrames[channel] = minOf(strongFrames, initialActiveFrames[channel] + 1)
                 }
             }
             val best = channelAt(end)
-            val confirmation = maxOf(3, (options.speakerConfirmationMs + 9) / 10)
             val sameCandidate = best == candidate
-            candidateFrames = if (sameCandidate) minOf(candidateFrames + 1, confirmation) else 1
-            // Three strong frames can establish a genuinely brief interjection;
-            // a single-frame spike never consumes a scarce fixed-count identity.
-            val strong = best >= 0 && channelAt(end, maxOf(.7f, options.speakerThreshold),
-                maxOf(.2f, options.speakerMargin)) == best
+            candidateFrames = if (sameCandidate) minOf(candidateFrames + 1, confirmationFrames) else 1
+            // Sustained strong evidence can establish a brief interjection. At
+            // the default 30 ms, one spike cannot consume a fixed-count identity.
+            val strong = best >= 0 && channelAt(end, strongThreshold, strongMargin) == best
             // Weak support counts toward full confirmation only. One later
             // strong frame must not retroactively promote that earlier support.
             strongCandidateFrames = if (strong) {
-                if (sameCandidate) minOf(strongCandidateFrames + 1, 3) else 1
+                if (sameCandidate) minOf(strongCandidateFrames + 1, strongFrames) else 1
             } else 0
             candidate = best
-            if (best >= 0 && (strongCandidateFrames >= 3 || candidateFrames >= confirmation)) {
+            if (best >= 0 && (strongCandidateFrames >= strongFrames || candidateFrames >= confirmationFrames)) {
                 if (firstConfirmed == null) {
-                    val confirmedFrames = if (strongCandidateFrames >= 3) 3 else confirmation
+                    val confirmedFrames = if (strongCandidateFrames >= strongFrames) strongFrames else confirmationFrames
                     firstConfirmed = SpeakerTurn((end - confirmedFrames + 1) * 160, (end + 1) * 160, best)
                 }
                 if (identities[best] < 0 && identityCount < speakerCount) identities[best] = identityCount++
@@ -97,7 +103,7 @@ class SpeakerTimeline(
         require(start >= 0 && stop >= start)
         if (start < first * 160 || stop > endSample) return -1
         val evidence = evidence(start, stop)
-        if (coarse && evidence.support.count { it >= 3 * 160 } > 1) return -1
+        if (coarse && evidence.support.count { it >= minimumEvidenceSamples } > 1) return -1
         val winner = evidence.winner(previous)
         if (winner >= 0) return identity(winner)
         if (!allowFallback) return -1
@@ -114,10 +120,10 @@ class SpeakerTimeline(
         }
         // An actual conflict is not silence. Never bridge overlapping voices or
         // sustained competing evidence merely because nearby labels agree.
-        if (evidence.voiced >= 3 * 160) return -1
+        if (evidence.voiced >= minimumEvidenceSamples) return -1
         val initial = firstConfirmed
         val initialIsUnambiguous = initial != null &&
-            initialActiveFrames.indices.none { it != initial.speaker && initialActiveFrames[it] >= 3 }
+            initialActiveFrames.indices.none { it != initial.speaker && initialActiveFrames[it] >= strongFrames }
         // Initial ASR words can end just before the first voiced onset after a
         // long leading silence. Backfill only toward that session's first
         // confirmed voice, within the configured end-to-onset distance, and
@@ -161,7 +167,7 @@ class SpeakerTimeline(
         // island's following voice. Neither first-ever nor previous identity votes.
         if (bridge == 0L || lookbackStart < first * 160 || onset < stop || onset - stop > bridge ||
             evidence(lookbackStart, start).voiced != 0L) return -1
-        val surrounding = evidence(start - tolerance, minOf(endSample, maxOf(stop + tolerance, onset + 3 * 160)))
+        val surrounding = evidence(start - tolerance, minOf(endSample, maxOf(stop + tolerance, onset + minimumEvidenceSamples)))
         // Include the word, its expanded interval, and the intervening onset gap.
         // Even non-winning competing activity makes this one-sided inference unsafe.
         return if (surrounding.unambiguousWinner(-1) == right.first &&
@@ -182,10 +188,9 @@ class SpeakerTimeline(
             val confidence = mass[best] / voiced
             val margin = (mass[best] - second) / voiced
             if (confidence <= options.speakerThreshold || margin < options.speakerMargin || margin <= 0) return -1
-            val strong = confidence >= maxOf(.7, options.speakerThreshold.toDouble()) &&
-                margin >= maxOf(.2, options.speakerMargin.toDouble())
-            val required = if (strong || identity(best) == previous && previous >= 0) 3 * 160L
-                else maxOf(3 * 160L, options.speakerConfirmationMs * 16L)
+            val strong = confidence >= strongThreshold.toDouble() && margin >= strongMargin.toDouble()
+            val required = if (strong || identity(best) == previous && previous >= 0) minimumEvidenceSamples
+                else confirmationFrames * 160L
             return if (voiced >= required) best else -1
         }
 
@@ -194,9 +199,10 @@ class SpeakerTimeline(
             // Count every credible channel, including tied/overlapping frames
             // with no decisive frame winner. Since this interval contains the
             // original word, conflicting word evidence cannot be outvoted by
-            // extra surrounding audio. Isolated frame spikes remain insufficient.
-            return if (winner >= 0 && active[winner] >= 3 * 160 &&
-                active.indices.none { it != winner && active[it] >= 3 * 160 }) winner else -1
+            // extra surrounding audio. The default minimum rejects isolated spikes;
+            // an explicitly shorter confirmation policy lowers that requirement.
+            return if (winner >= 0 && active[winner] >= minimumEvidenceSamples &&
+                active.indices.none { it != winner && active[it] >= minimumEvidenceSamples }) winner else -1
         }
     }
 
@@ -219,7 +225,7 @@ class SpeakerTimeline(
         return result
     }
 
-    /** Nearest sustained evidence; isolated 10 ms spikes cannot anchor a bridge. */
+    /** Nearest evidence sustained for the configured minimum, in structural 10 ms frames. */
     private fun neighbor(from: Long, direction: Int, distance: Long): Pair<Int, Long>? {
         var frame = from
         var run = 0
@@ -228,7 +234,7 @@ class SpeakerTimeline(
             val next = channelAt(frame)
             run = if (next >= 0 && next == channel) run + 1 else if (next >= 0) 1 else 0
             channel = next
-            if (run >= 3) return channel to (frame - direction * 2)
+            if (run >= strongFrames) return channel to (frame - direction * (strongFrames - 1))
             frame += direction
         }
         return null

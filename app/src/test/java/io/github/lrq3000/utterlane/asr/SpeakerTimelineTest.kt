@@ -319,6 +319,60 @@ class SpeakerTimelineTest {
         return timeline
     }
 
+    @Test fun configuredStrongDurationRoundsToFramesAndNeverExceedsOrdinaryConfirmation() {
+        for (strongMs in listOf(0, 10, 11, 30, 60, 10000)) {
+            val options = RuntimeOptions(speakerConfirmationMs = 50, strongConfirmationMs = strongMs)
+            val needed = maxOf(1, (minOf(strongMs, 50) + 9) / 10)
+            val timeline = SpeakerTimeline(2, options = options)
+            timeline.append(trackFrames(needed - 1, 6))
+            assertEquals(-1, timeline.speakerAt(0))
+            timeline.append(trackFrames(1, 6))
+            assertEquals(0, timeline.speakerAt(0))
+            assertEquals(0, timeline.speakerDuring(0, needed * 160L, allowFallback = false))
+        }
+    }
+
+    @Test fun ordinaryZeroConfirmationUsesOneFrameEvenForWeakEvidence() {
+        for (ordinaryMs in listOf(0, 1, 9, 10, 11, 20)) {
+            val options = RuntimeOptions(speakerConfirmationMs = ordinaryMs, strongSpeakerThreshold = .9f,
+                strongConfirmationMs = 10000)
+            val needed = maxOf(1, (ordinaryMs + 9) / 10)
+            val timeline = SpeakerTimeline(2, options = options)
+            repeat(needed - 1) { timeline.append(candidateFrame(false)) }
+            assertEquals(-1, timeline.speakerAt(0))
+            timeline.append(candidateFrame(false))
+            assertEquals(0, timeline.speakerAt(0))
+            assertEquals(0, timeline.speakerDuring(0, needed * 160L, allowFallback = false))
+        }
+    }
+
+    @Test fun configuredStrongThresholdAndMarginControlTheShortcutWithoutWeakeningOrdinaryFloors() {
+        data class Case(val options: RuntimeOptions, val best: Float, val second: Float, val expected: Int)
+        val cases = listOf(
+            Case(RuntimeOptions(strongSpeakerThreshold = .9f), .85f, .01f, -1),
+            Case(RuntimeOptions(strongSpeakerMargin = .6f), .95f, .45f, -1),
+            Case(RuntimeOptions(strongSpeakerThreshold = .55f, strongSpeakerMargin = .09f), .6f, .49f, 0),
+            Case(RuntimeOptions(speakerThreshold = .9f, strongSpeakerThreshold = .1f), .85f, .01f, -1),
+            Case(RuntimeOptions(speakerMargin = .4f, strongSpeakerMargin = .1f), .9f, .6f, -1)
+        )
+        for ((options, best, second, expected) in cases) {
+            val timeline = SpeakerTimeline(2, options = options)
+            timeline.append(FloatArray(3 * 8) { when (it % 8) { 6 -> best; 4 -> second; else -> .01f } })
+            assertEquals(options.toString(), expected, timeline.speakerAt(0))
+            assertEquals(expected, timeline.speakerDuring(0, 480, allowFallback = false))
+        }
+    }
+
+    @Test fun configuredMinimumEvidenceAlsoControlsNeighborConfirmation() {
+        for (strongMs in listOf(10, 30)) {
+            val timeline = SpeakerTimeline(0, options = RuntimeOptions(strongConfirmationMs = strongMs, alignmentToleranceMs = 0))
+            timeline.append(trackFrames(1, 6))
+            timeline.append(trackFrames(20, -1))
+            timeline.append(trackFrames(1, 6))
+            assertEquals(if (strongMs == 10) 6 else -1, timeline.speakerDuring(800, 2400))
+        }
+    }
+
     private fun alignmentTimeline(tolerance: Int, probability: (Int, Int) -> Float) =
         SpeakerTimeline(0, options = RuntimeOptions(alignmentToleranceMs = tolerance)).apply {
             append(FloatArray(250 * 8) { probability(it / 8, it % 8) })
