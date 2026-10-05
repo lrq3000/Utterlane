@@ -184,9 +184,12 @@ class CommandLineTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(dir=SCRIPT.parent)
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name)
-        self.write("sample_transcript_true-diarization.txt", SIX_TURNS)
-        self.write("sample_transcript_no-diarization.txt", " ".join(line.split(": ", 1)[1] for line in SIX_TURNS.splitlines()))
+        self.set_reference(SIX_TURNS)
         self.write("sample_transcript_current-diarization.txt", SIX_TURNS)
+
+    def set_reference(self, text):
+        self.write("sample_transcript_true-diarization.txt", text)
+        self.write("sample_transcript_no-diarization.txt", " ".join(line.split(": ", 1)[1] for line in text.splitlines()))
 
     def write(self, name, text):
         path = self.directory / name
@@ -207,6 +210,63 @@ class CommandLineTests(unittest.TestCase):
         self.assertEqual(text.returncode, 0, text.stderr)
         self.assertIn("WER", text.stdout)
         self.assertIn("coverage", text.stdout)
+
+    def test_repeat_reference_keeps_six_turns_per_copy_and_fixture_files_unchanged(self):
+        self.write("sample_transcript_current-diarization.txt", "\n".join([SIX_TURNS] * 2))
+        result = self.run_cli("--repeat-reference", "2", "--format", "json", "--check")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)["recordings"][0]
+        self.assertEqual(report["reference_repetitions"], 2)
+        self.assertEqual(report["text"]["reference_words"], 24)
+        self.assertEqual(report["text"]["wer"], 0)
+        self.assertEqual(report["turns"]["reference_turn_count"], 12)
+        self.assertEqual(report["turns"]["candidate_turn_count"], 12)
+        self.assertEqual(report["speakers"]["mapping"], {"1": "1", "2": "2"})
+        self.assertEqual(report["no_diarization_text"]["reference_words"], 24)
+        self.assertEqual(report["no_diarization_text"]["candidate_words"], 24)
+        self.assertEqual(report["no_diarization_text"]["wer"], 0)
+        self.assertEqual((self.directory / "sample_transcript_true-diarization.txt").read_text(encoding="utf-8"), SIX_TURNS)
+        text = self.run_cli("--repeat-reference", "2")
+        self.assertEqual(text.returncode, 0, text.stderr)
+        self.assertIn("Reference repetitions: 2", text.stdout)
+
+    def test_repeat_reference_collapses_same_speaker_seams(self):
+        for gold, speakers, turns in [("Speaker 7: alpha beta", 1, 1),
+                                      ("Speaker 7: alpha\nSpeaker 9: beta\nSpeaker 7: gamma", 2, 5)]:
+            with self.subTest(speakers=speakers):
+                self.set_reference(gold)
+                self.write("sample_transcript_current-diarization.txt", f"{gold}\n{gold}")
+                result = self.run_cli("--repeat-reference", "2", "--format", "json", "--check")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                report = json.loads(result.stdout)["recordings"][0]
+                self.assertEqual(report["speakers"]["reference_speakers"], speakers)
+                self.assertEqual(report["speakers"]["correct_reference_word_rate"], 1)
+                self.assertEqual(report["turns"]["reference_turn_count"], turns)
+                self.assertEqual(report["turns"]["candidate_turn_count"], turns)
+
+    def test_repeat_reference_does_not_forgive_identity_swaps_between_copies(self):
+        swapped = SIX_TURNS.replace("Speaker 1:", "Speaker 9:").replace("Speaker 2:", "Speaker 1:").replace("Speaker 9:", "Speaker 2:")
+        self.write("sample_transcript_current-diarization.txt", f"{SIX_TURNS}\n{swapped}")
+        result = self.run_cli("--repeat-reference", "2", "--format", "json", "--check")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        report = json.loads(result.stdout)["recordings"][0]
+        self.assertEqual(report["text"]["wer"], 0)
+        self.assertEqual(report["speakers"]["matched_word_accuracy"], 0.5)
+        self.assertEqual(report["speakers"]["correct_reference_word_rate"], 0.5)
+
+    def test_repeat_reference_accepts_only_integer_counts_one_through_one_hundred(self):
+        self.set_reference("Speaker 1: alpha")
+        for count in (1, 100):
+            with self.subTest(count=count):
+                self.write("sample_transcript_current-diarization.txt", "\n".join(["Speaker 1: alpha"] * count))
+                result = self.run_cli("--repeat-reference", count, "--format", "json", "--check")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout)["recordings"][0]["text"]["reference_words"], count)
+        for count in (0, -1, 101, "1.5", "nan", "invalid"):
+            with self.subTest(count=count):
+                result = self.run_cli("--repeat-reference", count, "--format", "json")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("repeat", result.stdout + result.stderr)
 
     def test_check_rejects_truncated_prefix_and_can_be_configured(self):
         self.write("sample_transcript_current-diarization.txt", SIX_TURNS.splitlines()[0])
