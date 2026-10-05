@@ -1,6 +1,7 @@
 package io.github.lrq3000.utterlane.asr
 
 import kotlin.math.abs
+import io.github.lrq3000.utterlane.settings.RuntimeOptions
 
 data class AudioWindow(
     val samples: ShortArray,
@@ -16,11 +17,27 @@ class AudioSegmenter(
     maxSeconds: Int = 10,
     contextSeconds: Double = 1.0,
     private val flushPendingOnFinish: Boolean = false,
+    options: RuntimeOptions? = null,
     private val consume: suspend (AudioWindow) -> Unit
 ) {
-    private val maximum = maxSeconds * sampleRate
-    private val context = (contextSeconds * sampleRate).toInt()
-    private val buffer = ShortArray(maximum + 2 * context + 1)
+    constructor(sampleRate: Int, maxSeconds: Int, contextSeconds: Double, flushPendingOnFinish: Boolean,
+                consume: suspend (AudioWindow) -> Unit) :
+        this(sampleRate, maxSeconds, contextSeconds, flushPendingOnFinish, null, consume)
+
+    init {
+        require(sampleRate > 0 && maxSeconds > 0 && contextSeconds.isFinite() && contextSeconds >= 0)
+        options?.requireValid()
+        val seconds = options?.let { it.asrWindowSeconds + it.asrLeftContextSeconds + it.asrRightContextSeconds }
+            ?: (maxSeconds + 2 * contextSeconds)
+        require(seconds * sampleRate <= 192000) { "ASR windows must fit the fixed 192000-sample IPC ceiling" }
+    }
+    private val maximum = ((options?.asrWindowSeconds ?: maxSeconds.toDouble()) * sampleRate).toInt().coerceAtLeast(1)
+    private val minimum = ((options?.asrMinSeconds ?: minOf(maxSeconds, 3).toDouble()) * sampleRate).toInt().coerceAtLeast(1)
+    private val leftContext = ((options?.asrLeftContextSeconds ?: contextSeconds) * sampleRate).toInt()
+    private val rightContext = ((options?.asrRightContextSeconds ?: contextSeconds) * sampleRate).toInt()
+    private val silence = ((options?.silenceDurationMs ?: 600) * sampleRate.toLong() / 1000).coerceIn(1, Int.MAX_VALUE.toLong()).toInt()
+    private val amplitude = options?.silenceAmplitude ?: 200
+    private val buffer = ShortArray(maximum + leftContext + rightContext + 1)
     private var size = 0
     private var start = 0L
     private var ownedStart = 0L
@@ -28,30 +45,26 @@ class AudioSegmenter(
     private var quietSamples = 0
     private var finished = false
 
-    init { require(sampleRate > 0 && maximum > 0 && context >= 0) }
-
     suspend fun accept(samples: ShortArray) {
         check(!finished)
         for (sample in samples) {
             buffer[size++] = sample
             val end = start + size
-            quietSamples = if (abs(sample.toInt()) < 200) quietSamples + 1 else 0
-            if (boundary == null) {
-                val length = end - ownedStart
-                // Energy only chooses a cut; even quiet speech and silence are retained.
-                if (length >= maximum || (length >= minOf(maximum, 3 * sampleRate) &&
-                            quietSamples >= sampleRate * 6 / 10)) boundary = end
-            }
-            boundary?.let { if (end >= it + context) emit(it) }
+            considerBoundary(sample, end)
+            // With no right context, hold one sample of scheduling lookahead so
+            // EOF at an exact boundary still sends a final native flush. The
+            // extra sample is not included in the preceding recognition window.
+            val deliveryContext = if (flushPendingOnFinish && rightContext == 0) 1 else rightContext
+            while (boundary != null && end >= checkNotNull(boundary) + deliveryContext) emit(checkNotNull(boundary))
         }
     }
 
     suspend fun finish() {
         if (finished) return
-        // At EOF a pending boundary has <1 s right context. Diarization must
+        // At EOF a pending boundary lacks its configured right context. Diarization must
         // flush before owning those samples; coalesce the remaining <=12 s into
         // one final window. The ordinary unlabeled path keeps its prior cuts.
-        if (!flushPendingOnFinish) boundary?.let { emit(it) }
+        if (!flushPendingOnFinish) while (boundary != null) emit(checkNotNull(boundary))
         if (start + size > ownedStart) emit(start + size, final = true)
         // Commit completion only after consume succeeds, so interruption cannot
         // permanently hide the final buffered window from a resumed finish().
@@ -59,9 +72,9 @@ class AudioSegmenter(
     }
 
     private suspend fun emit(end: Long, final: Boolean = false) {
-        val audioEnd = minOf(start + size, end + context)
+        val audioEnd = minOf(start + size, end + rightContext)
         consume(AudioWindow(buffer.copyOfRange(0, (audioEnd - start).toInt()), start, ownedStart, end, final))
-        val keepStart = maxOf(start, end - context)
+        val keepStart = maxOf(start, end - leftContext)
         val drop = (keepStart - start).toInt()
         System.arraycopy(buffer, drop, buffer, 0, size - drop)
         size -= drop
@@ -69,6 +82,21 @@ class AudioSegmenter(
         ownedStart = end
         boundary = null
         quietSamples = 0
+        // Right context may itself contain several short ownership windows.
+        // Reconsider only retained future PCM, so independently configured long
+        // right context cannot overrun the fixed buffer or skip ownership cuts.
+        if (!final) for (index in (ownedStart - start).toInt() until size) {
+            considerBoundary(buffer[index], start + index + 1)
+            if (boundary != null) break
+        }
+    }
+
+    private fun considerBoundary(sample: Short, end: Long) {
+        if (boundary != null) return
+        quietSamples = if (abs(sample.toInt()) < amplitude) (quietSamples.toLong() + 1).coerceAtMost(silence.toLong()).toInt() else 0
+        val length = end - ownedStart
+        // Energy only chooses a cut; even quiet speech and silence are retained.
+        if (length >= maximum || (length >= minimum && quietSamples >= silence)) boundary = end
     }
 }
 

@@ -1,6 +1,7 @@
 package io.github.lrq3000.utterlane.asr
 
 import android.util.Log
+import io.github.lrq3000.utterlane.settings.RuntimeOptions
 
 /** File and live sources share ownership, corrections and append-only result delivery. */
 class TranscriptionSession(
@@ -11,11 +12,12 @@ class TranscriptionSession(
     private val onClosed: () -> Unit = {},
     private val onProcessed: (Long, Long) -> Unit = { _, _ -> },
     private val decodeSpeakers: (suspend (AudioWindow) -> List<SpeechSpan>)? = null,
-    speakerLabel: (Int) -> String = { if (it < 0) "Unknown speaker" else "Speaker ${it + 1}" }
+    speakerLabel: (Int) -> String = { if (it < 0) "Unknown speaker" else "Speaker ${it + 1}" },
+    options: RuntimeOptions = RuntimeOptions()
 ) : java.io.Closeable {
     private val speakerText = if (decodeSpeakers != null) SpeakerText(corrections, speakerLabel) else null
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
-    private val segmenter = AudioSegmenter(flushPendingOnFinish = decodeSpeakers != null) { window ->
+    private val segmenter = AudioSegmenter(flushPendingOnFinish = decodeSpeakers != null, options = options) { window ->
         val started = System.nanoTime()
         if (decodeSpeakers != null) {
             for (text in checkNotNull(speakerText).accept(decodeSpeakers.invoke(window))) emit(text)
