@@ -308,6 +308,7 @@ class FixtureRunner:
     def run(self, fixture_dir, candidates, recording=None):
         gold_paths = {path.name.removesuffix(self.GOLD_SUFFIX): path
                       for path in sorted(fixture_dir.glob(f"*{self.GOLD_SUFFIX}"))}
+        all_gold_paths = gold_paths
         if recording:
             gold_paths = {name: path for name, path in gold_paths.items() if name == recording}
         if not gold_paths:
@@ -319,13 +320,20 @@ class FixtureRunner:
             if source.is_dir():
                 paths = sorted(path for path in source.glob("*.txt") if not path.name.endswith(
                     (self.GOLD_SUFFIX, "_transcript_no-diarization.txt")))
-                pairs = [(self._recording_for(path, gold_paths), path) for path in paths]
+                # Resolve names before filtering: selecting one reference must
+                # not relabel the other recordings as that remaining reference.
+                pairs = [(self._recording_for(path, all_gold_paths), path) for path in paths]
+                pairs = [pair for pair in pairs if pair[0] in gold_paths]
                 missing = gold_paths.keys() - {name for name, _ in pairs}
                 if missing:
                     raise ValueError(f"{source}: missing candidate recordings: {', '.join(sorted(missing))}")
                 inputs.extend(pairs)
             else:
-                inputs.append((self._recording_for(source, gold_paths), source))
+                fallback = next(iter(gold_paths)) if len(gold_paths) == 1 else None
+                name = self._recording_for(source, all_gold_paths, fallback)
+                if name not in gold_paths:
+                    raise ValueError(f"{source} identifies unselected recording {name}")
+                inputs.append((name, source))
         reports, references, baselines = [], {}, {}
         for name, path in inputs:
             if name not in references:
@@ -342,13 +350,13 @@ class FixtureRunner:
             reports.append(report)
         return reports
 
-    def _recording_for(self, path, gold_paths):
+    def _recording_for(self, path, gold_paths, fallback=None):
         name = path.name.split("_transcript_", 1)[0] if "_transcript_" in path.name else path.stem
         if name in gold_paths:
             return name
-        if len(gold_paths) == 1:
-            return next(iter(gold_paths))
-        raise ValueError(f"Cannot associate {path} with a reference; use '<recording>_transcript_<tag>.txt' or --recording")
+        if fallback is not None:
+            return fallback
+        raise ValueError(f"Cannot associate {path} with a reference; use '<recording>_transcript_<tag>.txt' or an explicit file with --recording")
 
 
 class PerformanceSummary:
