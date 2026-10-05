@@ -12,6 +12,10 @@
     <string name="advanced_apply_help">Saved changes apply to the next recording/session, model reload or download. An active operation keeps its starting snapshot. Reset affects only these runtime options.</string>
     <string name="advanced_draft_help">Edit related fields together, then apply the group. Cancel discards the draft. Invalid combinations cannot be saved. Enter decimals with a dot.</string>
     <string name="advanced_current_default">Saved: %1$s · Default: %2$s</string>
+    <string name="advanced_invalid_integer">Enter a whole number from %1$s to %2$s.</string>
+    <string name="advanced_invalid_decimal">Enter a finite number from %1$s to %2$s.</string>
+    <string name="advanced_invalid_windows">Minimum must not exceed maximum; maximum plus both contexts must fit within 12 s.</string>
+    <string name="advanced_invalid_cache">Cache must be a multiple of 8; update frames must not exceed FIFO frames.</string>
     <string name="advanced_named_value">%1$s: %2$s</string>
     <string name="advanced_effective">Next-operation configuration: ASR %1$d threads, diarization %2$d threads, ASR window %3$s s, queue budget %4$d s.</string>
     <string name="advanced_fixed_capabilities">Compiled capability: CPU only. Fixed model/transport limits: 16 kHz mono PCM, 8 speaker output heads and a maximum 12 s audio window including context. These are not tuning options. Speaker identities can remain pending while future diarization labels arrive.</string>
@@ -45,7 +49,7 @@
     <string name="advanced_label_lookahead">Label lookahead (ms)</string>
     <string name="advanced_alignment_tolerance">Alignment tolerance (ms)</string>
     <string name="advanced_audio">Audio windows and buffering</string>
-    <string name="advanced_audio_help">Minimum window must not exceed maximum. Windows are 0.001–12 s; left/right context can be 0–12 s, but maximum window plus both contexts must fit within 12 s. Silence duration (1–60000 ms) and PCM16 amplitude (1–32767) guide segment boundaries. Queue budget is 1–300 s of accepted audio in memory. Overflow stops capture and drains accepted audio rather than silently dropping it; changes never resize a running queue.</string>
+    <string name="advanced_audio_help">Minimum window must not exceed maximum. Windows are 0.001–12 s; left/right context can be 0–12 s, but maximum window plus both contexts must fit within 12 s. Silence duration (1–60000 ms) and PCM16 amplitude (1–32767) guide segment boundaries. Queue budget caps accepted audio in memory at 1–300 s. A separate block-count bound can stop unusually small partial reads earlier. Overflow stops capture and drains accepted audio rather than silently dropping it; changes never resize a running queue.</string>
     <string name="advanced_asr_window">Maximum ASR window (s)</string>
     <string name="advanced_asr_min">Minimum ASR window (s)</string>
     <string name="advanced_asr_left_context">Left context (s)</string>

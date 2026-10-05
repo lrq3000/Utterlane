@@ -160,9 +160,22 @@ private fun AdvancedOptionEditor(
             value = value, onValueChange = onChange, enabled = enabled, singleLine = true,
             modifier = Modifier.fillMaxWidth(), label = { Text(label) }, isError = error != null,
             keyboardOptions = KeyboardOptions(keyboardType = if (field.kind == RuntimeOptionKind.INTEGER) KeyboardType.Number else KeyboardType.Decimal),
-            supportingText = { Text(if (error == null) help else "$help\n$error") }
+            supportingText = { Text(if (error == null) help else "$help\n${validationMessage(field, value)}") }
         )
     }
+}
+
+/** Core validation stays Android-free; user-facing explanations come from locale resources. */
+@Composable
+private fun validationMessage(field: RuntimeOptionField, value: String): String {
+    if (field.error(value.trim()) != null) {
+        return if (field.kind == RuntimeOptionKind.INTEGER) {
+            stringResource(R.string.advanced_invalid_integer, field.minimum.toLong().toString(), field.maximum.toLong().toString())
+        } else {
+            stringResource(R.string.advanced_invalid_decimal, field.minimum.toString(), field.maximum.toString())
+        }
+    }
+    return stringResource(if (field.group == RuntimeOptionGroup.AUDIO) R.string.advanced_invalid_windows else R.string.advanced_invalid_cache)
 }
 
 @Composable
