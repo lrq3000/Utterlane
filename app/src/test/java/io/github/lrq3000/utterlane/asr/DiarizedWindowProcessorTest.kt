@@ -227,6 +227,18 @@ class DiarizedWindowProcessorTest {
         }
     }
 
+    @Test fun newSpeechIslandRetainsItsFullSilenceLookbackAcrossWindowsWithoutLeftContext() {
+        val asr = ScriptedBackend(WindowResult(emptyArray(), floatArrayOf()),
+            WindowResult(arrayOf(" returning"), floatArrayOf(.54f), ends = floatArrayOf(.86f)))
+        val stream = Frames(IntArray(700) { if (it < 100 || it >= 600) 0 else if (it < 200) 1 else -1 })
+        DiarizedWindowProcessor(asr, stream, 0, options = RuntimeOptions(unknownBridgeMs = 1000)).use { processor ->
+            assertTrue(processor.process(AudioWindow(ShortArray(80000), 0, 0, 80000)).isEmpty())
+            assertEquals(listOf(SpeechSpan("returning", 0)),
+                processor.process(AudioWindow(ShortArray(32000), 80000, 80000, 112000, true)))
+        }
+        assertEquals(2, asr.calls)
+    }
+
     @Test fun boundedUnknownGapNeedsAgreementAndSingleFrameJitterCannotCreateLabel() {
         fun run(middle: IntArray): List<SpeechSpan> {
             val labels = IntArray(100) { 0 } + middle + IntArray(100) { 0 }

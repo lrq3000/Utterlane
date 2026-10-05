@@ -133,6 +133,10 @@ class SpeakerTimeline(
             (right.second - left.second - 1) * 160 <= options.unknownBridgeMs * 16L) {
             return identity(left.first)
         }
+        if (!coarse && left == null && right != null) {
+            val onset = speechIslandSpeaker(start, stop, tolerance, right)
+            if (onset >= 0) return identity(onset)
+        }
         // A clipped first/last word has no two-sided neighbor. Permit only the
         // explicit timestamp tolerance at the retained audio edges, not a long
         // unbounded propagation of the last known identity into silence.
@@ -144,6 +148,24 @@ class SpeakerTimeline(
         if (stop > endSample - tolerance && right == null && left != null &&
             stop - (left.second + 1) * 160 <= tolerance) return identity(left.first)
         return -1
+    }
+
+    private fun speechIslandSpeaker(start: Long, stop: Long, tolerance: Long, right: Pair<Int, Long>): Int {
+        val bridge = options.unknownBridgeMs * 16L
+        // Certify silence across both sides of an ordinary bridge neighborhood;
+        // otherwise a normal pause could be mistaken for a new speech island.
+        val lookbackStart = start - maxOf(2 * bridge, tolerance)
+        val onset = right.second * 160
+        // Missing history is not evidence of silence. Inspect the entire bounded
+        // lookback, including any larger alignment tolerance, before using a new
+        // island's following voice. Neither first-ever nor previous identity votes.
+        if (bridge == 0L || lookbackStart < first * 160 || onset < stop || onset - stop > bridge ||
+            evidence(lookbackStart, start).voiced != 0L) return -1
+        val surrounding = evidence(start - tolerance, minOf(endSample, maxOf(stop + tolerance, onset + 3 * 160)))
+        // Include the word, its expanded interval, and the intervening onset gap.
+        // Even non-winning competing activity makes this one-sided inference unsafe.
+        return if (surrounding.unambiguousWinner(-1) == right.first &&
+            surrounding.active.indices.none { it != right.first && surrounding.active[it] > 0 }) right.first else -1
     }
 
     private inner class Evidence {
