@@ -167,11 +167,18 @@ class SpeakerTimeline(
         // island's following voice. Neither first-ever nor previous identity votes.
         if (bridge == 0L || lookbackStart < first * 160 || onset < stop || onset - stop > bridge ||
             evidence(lookbackStart, start).voiced != 0L) return -1
-        val surrounding = evidence(start - tolerance, minOf(endSample, maxOf(stop + tolerance, onset + minimumEvidenceSamples)))
-        // Include the word, its expanded interval, and the intervening onset gap.
-        // Even non-winning competing activity makes this one-sided inference unsafe.
-        return if (surrounding.unambiguousWinner(-1) == right.first &&
-            surrounding.active.indices.none { it != right.first && surrounding.active[it] > 0 }) right.first else -1
+        var requiredFrames = strongFrames
+        while (true) {
+            val surrounding = evidence(start - tolerance, minOf(endSample, maxOf(stop + tolerance, onset + requiredFrames * 160L)))
+            // Include the word, its expanded interval, and the intervening onset
+            // gap. Even non-winning competition makes one-sided inference unsafe.
+            if (surrounding.active.indices.any { it != right.first && surrounding.active[it] > 0 }) return -1
+            if (surrounding.unambiguousWinner(-1) == right.first) return right.first
+            if (requiredFrames == confirmationFrames) return -1
+            // At most one longer check, using already retained frames: a user
+            // can raise strong thresholds without disabling ordinary evidence.
+            requiredFrames = confirmationFrames
+        }
     }
 
     private inner class Evidence {
