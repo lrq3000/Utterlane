@@ -86,14 +86,13 @@ class RecognitionWorkerService : Service() {
         check(backend == null) { "Worker already owns a model" }
         val started = SystemClock.elapsedRealtime()
         activeProgress?.stage("model_load")
-        // Keep the current adapter constructors until the native integration adds
-        // effective thread arguments. configure carries the validated snapshot now.
+        val threads = RuntimeOptions.resolveThreads(options.asrThreads)
         val candidate = when (model.backend) {
             ModelBackend.CRISP -> if (model.isCustom) {
-                CrispGenericBackend(File(directory, model.primaryFile).absolutePath, model.codecFile?.let { File(directory, it).absolutePath })
-            } else CrispParakeetBackend(File(directory, "model.gguf").absolutePath)
-            ModelBackend.TRANSCRIBE_CPP -> TranscribeCppBackend(File(directory, "model.gguf").absolutePath)
-            ModelBackend.SHERPA -> ParakeetRecognizer(this, directory.absolutePath).also { check(it.isReady()) { "ONNX initialization failed" } }
+                CrispGenericBackend(File(directory, model.primaryFile).absolutePath, model.codecFile?.let { File(directory, it).absolutePath }, threads)
+            } else CrispParakeetBackend(File(directory, "model.gguf").absolutePath, threads)
+            ModelBackend.TRANSCRIBE_CPP -> TranscribeCppBackend(File(directory, "model.gguf").absolutePath, threads)
+            ModelBackend.SHERPA -> ParakeetRecognizer(this, directory.absolutePath, threads).also { check(it.isReady()) { "ONNX initialization failed" } }
         }
         try {
             candidate.configure(options)

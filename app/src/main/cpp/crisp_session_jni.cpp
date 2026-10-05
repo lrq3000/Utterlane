@@ -31,11 +31,12 @@ std::vector<float> audio(JNIEnv* env, jfloatArray input, bool allowEmpty = false
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_io_github_lrq3000_utterlane_asr_CrispGenericBackend_openNative(JNIEnv* env, jobject, jstring path, jstring codec) {
+Java_io_github_lrq3000_utterlane_asr_CrispGenericBackend_openNative(JNIEnv* env, jobject, jstring path, jstring codec, jint threads) {
+    if (threads < 1 || threads > 32) { error(env, "Invalid ASR thread count"); return 0; }
     const char* filename = env->GetStringUTFChars(path, nullptr);
     crispasr_session* session = nullptr;
     try {
-        crispasr_open_params_v1 params{2, 4, 0, 0, 1, 0, {0}};
+        crispasr_open_params_v1 params{2, threads, 0, 0, 1, 0, {0}};
         session = crispasr_session_open_with_params(filename, nullptr, &params);
         if (!session) throw std::runtime_error("CrispASR could not load this model. Import a supported speech model and its companion files.");
         if (codec) {

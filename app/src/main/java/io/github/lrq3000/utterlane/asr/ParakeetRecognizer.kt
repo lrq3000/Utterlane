@@ -12,7 +12,8 @@ import java.io.File
 
 class ParakeetRecognizer(
     private val context: Context,
-    private val modelPath: String
+    private val modelPath: String,
+    private val threads: Int = 4
 ) : RecognitionBackend {
     companion object {
         private const val TAG = "ParakeetRecognizer"
@@ -47,7 +48,7 @@ class ParakeetRecognizer(
             val modelConfig = OfflineModelConfig(
                 transducer = transducerConfig,
                 tokens = tokensPath,
-                numThreads = 4,
+                numThreads = io.github.lrq3000.utterlane.settings.RuntimeOptions.resolveThreads(threads),
                 debug = false,
                 provider = "cpu",
                 modelType = "nemo_transducer"

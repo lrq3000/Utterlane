@@ -6,10 +6,11 @@
 #include "jni_text.h"
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_io_github_lrq3000_utterlane_asr_CrispParakeetBackend_openNative(JNIEnv* env, jobject, jstring path) {
+Java_io_github_lrq3000_utterlane_asr_CrispParakeetBackend_openNative(JNIEnv* env, jobject, jstring path, jint threads) {
+    if (threads < 1 || threads > 32) { error(env, "Invalid ASR thread count"); return 0; }
     const char* filename = env->GetStringUTFChars(path, nullptr);
     auto params = parakeet_context_default_params();
-    params.n_threads = 4; params.use_gpu = false; params.verbosity = 0;
+    params.n_threads = threads; params.use_gpu = false; params.verbosity = 0;
     parakeet_context* context = nullptr;
     try { context = parakeet_init_from_file(filename, params); }
     catch (const std::exception& e) { error(env, e.what()); }
