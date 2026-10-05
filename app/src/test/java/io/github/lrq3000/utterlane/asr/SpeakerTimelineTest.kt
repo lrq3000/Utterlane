@@ -217,6 +217,14 @@ class SpeakerTimelineTest {
         assertEquals(-1, timeline.speakerDuring(2400 * 16L, 2800 * 16L))
     }
 
+    @Test fun initialCompetitionAlsoBlocksTheLeadingAudioEdgeFallback() {
+        val timeline = SpeakerTimeline(0)
+        timeline.append(trackFrames(2, -1))
+        timeline.append(FloatArray(3 * 8) { if (it % 8 == 1 || it % 8 == 6) .8f else .01f })
+        timeline.append(trackFrames(50, 6))
+        assertEquals(-1, timeline.speakerDuring(0, 160))
+    }
+
     @Test fun prunedConfirmedVoiceCannotMakeALaterTurnLookLikeInitialSpeech() {
         for (count in listOf(0, 2)) {
             val timeline = initialTimeline(count, capacity = 100)
