@@ -46,63 +46,86 @@ class TranscriptionSession(
     }
 }
 
-/** Raw trailing words are retained, so multi-word corrections can span audio windows. */
+/** Bounded trailing words are retained, so ordered corrections can span audio windows. */
 class StreamingCorrections(rules: List<DictionaryManager.ReplacementRule>) {
-    private val compiled = rules.map {
-        Pair(Regex("\\b${Regex.escape(it.from)}\\b", if (it.caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)), it.to)
-    }
-    private val hold = rules.maxOfOrNull { it.from.length } ?: 0
-    private var pending = AttributedText("", IntArray(0))
+    private val stages = rules.map { CorrectionStage(it) }
+    private var hasInput = false
+    private var lastWasWhitespace = false
 
     fun accept(text: String): String = acceptSpans(listOf(SpeechSpan(text.trim(), -1))).joinToString("") { it.text }
 
     /** Labels share the raw correction buffer; they never cause a flush or enter a regex. */
     fun acceptSpans(spans: List<SpeechSpan>): List<SpeechSpan> {
-        val incoming = AttributedText.fromSpans(spans)
-        if (incoming.text.isNotBlank()) pending = pending.append(incoming)
-        if (hold == 0) return finishSpans()
-        val limit = (pending.text.length - hold - 1).coerceAtLeast(0)
-        var cut = pending.text.lastIndexOf(' ', limit).coerceAtLeast(0)
-        for ((pattern, _) in compiled) {
+        var incoming = AttributedText.fromSpans(spans)
+        if (incoming.text.isBlank()) return emptyList()
+        if (hasInput && !lastWasWhitespace && !incoming.text.first().isWhitespace()) {
+            incoming = AttributedText(" ", intArrayOf(-1)).append(incoming)
+        }
+        hasInput = true
+        lastWasWhitespace = incoming.text.last().isWhitespace()
+        for (stage in stages) incoming = stage.accept(incoming)
+        return incoming.trim().spans()
+    }
+    fun finish(): String = finishSpans().joinToString("") { it.text }
+    fun finishSpans(): List<SpeechSpan> {
+        var tail = AttributedText("", IntArray(0))
+        for (stage in stages) tail = stage.accept(tail).append(stage.finish())
+        hasInput = false
+        lastWasWhitespace = false
+        return tail.trim().spans()
+    }
+
+    /**
+     * Hold a suffix at each rule's input, not just at the raw ASR input. Otherwise
+     * "a -> hello" then "hello b -> combined" can change wording when native
+     * lookahead splits delivery after "a". This bounded pipeline preserves rule
+     * order while making both labeled and Off output independent of batching.
+     */
+    private class CorrectionStage(private val rule: DictionaryManager.ReplacementRule) {
+        private val pattern = Regex("\\b${Regex.escape(rule.from)}\\b",
+            if (rule.caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE))
+        private var pending = AttributedText("", IntArray(0))
+
+        fun accept(incoming: AttributedText): AttributedText {
+            pending = pending.append(incoming)
+            val limit = (pending.text.length - rule.from.length - 1).coerceAtLeast(0)
+            var cut = pending.text.lastIndexOf(' ', limit).coerceAtLeast(0)
             for (match in pattern.findAll(pending.text)) {
                 if (match.range.first < cut && match.range.last >= cut) cut = match.range.first
             }
+            val prefix = pending.slice(0, cut)
+            // Keep separators through every stage: later rules may match them.
+            pending = pending.slice(cut, pending.text.length)
+            return prefix.replace(pattern, rule.to)
         }
-        val prefix = pending.slice(0, cut)
-        pending = pending.slice(cut, pending.text.length).trim(startOnly = true)
-        return correct(prefix)
-    }
-    fun finish(): String = finishSpans().joinToString("") { it.text }
-    fun finishSpans(): List<SpeechSpan> = correct(pending).also { pending = AttributedText("", IntArray(0)) }
 
-    private fun correct(raw: AttributedText): List<SpeechSpan> {
-        var text = raw
-        for ((pattern, replacement) in compiled) text = text.replace(pattern, replacement)
-        return text.trim().spans()
+        fun finish(): AttributedText = pending.replace(pattern, rule.to).also {
+            pending = AttributedText("", IntArray(0))
+        }
     }
 
     /**
      * Exact positional alignment through literal replacements, O(text + matches)
      * per rule. No transcript-wide edit-distance matrix or second recognition
      * pass is needed. The only persistent metadata is one integer per buffered
-     * raw character, with exactly the same lifetime as Off's correction suffix.
+     * character in each rule's bounded suffix, shared by labeled and Off modes.
      */
     private class AttributedText(val text: String, private val owners: IntArray) {
         fun slice(start: Int, end: Int) = AttributedText(text.substring(start, end), owners.copyOfRange(start, end))
 
-        fun trim(startOnly: Boolean = false): AttributedText {
+        fun trim(): AttributedText {
             val start = text.indexOfFirst { !it.isWhitespace() }.let { if (it < 0) text.length else it }
-            val end = if (startOnly) text.length else (text.indexOfLast { !it.isWhitespace() } + 1).coerceAtLeast(start)
+            val end = (text.indexOfLast { !it.isWhitespace() } + 1).coerceAtLeast(start)
             return slice(start, end)
         }
 
         fun append(other: AttributedText): AttributedText {
-            if (text.isEmpty()) return other.trim()
-            val separator = if (other.text.firstOrNull()?.isWhitespace() == true) "" else " "
-            val joined = text + separator + other.text
+            if (text.isEmpty()) return other
+            if (other.text.isEmpty()) return this
+            val joined = text + other.text
             val labels = IntArray(joined.length) { -1 }
             owners.copyInto(labels)
-            other.owners.copyInto(labels, text.length + separator.length)
+            other.owners.copyInto(labels, text.length)
             return AttributedText(joined, labels)
         }
 
