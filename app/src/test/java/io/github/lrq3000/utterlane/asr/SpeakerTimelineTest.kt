@@ -182,6 +182,86 @@ class SpeakerTimelineTest {
         }
     }
 
+    @Test fun initialWordBackfillsFromFirstConfirmedVoiceAfterLongLeadingSilenceInAutoAndFixedModes() {
+        for (count in listOf(0, 2)) {
+            val timeline = initialTimeline(count)
+            timeline.append(trackFrames(2000, -1))
+            assertEquals(-1, timeline.speakerDuring(19400 * 16L, 19800 * 16L))
+            timeline.append(trackFrames(50, 6))
+            assertEquals(if (count == 0) 6 else 0, timeline.speakerDuring(19400 * 16L, 19800 * 16L))
+            assertEquals(-1, timeline.speakerDuring(19400 * 16L, 19800 * 16L, coarse = true))
+            assertTrue(timeline.retainedFrames <= 1600)
+        }
+    }
+
+    @Test fun firstSpeechBackfillObeysTheConfiguredGapAndRequiresSustainedEvidence() {
+        for (bridge in listOf(0, 350)) {
+            val timeline = initialTimeline(bridge = bridge)
+            timeline.append(trackFrames(300, -1))
+            timeline.append(trackFrames(1, 6))
+            assertEquals(-1, timeline.speakerDuring(2400 * 16L, 2800 * 16L))
+            timeline.append(trackFrames(2, 6))
+            for (gap in listOf(10, 200, 350, 360)) {
+                val stop = (3000 - gap) * 16L
+                assertEquals("bridge=$bridge gap=$gap", if (gap <= bridge) 6 else -1,
+                    timeline.speakerDuring(stop - 400 * 16L, stop))
+            }
+        }
+    }
+
+    @Test fun competingInitialTracksCannotForceBackfillAcrossAnOtherwiseSilentWord() {
+        val timeline = initialTimeline()
+        timeline.append(trackFrames(300, -1))
+        timeline.append(FloatArray(3 * 8) { if (it % 8 == 1 || it % 8 == 6) .8f else .01f })
+        timeline.append(trackFrames(50, 6))
+        assertEquals(-1, timeline.speakerDuring(2400 * 16L, 2800 * 16L))
+    }
+
+    @Test fun prunedConfirmedVoiceCannotMakeALaterTurnLookLikeInitialSpeech() {
+        for (count in listOf(0, 2)) {
+            val timeline = initialTimeline(count, capacity = 100)
+            timeline.append(trackFrames(100, 1))
+            timeline.append(trackFrames(500, -1))
+            timeline.append(trackFrames(50, 6))
+            assertEquals(-1, timeline.speakerAt(0))
+            assertEquals(-1, timeline.speakerDuring(5600 * 16L, 5800 * 16L))
+        }
+    }
+
+    @Test fun prunedInitialCompetitionStillPreventsConfidentBackfill() {
+        val timeline = initialTimeline(capacity = 100)
+        timeline.append(FloatArray(3 * 8) { if (it % 8 == 1 || it % 8 == 6) .8f else .01f })
+        timeline.append(trackFrames(597, -1))
+        timeline.append(trackFrames(50, 6))
+        assertEquals(-1, timeline.speakerDuring(5600 * 16L, 5800 * 16L))
+    }
+
+    @Test fun userConfiguredOneSecondBridgeJoinsASevenHundredMillisecondPauseOnlyForTheSameVoice() {
+        for (bridge in listOf(350, 1000)) for (returning in listOf(6, 4)) {
+            val timeline = initialTimeline(bridge = bridge)
+            timeline.append(trackFrames(100, 6))
+            timeline.append(trackFrames(70, -1))
+            timeline.append(trackFrames(100, returning))
+            assertEquals(if (bridge == 1000 && returning == 6) 6 else -1,
+                timeline.speakerDuring(1403 * 16L, 1563 * 16L))
+        }
+    }
+
+    @Test fun briefRealWordEvidenceWinsOverTheLongerSameVoiceBridge() {
+        val timeline = initialTimeline(bridge = 1000)
+        timeline.append(trackFrames(100, 6))
+        timeline.append(trackFrames(42, -1))
+        timeline.append(trackFrames(4, 4))
+        timeline.append(trackFrames(24, -1))
+        timeline.append(trackFrames(100, 6))
+        assertEquals(4, timeline.speakerDuring(1403 * 16L, 1563 * 16L))
+    }
+
+    private fun initialTimeline(count: Int = 0, capacity: Int = 1600, bridge: Int = 350) =
+        SpeakerTimeline(count, capacity, RuntimeOptions(alignmentToleranceMs = 0, unknownBridgeMs = bridge))
+
+    private fun trackFrames(count: Int, channel: Int) = FloatArray(count * 8) { if (it % 8 == channel) .95f else .01f }
+
     private fun alignmentTimeline(tolerance: Int, probability: (Int, Int) -> Float) =
         SpeakerTimeline(0, options = RuntimeOptions(alignmentToleranceMs = tolerance)).apply {
             append(FloatArray(250 * 8) { probability(it / 8, it % 8) })

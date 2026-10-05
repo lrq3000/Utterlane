@@ -20,6 +20,10 @@ class SpeakerTimeline(
     private var candidate = -1
     private var candidateFrames = 0
     private var strongCandidateFrames = 0
+    // Session history must survive ring pruning, also in Auto where no fixed
+    // identity slots are allocated. Saturated counters keep this constant-space.
+    private var firstConfirmed: SpeakerTurn? = null
+    private val initialActiveFrames = IntArray(8)
     private var first = 0L
     private var end = 0L
     val endSample: Long get() = end * 160
@@ -33,6 +37,11 @@ class SpeakerTimeline(
             first = maxOf(first, end - capacity + 1)
             val slot = (end % capacity).toInt() * 8
             probabilities.copyInto(this.probabilities, slot, offset, offset + 8)
+            if (firstConfirmed == null) for (channel in 0..7) {
+                if (probabilities[offset + channel] > options.speakerThreshold) {
+                    initialActiveFrames[channel] = minOf(3, initialActiveFrames[channel] + 1)
+                }
+            }
             val best = channelAt(end)
             val confirmation = maxOf(3, (options.speakerConfirmationMs + 9) / 10)
             val sameCandidate = best == candidate
@@ -47,9 +56,12 @@ class SpeakerTimeline(
                 if (sameCandidate) minOf(strongCandidateFrames + 1, 3) else 1
             } else 0
             candidate = best
-            if (best >= 0 && (strongCandidateFrames >= 3 || candidateFrames >= confirmation) && identities[best] < 0 &&
-                identityCount < speakerCount) {
-                identities[best] = identityCount++
+            if (best >= 0 && (strongCandidateFrames >= 3 || candidateFrames >= confirmation)) {
+                if (firstConfirmed == null) {
+                    val confirmedFrames = if (strongCandidateFrames >= 3) 3 else confirmation
+                    firstConfirmed = SpeakerTurn((end - confirmedFrames + 1) * 160, (end + 1) * 160, best)
+                }
+                if (identities[best] < 0 && identityCount < speakerCount) identities[best] = identityCount++
             }
             end++
         }
@@ -98,6 +110,16 @@ class SpeakerTimeline(
         // An actual conflict is not silence. Never bridge overlapping voices or
         // sustained competing evidence merely because nearby labels agree.
         if (evidence.voiced >= 3 * 160) return -1
+        val initial = firstConfirmed
+        // Initial ASR words can end just before the first voiced onset after a
+        // long leading silence. Backfill only toward that session's first
+        // confirmed voice, within the configured end-to-onset distance, and
+        // never through an initially competing track (even if it was pruned).
+        if (!coarse && initial != null && options.unknownBridgeMs > 0 && stop <= initial.start &&
+            initial.start - stop <= options.unknownBridgeMs * 16L &&
+            initialActiveFrames.indices.none { it != initial.speaker && initialActiveFrames[it] >= 3 }) {
+            return identity(initial.speaker)
+        }
         val search = maxOf(options.unknownBridgeMs, options.alignmentToleranceMs) * 16L
         val left = neighbor(start / 160 - 1, -1, search)
         val right = neighbor((stop + 159) / 160, 1, search)
