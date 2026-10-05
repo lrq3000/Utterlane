@@ -60,4 +60,34 @@ class SpeakerTimelineTest {
         timeline.append(FloatArray(100 * 8) { if (it % 8 < 2) .8f else .01f })
         assertEquals(-1, timeline.speakerAt(8000))
     }
+
+    @Test fun intervalUsesProbabilityMassRatherThanCountingFrameWinners() {
+        val timeline = SpeakerTimeline(0)
+        timeline.append(FloatArray(100 * 8) { i -> when (i % 8) {
+            0 -> if (i / 8 < 70) .51f else .01f
+            1 -> if (i / 8 < 70) .49f else .99f
+            else -> .01f
+        } })
+        assertEquals(1, timeline.speakerDuring(0, 16000))
+    }
+
+    @Test fun capacityPrunesOldProbabilitiesEvenWhenNativeDeliversAnOversizedBatch() {
+        val timeline = SpeakerTimeline(0, capacity = 100)
+        timeline.append(frames(0, 1, 2))
+        assertEquals(100, timeline.retainedFrames)
+        assertEquals(-1, timeline.speakerAt(8000))
+        assertEquals(2, timeline.speakerDuring(32000, 48000))
+        assertEquals(48000L, timeline.endSample)
+    }
+
+    @Test fun ambiguityAndLongGapsCannotBeHiddenByMatchingNeighbors() {
+        val timeline = SpeakerTimeline(0)
+        timeline.append(frames(0, -1, 0))
+        assertEquals(-1, timeline.speakerDuring(16000, 32000))
+        val overlap = SpeakerTimeline(0)
+        overlap.append(frames(0))
+        overlap.append(FloatArray(20 * 8) { if (it % 8 < 2) .8f else .01f })
+        overlap.append(frames(0))
+        assertEquals(-1, overlap.speakerDuring(16000, 19200))
+    }
 }

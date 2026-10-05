@@ -1,6 +1,8 @@
 package io.github.lrq3000.utterlane.asr
 
+import io.github.lrq3000.utterlane.settings.RuntimeOptions
 import java.io.Closeable
+import java.util.ArrayDeque
 
 interface SpeakerProbabilityStream : Closeable {
     fun push(samples: ShortArray, final: Boolean): FloatArray
@@ -10,53 +12,107 @@ interface SpeakerProbabilityStream : Closeable {
 class DiarizedWindowProcessor(
     private val backend: RecognitionBackend,
     private val stream: SpeakerProbabilityStream,
-    count: Int,
-    private val textOnly: Boolean = false
+    private val count: Int,
+    @Suppress("UNUSED_PARAMETER") textOnly: Boolean = false,
+    private val options: RuntimeOptions = RuntimeOptions()
 ) : Closeable {
-    private val timeline = SpeakerTimeline(count)
+    init { require(count in 0..8); options.requireValid() }
+
+    // The pinned model schedules encoder frames at 80 ms. Account for the whole
+    // batched chunk plus right context, not only nominal attention lookahead.
+    private val nativeLagMs = when (options.diarizationMode) {
+        "low_latency" -> (9 * options.diarizationBatch + 4) * 80
+        "ultra_low_latency" -> (3 * options.diarizationBatch + 1) * 80
+        else -> (6 * options.diarizationBatch + 2) * 80
+    }
+    private val paddingMs = maxOf(options.alignmentToleranceMs, options.unknownBridgeMs, options.speakerConfirmationMs)
+    private val waitSamples = (nativeLagMs + options.labelLookaheadMs + paddingMs + 20) * 16L
+    // Retain the pending word's entire (possibly untimed) window, its wait budget,
+    // and one incoming IPC window. This is independent of recording duration.
+    private val timeline = SpeakerTimeline(count, ((2 * 192000 + waitSamples + paddingMs * 16L + 319) / 160).toInt(), options)
+    private val pending = ArrayDeque<WindowText.Word>()
+    private var pendingCharacters = 0
     private var fed = 0L
     private var finished = false
+    private var closed = false
+    private var previous = -1
 
     fun process(window: AudioWindow): List<SpeechSpan> {
-        check(!finished)
+        check(!finished && !closed)
         val end = window.startSample + window.samples.size
-        require(window.startSample <= fed && fed <= end && window.ownedStart >= window.startSample && window.ownedEnd <= end)
-        timeline.discardBefore(window.startSample)
-        val fresh = window.samples.copyOfRange((fed - window.startSample).toInt(), window.samples.size)
-        timeline.append(stream.push(fresh, window.isFinal))
+        require(window.samples.size <= 192000 && window.startSample <= fed && fed <= end &&
+            window.ownedStart >= window.startSample && window.ownedEnd <= end)
+        // Exactly one recognition pass on the original PCM/context in every mode.
+        // Generic models without trustworthy times keep their complete raw text.
+        val result = backend.transcribeWindow(window.samples)
+        val timed = result.tokens.isNotEmpty() && result.tokens.size == result.timestamps.size &&
+            result.timestamps.all { it.isFinite() && it >= 0f } &&
+            result.timestamps.asList().zipWithNext().all { (a, b) -> a <= b }
+        val words = if (timed) WindowText.ownedWords(result.tokens, result.timestamps, window, result.ends)
+            else result.text?.takeIf { it.isNotBlank() }?.let {
+                listOf(WindowText.Word(it, window.ownedStart, window.ownedEnd, coarse = true))
+            }.orEmpty()
+        val output = mutableListOf<SpeechSpan>()
+        if (count != 1) {
+            val keepFrom = minOf(pending.peekFirst()?.start ?: window.ownedStart, window.ownedStart) - paddingMs * 16L
+            timeline.discardBefore(keepFrom.coerceAtLeast(0))
+            val fresh = window.samples.copyOfRange((fed - window.startSample).toInt(), window.samples.size)
+            timeline.append(stream.push(fresh, window.isFinal))
+            // Only the documented centered-FFT tail may inherit the last frame.
+            // Larger final shortfalls remain Unknown, while all text still flushes.
+            if (window.isFinal && window.ownedEnd - timeline.endSample in 0..256) timeline.finishAt(window.ownedEnd)
+        }
         fed = end
         finished = window.isFinal
-        if (window.isFinal) timeline.finishAt(window.ownedEnd)
-        // The one-second right context covers the native streaming lookahead.
-        // Failing explicitly is preferable to emitting confidently wrong labels.
-        check(timeline.endSample >= window.ownedEnd) {
-            "Diarization boundary: labeled=${timeline.endSample}, owned=${window.ownedEnd}, fed=$fed, final=${window.isFinal}"
-        }
-        if (textOnly) return timeline.turns(window.ownedStart, window.ownedEnd).mapNotNull { turn ->
-            val result = backend.transcribeWindow(window.samples.copyOfRange(
-                (turn.start - window.startSample).toInt(), (turn.end - window.startSample).toInt()))
-            val text = result.text.orEmpty().trim()
-            text.takeIf { it.isNotEmpty() }?.let { SpeechSpan(it, turn.speaker) }
-        }
-
-        val result = backend.transcribeWindow(window.samples)
-        val spans = mutableListOf<SpeechSpan>()
-        val text = StringBuilder()
-        var speaker = -1
-        fun flushSpan() {
-            if (text.isNotEmpty()) spans += SpeechSpan(text.toString(), speaker)
-            text.setLength(0)
-        }
-        WindowText.forEachOwnedWord(result.tokens, result.timestamps, window) { word, position ->
-            if (word.isNotBlank()) {
-                val next = timeline.speakerAt(position)
-                if (next != speaker) { flushSpan(); speaker = next }
-                if (text.isNotEmpty()) text.append(' ')
-                text.append(word.trim())
+        drain(output)
+        for ((index, original) in words.withIndex()) {
+            val word = if (index == 0) original.copy(text = original.text.trimStart()) else original
+            // Bound pathological metadata density too, independently of duration.
+            while (pending.isNotEmpty() && (pending.size >= 8192 || pendingCharacters + word.text.length > 262144)) {
+                emit(pending.removeFirst(), output, forceUnknown = true)
             }
+            pending.addLast(word)
+            pendingCharacters += word.text.length
         }
-        flushSpan()
-        return spans
+        drain(output)
+        return output
     }
-    override fun close() = stream.close()
+
+    private fun drain(output: MutableList<SpeechSpan>) {
+        while (pending.isNotEmpty()) {
+            val word = pending.peekFirst()
+            val ready = count == 1 || timeline.endSample >= word.end +
+                maxOf(options.labelLookaheadMs, paddingMs) * 16L
+            val expired = fed - word.end >= waitSamples
+            if (!finished && !ready && !expired) break // Never wait for future input inside this call.
+            emit(pending.removeFirst(), output, forceUnknown = !ready && !finished)
+        }
+    }
+
+    private fun emit(word: WindowText.Word, output: MutableList<SpeechSpan>, forceUnknown: Boolean = false) {
+        pendingCharacters -= word.text.length
+        val speaker = when {
+            count == 1 -> 0
+            forceUnknown || word.end > timeline.endSample -> -1
+            else -> timeline.speakerDuring(word.start, word.end, previous, word.coarse)
+        }
+        previous = speaker
+        if (word.text.isBlank()) return
+        val last = output.lastOrNull()
+        // Preserve internal ASR whitespace (dictionary rules can depend on it).
+        // At an audio-window/callback boundary, Off also joins trimmed text with
+        // one space; within a window the recognizer's separator remains intact.
+        val text = if (last == null) word.text.trim() else word.text.trimEnd()
+        if (last?.speaker == speaker) output[output.lastIndex] = last.copy(text = last.text +
+            (if (text.firstOrNull()?.isWhitespace() == true) "" else " ") + text)
+        else output += SpeechSpan(text, speaker)
+    }
+
+    override fun close() {
+        if (closed) return
+        closed = true
+        pending.clear()
+        pendingCharacters = 0
+        stream.close()
+    }
 }

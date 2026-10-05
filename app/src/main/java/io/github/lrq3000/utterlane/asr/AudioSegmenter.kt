@@ -74,6 +74,8 @@ class AudioSegmenter(
 
 /** Group subword tokens before selecting ownership, so a cut never emits half a word. */
 object WindowText {
+    data class Word(val text: String, val start: Long, val end: Long, val coarse: Boolean = false)
+
     fun select(tokens: Array<String>, timestamps: FloatArray, window: AudioWindow, sampleRate: Int = 16000): String {
         val result = StringBuilder()
         forEachOwnedWord(tokens, timestamps, window, sampleRate) { text, _ -> result.append(text) }
@@ -83,18 +85,40 @@ object WindowText {
     /** Share word grouping between labeled and ordinary output so ownership cannot drift. */
     fun forEachOwnedWord(tokens: Array<String>, timestamps: FloatArray, window: AudioWindow, sampleRate: Int = 16000,
                          consume: (String, Long) -> Unit) {
+        for (word in ownedWords(tokens, timestamps, window, sampleRate = sampleRate)) consume(word.text, word.start)
+    }
+
+    /** Native ends are optional. Inference is capped at 400 ms, never stretched over a silence. */
+    fun ownedWords(tokens: Array<String>, timestamps: FloatArray, window: AudioWindow,
+                   ends: FloatArray = floatArrayOf(), sampleRate: Int = 16000): List<Word> {
         require(tokens.size == timestamps.size) { "Recognizer did not return token timestamps" }
+        val words = mutableListOf<Word>()
         val word = StringBuilder()
         var position = 0L
+        var wordEnd = 0L
         fun flush() {
-            if (word.isNotEmpty() && position >= window.ownedStart && position < window.ownedEnd) consume(word.toString(), position)
+            if (word.isNotEmpty()) words += Word(word.toString(), position, wordEnd)
             word.setLength(0)
         }
         tokens.forEachIndexed { index, token ->
-            if (token.firstOrNull()?.isWhitespace() == true && word.isNotEmpty()) flush()
+            // Standalone punctuation belongs to its lexical predecessor, even if
+            // its timestamp lies in silence or across an ownership boundary.
+            val lexical = token.any { it.isLetterOrDigit() }
+            if (token.firstOrNull()?.isWhitespace() == true && lexical && word.isNotEmpty()) flush()
             if (word.isEmpty()) position = window.startSample + (timestamps[index] * sampleRate).toLong()
+            if (lexical) wordEnd = ends.getOrNull(index)?.takeIf { it.isFinite() && it > timestamps[index] }
+                ?.let { window.startSample + (it * sampleRate).toLong() } ?: 0L
             word.append(token)
         }
         flush()
+        val audioEnd = window.startSample + window.samples.size
+        return words.mapIndexedNotNull { index, item ->
+            if (item.start < window.ownedStart || item.start >= window.ownedEnd) null else {
+                val next = words.getOrNull(index + 1)?.start ?: audioEnd
+                val inferred = minOf(next, item.start + sampleRate * 4 / 10)
+                item.copy(end = (if (item.end > item.start) item.end else inferred)
+                    .coerceIn(item.start, audioEnd))
+            }
+        }
     }
 }

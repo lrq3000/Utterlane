@@ -2,7 +2,8 @@ package io.github.lrq3000.utterlane.asr
 
 import java.io.Closeable
 
-data class WindowResult(val tokens: Array<String>, val timestamps: FloatArray, val text: String? = null)
+data class WindowResult(val tokens: Array<String>, val timestamps: FloatArray, val text: String? = null,
+                        val ends: FloatArray = floatArrayOf())
 
 /** Backends expose the same bounded, timestamped contract to every input path. */
 interface RecognitionBackend : Closeable {

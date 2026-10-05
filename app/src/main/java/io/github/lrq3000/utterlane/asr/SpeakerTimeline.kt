@@ -26,12 +26,14 @@ class SpeakerTimeline(
 
     fun append(probabilities: FloatArray) {
         require(probabilities.size % 8 == 0 && probabilities.all { it.isFinite() && it in 0f..1f })
-        check(retainedFrames + probabilities.size / 8 <= capacity) { "Speaker timeline exceeded its bounded audio window" }
         for (offset in probabilities.indices step 8) {
+            // A delayed native batch can exceed the configured history budget.
+            // Old queries then become Unknown; storage never grows or corrupts.
+            first = maxOf(first, end - capacity + 1)
             val slot = (end % capacity).toInt() * 8
             probabilities.copyInto(this.probabilities, slot, offset, offset + 8)
             val best = channelAt(end)
-            candidateFrames = if (best == candidate) candidateFrames + 1 else 1
+            candidateFrames = if (best == candidate) minOf(candidateFrames + 1, 3) else 1
             candidate = best
             // Three strong frames can establish a genuinely brief interjection;
             // a single-frame spike never consumes a scarce fixed-count identity.
@@ -52,7 +54,7 @@ class SpeakerTimeline(
         val last = if (end > first) probabilities.copyOfRange(((end - 1) % capacity).toInt() * 8,
             ((end - 1) % capacity).toInt() * 8 + 8) else FloatArray(8)
         while (endSample < sample) {
-            check(retainedFrames < capacity)
+            first = maxOf(first, end - capacity + 1)
             last.copyInto(probabilities, (end % capacity).toInt() * 8)
             end++
         }
@@ -62,6 +64,87 @@ class SpeakerTimeline(
         val frame = sample / 160
         if (sample < 0 || frame < first || frame >= end) return -1
         return identity(channelAt(frame))
+    }
+
+    /** Integrate voiced evidence over a lexical interval, never just its onset. */
+    fun speakerDuring(start: Long, stop: Long, previous: Int = -1, coarse: Boolean = false): Int {
+        require(start >= 0 && stop >= start)
+        if (start < first * 160 || stop > endSample) return -1
+        val evidence = evidence(start, stop)
+        if (coarse && evidence.support.count { it >= 3 * 160 } > 1) return -1
+        val winner = evidence.winner(previous)
+        if (winner >= 0) return identity(winner)
+        // An actual conflict is not silence. Never bridge overlapping voices or
+        // sustained competing evidence merely because nearby labels agree.
+        if (evidence.voiced >= 3 * 160) return -1
+        val search = maxOf(options.unknownBridgeMs, options.alignmentToleranceMs) * 16L
+        val left = neighbor(start / 160 - 1, -1, search)
+        val right = neighbor((stop + 159) / 160, 1, search)
+        if (left != null && right != null && left.first == right.first &&
+            (right.second - left.second - 1) * 160 <= options.unknownBridgeMs * 16L) {
+            return identity(left.first)
+        }
+        // A clipped first/last word has no two-sided neighbor. Permit only the
+        // explicit timestamp tolerance at the retained audio edges, not a long
+        // unbounded propagation of the last known identity into silence.
+        val tolerance = options.alignmentToleranceMs * 16L
+        if (start < first * 160 + tolerance && left == null && right != null &&
+            right.second * 160 - start <= tolerance) return identity(right.first)
+        if (stop > endSample - tolerance && right == null && left != null &&
+            stop - (left.second + 1) * 160 <= tolerance) return identity(left.first)
+        return -1
+    }
+
+    private inner class Evidence {
+        val mass = DoubleArray(8)
+        val support = LongArray(8)
+        var voiced = 0L
+        fun winner(previous: Int): Int {
+            if (voiced == 0L) return -1
+            var best = 0
+            for (i in 1..7) if (mass[i] > mass[best]) best = i
+            var second = 0.0
+            for (i in 0..7) if (i != best) second = maxOf(second, mass[i])
+            val confidence = mass[best] / voiced
+            val margin = (mass[best] - second) / voiced
+            if (confidence <= options.speakerThreshold || margin < options.speakerMargin || margin <= 0) return -1
+            val strong = confidence >= maxOf(.7, options.speakerThreshold.toDouble()) &&
+                margin >= maxOf(.2, options.speakerMargin.toDouble())
+            val required = if (strong || identity(best) == previous && previous >= 0) 3 * 160L
+                else maxOf(3 * 160L, options.speakerConfirmationMs * 16L)
+            return if (voiced >= required) best else -1
+        }
+    }
+
+    private fun evidence(start: Long, stop: Long): Evidence {
+        val result = Evidence()
+        for (frame in maxOf(first, start / 160) until minOf(end, (stop + 159) / 160)) {
+            val offset = (frame % capacity).toInt() * 8
+            var peak = 0f
+            for (i in 0..7) peak = maxOf(peak, probabilities[offset + i])
+            if (peak <= options.speakerThreshold) continue
+            val weight = minOf(stop, (frame + 1) * 160) - maxOf(start, frame * 160)
+            result.voiced += weight
+            val channel = channelAt(frame)
+            if (channel >= 0) result.support[channel] += weight
+            for (i in 0..7) result.mass[i] += probabilities[offset + i] * weight.toDouble()
+        }
+        return result
+    }
+
+    /** Nearest sustained evidence; isolated 10 ms spikes cannot anchor a bridge. */
+    private fun neighbor(from: Long, direction: Int, distance: Long): Pair<Int, Long>? {
+        var frame = from
+        var run = 0
+        var channel = -1
+        while (frame in first until end && kotlin.math.abs(frame - from) * 160 <= distance) {
+            val next = channelAt(frame)
+            run = if (next >= 0 && next == channel) run + 1 else if (next >= 0) 1 else 0
+            channel = next
+            if (run >= 3) return channel to (frame - direction * 2)
+            frame += direction
+        }
+        return null
     }
 
     private fun identity(channel: Int): Int = when {
