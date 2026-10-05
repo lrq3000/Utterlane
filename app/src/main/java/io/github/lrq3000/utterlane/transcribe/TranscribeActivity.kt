@@ -193,14 +193,15 @@ fun TranscribeScreen(
             power = io.github.lrq3000.utterlane.asr.TranscriptionPower(context)
             withContext(Dispatchers.IO) {
                 val app = UtterlaneApp.instance
-                val diagnosticSession = app.recognitionDiagnostics.capture(app.settingsRepository.runtimeOptions.first())
+                val options = app.settingsRepository.runtimeOptions.first()
+                val diagnosticSession = app.recognitionDiagnostics.capture(options)
                 captureDiagnostics = diagnosticSession
                 // Owned by the screen operation, not the decoder coroutine (which must
                 // be free to return before this indefinitely collecting child is stopped).
                 diagnosticObserver = scope.launch { captureMetrics.state.collect { diagnosticSession.record(it) } }
                 check(app.modelManager.isModelReady()) { context.getString(R.string.transcribe_error_no_model) }
                 var session: io.github.lrq3000.utterlane.asr.TranscriptionSession? = null
-                session = app.recognizerManager.createSession(onProcessed = captureMetrics::processed) {
+                session = app.recognizerManager.createSession(options, onProcessed = captureMetrics::processed) {
                     val tail = session!!.store.preview()
                     withContext(Dispatchers.Main) { if (pageOffset == null) preview = tail }
                 }

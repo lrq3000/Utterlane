@@ -23,6 +23,9 @@ class RecognizerManager(
 ) {
     companion object { private const val TAG = "RecognizerManager" }
     private val mutex = Mutex()
+    private val sessionPreparation = RecognitionSessionPreparation(mutex) {
+        UtterlaneApp.instance.settingsRepository.runtimeOptions.first()
+    }
     private val stateLock = Any()
     private var recognizer: RecognitionBackend? = null
     private var loadedModelId: String? = null
@@ -242,16 +245,24 @@ class RecognizerManager(
     suspend fun ensureInitialized(): Boolean = initialize()
     fun isInitialized(): Boolean = _isReady.value
 
-    suspend fun createSession(onProcessed: (Long, Long) -> Unit = { _, _ -> }, onSegment: suspend (String) -> Unit = {}): TranscriptionSession = withModelOperation { expected ->
+    // Retain the original positional/default/trailing-lambda API. Both overloads enter
+    // one reservation/cleanup path; only callers without a snapshot read preferences.
+    suspend fun createSession(onProcessed: (Long, Long) -> Unit = { _, _ -> }, onSegment: suspend (String) -> Unit = {}): TranscriptionSession =
+        createSessionWithOptions(null, onProcessed, onSegment)
+
+    suspend fun createSession(options: RuntimeOptions, onProcessed: (Long, Long) -> Unit = { _, _ -> }, onSegment: suspend (String) -> Unit = {}): TranscriptionSession =
+        createSessionWithOptions(options, onProcessed, onSegment)
+
+    private suspend fun createSessionWithOptions(providedOptions: RuntimeOptions?, onProcessed: (Long, Long) -> Unit,
+        onSegment: suspend (String) -> Unit): TranscriptionSession = withModelOperation { expected ->
         val owner = currentCoroutineContext()[Job]
         var created: TranscriptionSession? = null
         try {
             withContext(Dispatchers.IO) {
-                mutex.withLock {
+                sessionPreparation.prepare(providedOptions) { options ->
                     val app = UtterlaneApp.instance
-                    // One immutable snapshot feeds segmentation, attribution and
-                    // the first speaker request; saved edits affect later sessions.
-                    val options = app.settingsRepository.runtimeOptions.first().requireValid()
+                    // Preparation, segmentation, attribution and diagnostic activity all
+                    // consume the same entry-point snapshot, including while queued.
                     check(initializeLocked(expected, options)) { _failure.value ?: context.getString(R.string.toast_model_load_failed) }
                     val rules = if (app.settingsRepository.dictionaryEnabled.first()) app.dictionaryManager.rules.value else emptyList()
                     val diarize = app.settingsRepository.diarizationEnabled.first()

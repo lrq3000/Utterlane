@@ -212,6 +212,13 @@ the exported metrics and device/build metadata.
 All lines are standalone JSON objects. Options and environment are repeated so
 rotation never detaches a retained sample from its configuration.
 
+Microphone/file entry points pass their original `RuntimeOptions` snapshot to
+`createSession(options, ...)`, so capture, model preparation, session processing
+and activity consent agree even if preferences change while inference is queued.
+The original callback-only `createSession` overload remains compatible and reads
+one snapshot before waiting for the inference mutex. Both paths retain the same
+idle-operation reservation and cancellation/error cleanup.
+
 | Field | Meaning |
 | --- | --- |
 | `schema_version`, `kind` | `1`; `activity` or `capture`. |

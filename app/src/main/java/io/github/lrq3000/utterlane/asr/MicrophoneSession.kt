@@ -69,7 +69,7 @@ class MicrophoneSession(
                 captureDiagnostics = app.recognitionDiagnostics.capture(captureOptions)
                 diagnosticObserver = launch { metrics.state.collect { captureDiagnostics.record(it) } }
                 metrics.model(app.modelManager.selected.value.name)
-                session = app.recognizerManager.createSession(onProcessed = { end, ms -> metrics.processed(end, ms) }) { delta ->
+                session = app.recognizerManager.createSession(captureOptions, onProcessed = { end, ms -> metrics.processed(end, ms) }) { delta ->
                     if (!cancelled) withContext(Dispatchers.Main) { onText(delta, session!!.store) }
                 }
                 phase = SessionFailure.Kind.INFERENCE
