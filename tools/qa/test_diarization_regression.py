@@ -1,0 +1,240 @@
+"""Synthetic, redistributable regression cases; never load private recordings."""
+import importlib
+import itertools
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+
+
+SCRIPT = Path(__file__).with_name("diarization_regression.py")
+SIX_TURNS = "\n".join([
+    "Speaker 1: alpha apple", "Speaker 2: bravo berry",
+    "Speaker 1: charlie cherry", "Speaker 2: delta date",
+    "Speaker 1: echo elderberry", "Speaker 2: foxtrot fig",
+])
+
+
+class ScorerTestCase(unittest.TestCase):
+    def setUp(self):
+        self.assertTrue(SCRIPT.is_file(), "The diarization scorer has not been implemented")
+        self.api = importlib.import_module("tools.qa.diarization_regression")
+
+    def score(self, gold, candidate):
+        parser = self.api.TranscriptParser()
+        return self.api.DiarizationScorer().score(parser.parse(gold), parser.parse(candidate))
+
+
+class TranscriptScoringTests(ScorerTestCase):
+    def test_exact_one_speaker_and_six_returning_turns(self):
+        for gold, turns in [("Speaker 1: Hello lovely world", 1), (SIX_TURNS, 6)]:
+            with self.subTest(turns=turns):
+                report = self.score(gold, gold)
+                self.assertEqual(report["text"]["wer"], 0)
+                self.assertEqual(report["text"]["matched_reference_coverage"], 1)
+                self.assertEqual(report["speakers"]["correct_reference_word_rate"], 1)
+                self.assertEqual(report["turns"]["candidate_turn_count"], turns)
+                self.assertEqual(report["turns"]["sequence_error_rate"], 0)
+
+    def test_unknown_fragmentation_does_not_change_words(self):
+        report = self.score("Speaker 1: alpha beta gamma", "Speaker 8: alpha\nUnknown speaker: beta\nSpeaker 8: gamma")
+        self.assertEqual(report["text"]["wer"], 0)
+        self.assertEqual(report["speakers"]["candidate_blocks"], 3)
+        self.assertEqual(report["speakers"]["unknown_blocks"], 1)
+        self.assertAlmostEqual(report["speakers"]["unknown_word_rate"], 1 / 3)
+        self.assertAlmostEqual(report["speakers"]["correct_reference_word_rate"], 2 / 3)
+        self.assertEqual(report["turns"]["false_fragmentations"], 2)
+        self.assertEqual(report["turns"]["sequence_edit_distance"], 2)
+
+    def test_one_global_permutation_is_allowed(self):
+        candidate = SIX_TURNS.replace("Speaker 1:", "Speaker 8:").replace("Speaker 2:", "Speaker 9:")
+        report = self.score(SIX_TURNS, candidate)
+        self.assertEqual(report["speakers"]["mapping"], {"8": "1", "9": "2"})
+        self.assertEqual(report["speakers"]["correct_reference_word_rate"], 1)
+        self.assertEqual(report["turns"]["sequence_error_rate"], 0)
+
+    def test_returning_identity_swap_cannot_be_relabelled_per_turn(self):
+        ids = [8, 9, 9, 8, 9, 8]
+        candidate = "\n".join(f"Speaker {speaker}: {line.split(': ', 1)[1]}" for speaker, line in zip(ids, SIX_TURNS.splitlines()))
+        report = self.score(SIX_TURNS, candidate)
+        self.assertAlmostEqual(report["speakers"]["matched_word_accuracy"], 2 / 3)
+        self.assertGreater(report["turns"]["sequence_edit_distance"], 0)
+        self.assertEqual(report["turns"]["missed_boundaries"], 1)
+
+    def test_mapping_is_optimal_not_greedy_or_many_to_one(self):
+        # Contingency matrix [[9, 8], [8, 0]]: greedy gets 9, assignment gets 16.
+        words = [f"word{i}" for i in range(25)]
+        gold = f"Speaker 1: {' '.join(words[:9])}\nSpeaker 2: {' '.join(words[9:17])}\nSpeaker 1: {' '.join(words[17:])}"
+        candidate = f"Speaker 8: {' '.join(words[:17])}\nSpeaker 9: {' '.join(words[17:])}"
+        report = self.score(gold, candidate)
+        self.assertEqual(report["speakers"]["correct_words"], 16)
+        self.assertEqual(report["speakers"]["mapping"], {"8": "2", "9": "1"})
+        split = self.score("Speaker 1: alpha beta gamma", "Speaker 1: alpha\nSpeaker 2: beta\nSpeaker 3: gamma")
+        self.assertEqual(split["speakers"]["correct_words"], 1)
+        self.assertEqual(sum(value is None for value in split["speakers"]["mapping"].values()), 2)
+
+    def test_many_speakers_and_missing_reference_speakers(self):
+        gold = "\n".join(f"Speaker {i}: token{i}" for i in range(12))
+        candidate = "\n".join(f"Speaker {i + 20}: token{i}" for i in range(12))
+        self.assertEqual(self.score(gold, candidate)["speakers"]["correct_words"], 12)
+        short = self.score(gold, "Speaker 20: token0")
+        self.assertEqual(short["speakers"]["mapping"], {"20": "0"})
+        self.assertAlmostEqual(short["speakers"]["correct_reference_word_rate"], 1 / 12)
+
+    def test_missing_tail_penalizes_full_reference_even_with_perfect_prefix(self):
+        report = self.score("Speaker 1: alpha beta gamma delta", "Speaker 1: alpha beta")
+        self.assertEqual(report["text"]["wer"], 0.5)
+        self.assertEqual(report["text"]["matched_reference_coverage"], 0.5)
+        self.assertEqual(report["text"]["trailing_reference_deletions"], 2)
+        self.assertEqual(report["speakers"]["matched_word_accuracy"], 1)
+        self.assertEqual(report["speakers"]["correct_reference_word_rate"], 0.5)
+
+    def test_insert_delete_and_substitute_are_separate(self):
+        report = self.score("Speaker 1: alpha beta gamma delta epsilon", "Speaker 1: extra alpha beta wrong epsilon bonus")
+        text = report["text"]
+        self.assertEqual(text["matches"], 3)
+        self.assertEqual((text["substitutions"], text["deletions"], text["insertions"]), (1, 1, 2))
+        self.assertEqual(text["wer"], 0.8)
+        self.assertEqual(text["aligned_reference_coverage"], 0.8)
+        self.assertEqual(report["speakers"]["correct_reference_word_rate"], 0.6)
+
+    def test_punctuation_nfc_apostrophes_and_unicode_marks(self):
+        gold = "Speaker 1: ÉTÉ, l’été! t'as dit: Prométhée — हिन्दी, Ελληνικά, 中文 8h15."
+        candidate = "\ufeffSpeaker 7: e\u0301te\u0301 l'e\u0301te\u0301 t’as dit Prométhée हिन्दी Ελληνικά 中文 8h15"
+        report = self.score(gold, candidate)
+        self.assertEqual(report["text"]["wer"], 0)
+        self.assertEqual(report["text"]["reference_words"], 9)
+        self.assertEqual(self.score("Speaker 1: été", "Speaker 1: ete")["text"]["wer"], 1)
+
+    def test_wrapped_lines_and_punctuation_only_blocks(self):
+        report = self.score("Speaker 1: alpha beta", "Speaker 01: alpha\nbeta\nUnknown speaker: ?")
+        self.assertEqual(report["text"]["wer"], 0)
+        self.assertEqual(report["speakers"]["candidate_blocks"], 2)
+        self.assertEqual(report["speakers"]["unknown_blocks"], 1)
+        self.assertEqual(report["speakers"]["unknown_words"], 0)
+        self.assertEqual(report["turns"]["candidate_turn_count"], 1)
+
+    def test_empty_candidate_is_a_total_omission_not_perfect_accuracy(self):
+        report = self.score("Speaker 1: alpha beta", "")
+        self.assertEqual(report["text"]["wer"], 1)
+        self.assertEqual(report["text"]["trailing_reference_deletions"], 2)
+        self.assertEqual(report["speakers"]["correct_reference_word_rate"], 0)
+        self.assertIsNone(report["speakers"]["matched_word_accuracy"])
+        self.assertIsNone(report["speakers"]["unknown_word_rate"])
+
+    def test_unlabelled_candidate_is_unknown_and_never_a_known_speaker(self):
+        report = self.score("Speaker 1: alpha beta", "alpha beta")
+        self.assertEqual(report["text"]["wer"], 0)
+        self.assertEqual(report["speakers"]["unknown_word_rate"], 1)
+        self.assertEqual(report["speakers"]["correct_reference_word_rate"], 0)
+        self.assertTrue(report["warnings"])
+
+    def test_empty_unlabelled_or_unknown_gold_is_invalid(self):
+        for gold in ["", "alpha", "Unknown speaker: alpha", "Speaker 1: ?"]:
+            with self.subTest(gold=gold), self.assertRaises(ValueError):
+                self.score(gold, "Speaker 1: alpha")
+
+    def test_malformed_labels_fail_instead_of_becoming_transcript_words(self):
+        for candidate in ["Speaker x: alpha", "Speaker -1: alpha", "Speaker 1 alpha", "Unknown speaker alpha", "Speaker 1:"]:
+            with self.subTest(candidate=candidate), self.assertRaises(ValueError):
+                self.score("Speaker 1: alpha", candidate)
+
+    def test_alignment_is_label_blind_and_repeated_prefix_stays_a_prefix(self):
+        report = self.score("Speaker 1: yes yes\nSpeaker 2: yes yes", "Speaker 2: yes yes")
+        self.assertEqual(report["text"]["trailing_reference_deletions"], 2)
+        self.assertEqual(report["speakers"]["mapping"], {"2": "1"})
+
+    def test_exact_alignment_matches_independent_short_sequence_oracle(self):
+        # Exhaustive small edit graphs catch traceback errors that WER-only examples miss.
+        sequences = [list(seq) for size in range(4) for seq in itertools.product("ab", repeat=size)]
+        for reference in sequences:
+            for candidate in sequences:
+                with self.subTest(reference=reference, candidate=candidate):
+                    alignment = self.api.WordAligner().align(reference, candidate)
+                    matrix = [[0] * (len(candidate) + 1) for _ in range(len(reference) + 1)]
+                    for i in range(len(reference) + 1):
+                        matrix[i][0] = i
+                    for j in range(len(candidate) + 1):
+                        matrix[0][j] = j
+                    for i, left in enumerate(reference, 1):
+                        for j, right in enumerate(candidate, 1):
+                            matrix[i][j] = min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + (left != right))
+                    self.assertEqual([i for i, _ in alignment if i is not None], list(range(len(reference))))
+                    self.assertEqual([j for _, j in alignment if j is not None], list(range(len(candidate))))
+                    cost = sum(i is None or j is None or reference[i] != candidate[j] for i, j in alignment)
+                    self.assertEqual(cost, matrix[-1][-1])
+
+
+class CommandLineTests(unittest.TestCase):
+    def setUp(self):
+        self.assertTrue(SCRIPT.is_file(), "The diarization scorer has not been implemented")
+        # Keep even disposable test artifacts inside this worktree.
+        self.temp = tempfile.TemporaryDirectory(dir=SCRIPT.parent)
+        self.addCleanup(self.temp.cleanup)
+        self.directory = Path(self.temp.name)
+        self.write("sample_transcript_true-diarization.txt", SIX_TURNS)
+        self.write("sample_transcript_no-diarization.txt", " ".join(line.split(": ", 1)[1] for line in SIX_TURNS.splitlines()))
+        self.write("sample_transcript_current-diarization.txt", SIX_TURNS)
+
+    def write(self, name, text):
+        path = self.directory / name
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def run_cli(self, *args):
+        return subprocess.run([sys.executable, str(SCRIPT), str(self.directory), *map(str, args)], capture_output=True, text=True, encoding="utf-8", check=False)
+
+    def test_default_json_and_text_reports(self):
+        result = self.run_cli("--format", "json", "--check")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertTrue(report["acceptance"]["passed"])
+        self.assertEqual(report["recordings"][0]["no_diarization_text"]["wer"], 0)
+        self.assertNotIn("DER", report)
+        text = self.run_cli()
+        self.assertEqual(text.returncode, 0, text.stderr)
+        self.assertIn("WER", text.stdout)
+        self.assertIn("coverage", text.stdout)
+
+    def test_check_rejects_truncated_prefix_and_can_be_configured(self):
+        self.write("sample_transcript_current-diarization.txt", SIX_TURNS.splitlines()[0])
+        report_only = self.run_cli("--format", "json")
+        self.assertEqual(report_only.returncode, 0, report_only.stderr)
+        checked = self.run_cli("--format", "json", "--check")
+        self.assertEqual(checked.returncode, 1, checked.stderr)
+        self.assertTrue(json.loads(checked.stdout)["acceptance"]["failures"])
+        tolerant = self.run_cli("--check", "--max-wer", "1", "--min-coverage", "0", "--min-speaker-coverage", "0", "--max-tail-deletions", "20", "--max-turn-error-rate", "1")
+        self.assertEqual(tolerant.returncode, 0, tolerant.stderr)
+
+    def test_explicit_candidate_files_and_directory(self):
+        good = self.write("sample_transcript_good.txt", SIX_TURNS)
+        bad = self.write("sample_transcript_bad.txt", "")
+        result = self.run_cli(good, bad, "--format", "json", "--check")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(len(json.loads(result.stdout)["recordings"]), 2)
+        result = self.run_cli(self.directory, "--format", "json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(json.loads(result.stdout)["recordings"]), 3)
+
+    def test_invalid_inputs_fail_with_actionable_json_error(self):
+        for content in ["Speaker nope: alpha", "Speaker 1:"]:
+            self.write("sample_transcript_current-diarization.txt", content)
+            result = self.run_cli("--format", "json")
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("error", json.loads(result.stdout))
+        invalid = self.run_cli("--max-wer", "nan")
+        self.assertEqual(invalid.returncode, 2)
+
+    def test_missing_candidate_never_silently_skips_a_recording(self):
+        self.write("other_transcript_true-diarization.txt", "Speaker 1: hello")
+        result = self.run_cli("--format", "json")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("other", json.loads(result.stdout)["error"])
+        result = self.run_cli(self.directory, "--format", "json")
+        self.assertEqual(result.returncode, 2)
+
+
+if __name__ == "__main__":
+    unittest.main()
