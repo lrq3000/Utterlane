@@ -3,7 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 // Reproducible visual-review captures, separate from behavioral assertions.
-// Reduced motion exposes the complete story without a pinned scroll scene.
+// Explicitly pause to expose the complete story without a pinned scroll scene.
 const url = process.argv[2] ?? 'http://127.0.0.1:4174';
 const output = resolve(process.argv[3] ?? 'test-results/visual');
 const sections = process.argv.slice(4);
@@ -14,6 +14,7 @@ try {
     const page = await browser.newPage({ viewport: { width, height }, reducedMotion: 'reduce' });
     await page.goto(url);
     await page.locator('[data-enhanced]').first().waitFor();
+    await page.getByRole('button', { name: 'Pause animations' }).click();
     // Lazy artwork should be decoded before the full-page capture.
     await page.locator('footer').scrollIntoViewIfNeeded();
     await page.evaluate(async () => {

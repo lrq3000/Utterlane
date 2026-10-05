@@ -4,6 +4,14 @@ Approved direction: A, by the maintainer on 2026-10-04. The HTML study at
 `.superpowers/brainstorm/landing-directions/content/visual-directions.html` is
 the visual reference; the app's Blue harmony kit is the identity authority.
 
+## Motion-default revision (2026-10-05)
+
+The maintainer explicitly approved autoplay even when the browser requests
+reduced motion. This supersedes the original OS-driven motion default below.
+The fixed Play/Pause button controls motion for the current visit; pausing shows
+complete static illustrations. No-JavaScript content remains static and readable.
+The footer credit is now “Made with ❤️ by Stephen Karl Larroque”.
+
 ## Design contract
 
 - Cool `#F1F5FB` canvas, white surfaces, `#15263F` lettering, `#617088`

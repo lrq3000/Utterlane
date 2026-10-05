@@ -39,7 +39,7 @@ node tools/capture.mjs http://127.0.0.1:4174 /absolute/path/to/screenshots
 node tools/capture.mjs http://127.0.0.1:4174 /absolute/path/to/screenshots "#speed" "#everyday" ".closing"
 ```
 
-The capture utility uses reduced motion so a full-page image shows the completed
+The capture utility explicitly pauses animations so a full-page image shows the completed
 story, in desktop, portrait and landscape layouts. Optional trailing selectors
 also capture individual sections at native resolution. Check the live scroll
 sequence and play/pause control in a browser too.
@@ -81,17 +81,18 @@ Graph URLs in `index.html`, `public/robots.txt`, and `public/sitemap.xml`.
 - `index.html`: complete semantic content, native FAQ disclosures, metadata.
 - `src/styles.css`: Blue harmony tokens, typography, layout and breakpoints.
 - `src/illustrations.css`: original CSS phone and on-device processing scenes.
-- `src/motion.ts`: user/OS motion preference, offscreen/background pausing.
+- `src/motion.ts`: autoplay and manual Play/Pause, offscreen/background pausing.
 - `ViewportReveals` in `src/motion.ts`: one-shot section entrances that settle on
-  completion, pause, reduced motion, or keyboard focus; resuming does not replay
+  completion, pause, or keyboard focus; resuming does not replay
   already-read text.
 - `src/scroll-story.ts`: requestAnimationFrame-coalesced scroll progression.
 - `src/demos.ts`: bounded decorative waveform construction (no audio capture).
 - `public/brand/`: original artwork and its provenance.
 - `tests/landing.spec.ts`: user-facing contracts and accessibility checks.
 
-Motion respects `prefers-reduced-motion`. The fixed control lets a visitor
-explicitly play or pause it for that visit. No preference is stored. Without
+Animations start automatically on every visit, even when `prefers-reduced-motion`
+is enabled. The fixed control lets a visitor explicitly play or pause them for
+that visit; OS preference changes do not override this control. No preference is stored. Without
 JavaScript, all content, download links, and FAQs remain available. On small or
 short screens, the story uses normal page flow rather than a pinned viewport.
 

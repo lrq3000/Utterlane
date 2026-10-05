@@ -3,12 +3,13 @@ import AxeBuilder from '@axe-core/playwright';
 
 test('meeting speech flows into matching transcript rows and respects motion controls', async ({ page }) => {
   await page.goto('./');
+  await page.getByRole('button', { name: 'Pause animations' }).click();
   const scene = page.locator('.meeting-scene');
   const bubbles = scene.locator('.meeting-bubble');
   const rows = scene.locator('.meeting-row');
   await expect(bubbles).toHaveCount(3);
   await expect(rows).toHaveCount(3);
-  // Reduced motion presents the complete story, rather than freezing a partial transcript.
+  // Pausing presents the complete story, rather than freezing a partial transcript.
   for (const row of await rows.all()) await expect(row).toHaveCSS('opacity', '1');
   await page.getByRole('button', { name: 'Play animations' }).click();
   await scene.scrollIntoViewIfNeeded();
@@ -97,19 +98,29 @@ for (const width of [390, 1440]) {
   });
 }
 
-test('respects reduced motion and lets the reader explicitly start and pause it', async ({ page }) => {
-  await page.goto('./');
-  const button = page.getByRole('button', { name: 'Play animations' });
-  await expect(button).toBeVisible();
-  await expect(page.locator('html')).toHaveAttribute('data-motion', 'paused');
-  await button.click();
-  await expect(page.getByRole('button', { name: 'Pause animations' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('html')).toHaveAttribute('data-motion', 'running');
-  expect(await page.locator('.rotator-track').evaluate(el => getComputedStyle(el).animationName)).toBe('word-rotate');
-  await page.getByRole('button', { name: 'Pause animations' }).click();
-  await expect(page.locator('html')).toHaveAttribute('data-motion', 'paused');
-  await expect(page.locator('.static-promise')).toBeVisible();
-});
+for (const reducedMotion of ['reduce', 'no-preference'] as const) {
+  test(`starts animations by default with ${reducedMotion} and keeps the manual control authoritative`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion });
+    await page.goto('./');
+    const pause = page.getByRole('button', { name: 'Pause animations' });
+    await expect(pause).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('html')).toHaveAttribute('data-motion', 'running');
+    expect(await page.locator('.rotator-track').evaluate(el => getComputedStyle(el).animationName)).toBe('word-rotate');
+    await pause.click();
+    await expect(page.locator('html')).toHaveAttribute('data-motion', 'paused');
+    await expect(page.locator('.static-promise')).toBeVisible();
+    // OS changes cannot undo either explicit button choice during this visit.
+    await page.emulateMedia({ reducedMotion: reducedMotion === 'reduce' ? 'no-preference' : 'reduce' });
+    const play = page.getByRole('button', { name: 'Play animations' });
+    await expect(play).toHaveAttribute('aria-pressed', 'false');
+    await play.click();
+    await page.emulateMedia({ reducedMotion });
+    await expect(page.locator('html')).toHaveAttribute('data-motion', 'running');
+    await pause.click();
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-motion', 'running');
+  });
+}
 
 test('turns speech into completed segments as the reader scrolls', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -251,6 +262,8 @@ test('supports keyboard access and has no detected WCAG AA violations', async ({
   await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('#main')).toBeFocused();
+  // Audit the fully revealed static content, not an intermediate entrance frame.
+  await page.getByRole('button', { name: 'Pause animations' }).click();
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   expect(results.violations).toEqual([]);
 });

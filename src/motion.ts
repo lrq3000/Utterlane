@@ -1,23 +1,22 @@
-/** A single motion preference drives CSS and scroll effects. An explicit choice
- * wins over OS changes for this page visit; nothing is stored or transmitted. */
+/** Animations start on every visit, including when the OS requests reduced
+ * motion. The page's explicit Play/Pause control owns this product preference;
+ * nothing is stored or transmitted. Static HTML remains the no-JS fallback. */
 export class MotionPreference extends EventTarget {
-  private readonly media = matchMedia('(prefers-reduced-motion: reduce)');
   private readonly button = document.querySelector<HTMLButtonElement>('.motion-toggle');
-  private explicitChoice: boolean | null = null;
+  private playing = true;
 
   constructor() {
     super();
     this.button?.addEventListener('click', () => {
-      this.explicitChoice = !this.enabled;
+      this.playing = !this.playing;
       this.apply();
     });
-    this.media.addEventListener('change', () => this.apply());
     this.apply();
     if (this.button) this.button.hidden = false;
   }
 
   get enabled(): boolean {
-    return this.explicitChoice ?? !this.media.matches;
+    return this.playing;
   }
 
   private apply(): void {
