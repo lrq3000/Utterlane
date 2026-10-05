@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
+import io.github.lrq3000.utterlane.settings.RuntimeOptions
 import io.github.lrq3000.utterlane.settings.SettingsRepository
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -21,7 +22,19 @@ import java.util.concurrent.TimeUnit
 
 /** Catalog-based private storage. Only verified, fully published artifacts are loadable. */
 class ModelManager(private val context: Context, private val client: OkHttpClient? = null, private val fixedModel: ModelDefinition? = null) {
-    companion object { private const val TAG = "ModelManager" }
+    companion object {
+        private const val TAG = "ModelManager"
+
+        internal fun clientForDownload(client: OkHttpClient, options: RuntimeOptions): OkHttpClient {
+            options.requireValid()
+            // Clone configuration, not infrastructure: keep injected interceptors,
+            // dispatcher, connection pool and cancellation behavior for all artifacts.
+            return client.newBuilder()
+                .connectTimeout(options.downloadConnectSeconds, TimeUnit.SECONDS)
+                .readTimeout(options.downloadReadSeconds, TimeUnit.SECONDS)
+                .build()
+        }
+    }
     enum class ErrorType { NETWORK, CHECKSUM_MISMATCH, MISSING_FILE, FOLDER_ACCESS, STORAGE, UNKNOWN }
     sealed class DownloadState {
         data object NotStarted : DownloadState()
@@ -43,7 +56,7 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
     @Volatile private var transferJob: Job? = null
     @Volatile private var activeCall: Call? = null
     val isTransferring: Boolean get() = transferJob != null
-    private val httpClient by lazy { client ?: OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build() }
+    private val httpClient by lazy { client ?: OkHttpClient() }
     private val verified = mutableMapOf<String, List<Pair<Long, Long>>>()
 
     init { checkModelStatus() }
@@ -90,14 +103,19 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
         }
         return true
     }
-    suspend fun downloadModel(onProgress: (Int) -> Unit = {}) = transfer(false, onProgress) { artifact ->
-        val request = Request.Builder().url(artifact.url).build()
-        val call = httpClient.newCall(request)
-        activeCall = call
-        val response = call.execute()
-        if (!response.isSuccessful) { response.close(); error("Download failed: ${response.code}") }
-        val body = response.body ?: run { response.close(); error("Empty model response") }
-        object : java.io.FilterInputStream(body.byteStream()) { override fun close() { try { super.close() } finally { response.close() } } }
+    suspend fun downloadModel(onProgress: (Int) -> Unit = {}) {
+        // Read once per download, not once per artifact: a settings edit during a
+        // multi-file transfer cannot silently change its timeout policy halfway through.
+        val downloadClient = clientForDownload(httpClient, settings.runtimeOptions.first())
+        transfer(false, onProgress) { artifact ->
+            val request = Request.Builder().url(artifact.url).build()
+            val call = downloadClient.newCall(request)
+            activeCall = call
+            val response = call.execute()
+            if (!response.isSuccessful) { response.close(); error("Download failed: ${response.code}") }
+            val body = response.body ?: run { response.close(); error("Empty model response") }
+            object : java.io.FilterInputStream(body.byteStream()) { override fun close() { try { super.close() } finally { response.close() } } }
+        }
     }
     /** Imports accept the catalog's remote or local filename; unknown checkpoints are not silently substituted. */
     suspend fun importFromFolder(uri: Uri) {
