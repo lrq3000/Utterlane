@@ -183,8 +183,16 @@ test('loads assets from the Pages subpath without third-party requests or runtim
   });
   page.on('response', response => { if (response.status() >= 400) failed.push(response.url()); });
   await page.goto('./');
-  await page.locator('footer').scrollIntoViewIfNeeded();
-  await expect.poll(() => page.evaluate(() => [...document.images].every(image => image.complete && image.naturalWidth > 0))).toBe(true);
+  for (const theme of ['light', 'dark']) {
+    if (theme === 'dark') await page.getByRole('button', { name: 'Switch to dark mode' }).click();
+    await page.locator('footer').scrollIntoViewIfNeeded();
+    // Hidden lazy wordmarks intentionally wait for their theme to become
+    // visible. Exercise both themes instead of requiring unnecessary eager
+    // downloads; non-lazy images remain checked even when currently hidden.
+    await expect.poll(() => page.evaluate(() => [...document.images]
+      .filter(image => image.loading !== 'lazy' || image.getClientRects().length > 0)
+      .every(image => image.complete && image.naturalWidth > 0))).toBe(true);
+  }
   expect(errors).toEqual([]);
   expect(external).toEqual([]);
   expect(failed).toEqual([]);
