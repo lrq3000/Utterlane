@@ -2,6 +2,7 @@ package io.github.lrq3000.utterlane.asr
 
 import org.junit.Assert.*
 import org.junit.Test
+import io.github.lrq3000.utterlane.settings.RuntimeOptions
 
 class SpeakerTimelineTest {
     private fun frames(vararg speakers: Int) = speakers.flatMap { speaker ->
@@ -122,6 +123,69 @@ class SpeakerTimelineTest {
             }
         }
     }
+
+    @Test fun alignmentToleranceRecoversAWordWhoseVoicedOffsetPrecedesItsReportedEnd() {
+        // A 240 ms word interval contains only 20 ms of voiced evidence, but
+        // its 120 ms timestamp uncertainty includes the preceding word body.
+        for (tolerance in listOf(0, 120)) {
+            val timeline = alignmentTimeline(tolerance) { frame, channel ->
+                if (channel == 0) { if (frame < 150 || frame >= 200) .995f else .08f } else .01f
+            }
+            assertEquals(if (tolerance == 0) -1 else 0, timeline.speakerDuring(1480 * 16L, 1720 * 16L))
+            assertEquals(-1, timeline.speakerDuring(1480 * 16L, 1720 * 16L, coarse = true))
+        }
+    }
+
+    @Test fun alignmentToleranceRecoversAWordJustBeforeTheVoicedOnsetWithoutBridgingTheWholePause() {
+        // The voice resumes 10 ms after the reported word end. The preceding
+        // same-voice turn is too far away for the 350 ms unknown-gap bridge.
+        for (tolerance in listOf(0, 120)) {
+            val timeline = alignmentTimeline(tolerance) { frame, channel ->
+                if (channel == 0) { if (frame < 80 || frame >= 145) .995f else .08f } else .01f
+            }
+            assertEquals(if (tolerance == 0) -1 else 0, timeline.speakerDuring(1200 * 16L, 1440 * 16L))
+        }
+    }
+
+    @Test fun alignmentCannotReachPastTheConfiguredTolerance() {
+        val timeline = alignmentTimeline(120) { frame, channel ->
+            if (channel == 0 && (frame < 80 || frame >= 158)) .995f else .08f
+        }
+        assertEquals(-1, timeline.speakerDuring(1200 * 16L, 1440 * 16L))
+    }
+
+    @Test fun alignmentRejectsConflictingNeighborsEvenWhenOneHasMoreProbabilityMass() {
+        val timeline = alignmentTimeline(120) { frame, channel -> when {
+            channel == 0 && frame < 111 -> .995f
+            channel == 1 && frame >= 145 -> .995f
+            else -> .08f
+        } }
+        assertEquals(-1, timeline.speakerDuring(1200 * 16L, 1440 * 16L))
+    }
+
+    @Test fun alignmentPreservesAFortyMillisecondRealInterjectionDespiteSurroundingVoice() {
+        val timeline = alignmentTimeline(120) { frame, channel ->
+            if (channel == if (frame in 120..123) 1 else 0) .995f else .01f
+        }
+        assertEquals(1, timeline.speakerDuring(1200 * 16L, 1240 * 16L, previous = 0))
+    }
+
+    @Test fun alignmentCannotReplaceUnconfirmedOrOverlappingWordEvidenceWithItsNeighbor() {
+        for (overlap in listOf(false, true)) {
+            val timeline = alignmentTimeline(120) { frame, channel -> when {
+                frame !in 120..123 -> if (channel == 0) .995f else .01f
+                channel == 0 -> if (overlap) .8f else .46f
+                channel == 1 -> if (overlap) .8f else .56f
+                else -> .01f
+            } }
+            assertEquals(-1, timeline.speakerDuring(1200 * 16L, 1240 * 16L))
+        }
+    }
+
+    private fun alignmentTimeline(tolerance: Int, probability: (Int, Int) -> Float) =
+        SpeakerTimeline(0, options = RuntimeOptions(alignmentToleranceMs = tolerance)).apply {
+            append(FloatArray(250 * 8) { probability(it / 8, it % 8) })
+        }
 
     private fun candidateFrame(strong: Boolean) = FloatArray(8) { channel -> when (channel) {
         7 -> if (strong) .95f else .56f
