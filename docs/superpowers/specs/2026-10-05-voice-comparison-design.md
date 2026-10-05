@@ -111,6 +111,8 @@ not equivalent to total feature absence. Plain text covers non-applicable cells.
 
 End with the cross-app input-method benefit and a real release link. Include a
 native Sources & comparison notes disclosure, readable without JavaScript.
+Keep its four source references; the maintainer removed the fifth comparative
+footnote during implementation.
 
 ## Implementation boundaries
 
