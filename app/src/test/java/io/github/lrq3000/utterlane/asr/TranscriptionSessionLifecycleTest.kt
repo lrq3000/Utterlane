@@ -1,6 +1,14 @@
 package io.github.lrq3000.utterlane.asr
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -23,6 +31,83 @@ class TranscriptionSessionLifecycleTest {
             assertEquals(1, closes)
             assertEquals(0, store.segments)
             assertThrows(IllegalStateException::class.java) { runBlocking { session.accept(shortArrayOf(1)) } }
+        } finally { session.close(); store.dispose() }
+    }
+
+    @Test fun onSegmentClosingSessionKeepsCommittedPrefixWithoutFlushingCorrectionTail(): Unit = runBlocking {
+        val store = TranscriptStore(directory.newFile())
+        val corrections = StreamingCorrections(listOf(DictionaryManager.ReplacementRule("err", "fixed")))
+        val published = mutableListOf<String>()
+        var closes = 0
+        lateinit var session: TranscriptionSession
+        session = TranscriptionSession(store, corrections,
+            onSegment = { published += it; session.close() }, decode = { "one two three" },
+            onClosed = { closes++ }, onProcessed = { _, _ -> fail("Processed callback after onSegment closed the session") })
+        try {
+            session.accept(ShortArray(16000))
+            session.finish()
+            session.finish()
+            assertEquals(listOf("one two"), published)
+            assertEquals("one two", store.file.readText())
+            assertEquals("The final correction flush must not run after close", "three", corrections.finish())
+            assertEquals(1, closes)
+        } finally { session.close(); store.dispose() }
+    }
+
+    @Test fun closingDuringSuspendedSpeakerDecodeDiscardsItsLateResult(): Unit = runBlocking {
+        closeDuringDecode(diarized = true)
+    }
+
+    @Test fun closingDuringSuspendedPlainDecodeDiscardsItsLateResult(): Unit = runBlocking {
+        closeDuringDecode(diarized = false)
+    }
+
+    private suspend fun closeDuringDecode(diarized: Boolean): Unit = coroutineScope {
+        val store = TranscriptStore(directory.newFile())
+        store.append("already committed")
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val published = mutableListOf<String>()
+        var closes = 0
+        suspend fun decode(): String { entered.complete(Unit); release.await(); return "late result" }
+        val session = TranscriptionSession(store, StreamingCorrections(emptyList()),
+            onSegment = { published += it }, decode = { decode() }, onClosed = { closes++ },
+            onProcessed = { _, _ -> fail("Processed callback after closing a suspended decode") },
+            decodeSpeakers = if (diarized) { { listOf(SpeechSpan(decode(), 0)) } } else null)
+        try {
+            session.accept(ShortArray(16000))
+            val finishing = async(start = CoroutineStart.UNDISPATCHED) { runCatching { session.finish() } }
+            entered.await()
+            session.close()
+            release.complete(Unit)
+            val outcome = finishing.await()
+            assertTrue("A closed session published its late decode", published.isEmpty())
+            assertEquals("already committed", store.file.readText())
+            outcome.getOrThrow()
+            session.finish()
+            session.close()
+            assertEquals(1, closes)
+        } finally { release.complete(Unit); session.close(); store.dispose() }
+    }
+
+    @Test fun cancellationRejectsEvenANonCooperativeLateSpeakerDecode(): Unit = runBlocking {
+        val store = TranscriptStore(directory.newFile())
+        val published = mutableListOf<String>()
+        var closes = 0
+        lateinit var late: Continuation<List<SpeechSpan>>
+        val session = TranscriptionSession(store, StreamingCorrections(emptyList()),
+            onSegment = { published += it }, decode = { error("Unexpected plain decode") }, onClosed = { closes++ },
+            onProcessed = { _, _ -> fail("Processed callback after coroutine cancellation") },
+            decodeSpeakers = { suspendCoroutine { late = it } })
+        try {
+            session.accept(ShortArray(16000))
+            val finishing = launch(start = CoroutineStart.UNDISPATCHED) { runCatching { session.finish() } }
+            finishing.cancel()
+            late.resume(listOf(SpeechSpan("late result", 0)))
+            finishing.join()
+            assertTrue("Cancellation must be checked after the decoder returns", published.isEmpty())
+            assertEquals(0, store.segments)
+            assertEquals(1, closes)
         } finally { session.close(); store.dispose() }
     }
 }
