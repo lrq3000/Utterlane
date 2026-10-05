@@ -1,27 +1,29 @@
 package io.github.lrq3000.utterlane.asr
 
-/** Corrections run on speech only; their trailing buffer belongs to one speaker. */
+/** Corrections own wording; speaker labels are formatting metadata applied afterward. */
 class SpeakerText(private val corrections: StreamingCorrections, private val label: (Int) -> String) {
     private var speaker: Int? = null
-    private var needsLabel = true
     private var emitted = false
-    fun accept(spans: List<SpeechSpan>): List<String> {
-        val result = mutableListOf<String>()
+
+    fun accept(spans: List<SpeechSpan>): List<String> = format(corrections.acceptSpans(spans))
+        .takeIf { it.isNotEmpty() }?.let { listOf(it) }.orEmpty()
+
+    fun finish(): String = format(corrections.finishSpans())
+
+    private fun format(spans: List<SpeechSpan>): String {
+        val output = StringBuilder()
         for (span in spans) {
-            if (span.text.isBlank()) continue
-            if (speaker != span.speaker) {
-                format(corrections.finish()).takeIf { it.isNotEmpty() }?.let { result += it }
-                speaker = span.speaker; needsLabel = true
+            if (span.text.isBlank()) {
+                output.append(span.text)
+                continue
             }
-            format(corrections.accept(span.text)).takeIf { it.isNotEmpty() }?.let { result += it }
+            if (speaker != span.speaker) {
+                if (emitted) output.append('\n')
+                output.append(label(span.speaker)).append(": ").append(span.text.trimStart())
+                speaker = span.speaker
+            } else output.append(span.text)
+            emitted = true
         }
-        return result
-    }
-    fun finish(): String = format(corrections.finish())
-    private fun format(text: String): String {
-        if (text.isBlank()) return ""
-        val prefix = if (needsLabel) (if (emitted) "\n" else "") + label(checkNotNull(speaker)) + ": " else ""
-        needsLabel = false; emitted = true
-        return prefix + text
+        return output.toString()
     }
 }

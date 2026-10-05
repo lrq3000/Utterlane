@@ -100,9 +100,10 @@ class DiarizedWindowProcessor(
         if (word.text.isBlank()) return
         val last = output.lastOrNull()
         // Preserve internal ASR whitespace (dictionary rules can depend on it).
-        // At an audio-window/callback boundary, Off also joins trimmed text with
-        // one space; within a window the recognizer's separator remains intact.
-        val text = if (last == null) word.text.trim() else word.text.trimEnd()
+        // Only an original audio-window boundary is normalized above. A delayed
+        // tail can start a callback mid-window: its leading separator still
+        // belongs to the recognizer and may be part of a multi-word correction.
+        val text = word.text.trimEnd()
         if (last?.speaker == speaker) output[output.lastIndex] = last.copy(text = last.text +
             (if (text.firstOrNull()?.isWhitespace() == true) "" else " ") + text)
         else output += SpeechSpan(text, speaker)
