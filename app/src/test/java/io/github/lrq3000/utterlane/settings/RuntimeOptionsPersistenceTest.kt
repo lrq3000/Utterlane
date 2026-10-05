@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.concurrent.atomic.AtomicInteger
 
 class RuntimeOptionsPersistenceTest {
     // DataStore 1.0 uses File.renameTo to replace files, which is not portable to
@@ -21,8 +22,11 @@ class RuntimeOptionsPersistenceTest {
     private class MemoryStore : DataStore<Preferences> {
         override val data = MutableStateFlow(emptyPreferences())
         private val mutex = Mutex()
-        override suspend fun updateData(transform: suspend (Preferences) -> Preferences): Preferences =
-            mutex.withLock { transform(data.value).also { data.value = it } }
+        var beforeUpdate: suspend () -> Unit = {}
+        override suspend fun updateData(transform: suspend (Preferences) -> Preferences): Preferences {
+            beforeUpdate()
+            return mutex.withLock { transform(data.value).also { data.value = it } }
+        }
     }
 
     @Test fun snapshotWritesAreAtomicAndResetKeepsOtherPreferences() = runBlocking {
@@ -45,5 +49,56 @@ class RuntimeOptionsPersistenceTest {
             assertEquals(RuntimeOptions(), repository.runtimeOptions.first())
             store.edit { it[intPreferencesKey("runtime_asr_threads")] = 8 }
             assertEquals(RuntimeOptions(), repository.runtimeOptions.first())
+    }
+
+    @Test fun overlappingIndependentGroupsMergeInsideTheTransaction() = runBlocking {
+        val store = MemoryStore()
+        val repository = SettingsRepository(store)
+        repository.setThemeMode(SettingsRepository.THEME_DARK)
+        val original = RuntimeOptions(queueSeconds = 42)
+        repository.setRuntimeOptions(original)
+        val arrivals = AtomicInteger()
+        val bothSubmitted = CompletableDeferred<Unit>()
+        // Hold both submissions before acquiring the store lock. An implementation
+        // which reads outside edit now deterministically has two stale snapshots.
+        store.beforeUpdate = {
+            if (arrivals.incrementAndGet() == 2) bothSubmitted.complete(Unit)
+            bothSubmitted.await()
+        }
+        withTimeout(3000) {
+            coroutineScope {
+                launch { repository.updateRuntimeGroup(RuntimeOptionGroup.CPU, mapOf("asr_threads" to "8")) }
+                launch { repository.updateRuntimeGroup(RuntimeOptionGroup.DIARIZATION, mapOf("speaker_threshold" to "0.7")) }
+            }
+        }
+        assertEquals(original.copy(asrThreads = 8, speakerThreshold = 0.7f), repository.runtimeOptions.first())
+        assertEquals(SettingsRepository.THEME_DARK, repository.themeMode.first())
+        assertEquals("Each group must use one edit transaction", 2, arrivals.get())
+    }
+
+    @Test fun invalidGroupDraftLeavesEveryPreferenceUntouched() = runBlocking {
+        val store = MemoryStore()
+        val repository = SettingsRepository(store)
+        repository.setRuntimeOptions(RuntimeOptions(asrThreads = 8, nativeFifoFrames = 32, nativeUpdateFrames = 32))
+        val before = store.data.value.asMap()
+        try {
+            repository.updateRuntimeGroup(RuntimeOptionGroup.EXPERIMENTAL, mapOf("native_fifo_frames" to "16"))
+            fail("FIFO cannot become smaller than the current update size")
+        } catch (_: IllegalArgumentException) { }
+        assertEquals(before, store.data.value.asMap())
+        repository.updateRuntimeGroup(RuntimeOptionGroup.EXPERIMENTAL,
+            mapOf("native_fifo_frames" to "16", "native_update_frames" to "16"))
+        assertEquals(RuntimeOptions(asrThreads = 8, nativeFifoFrames = 16, nativeUpdateFrames = 16), repository.runtimeOptions.first())
+    }
+
+    @Test fun groupDraftCannotOverwriteAnotherGroupsKeys() = runBlocking {
+        val store = MemoryStore()
+        val repository = SettingsRepository(store)
+        val before = store.data.value.asMap()
+        try {
+            repository.updateRuntimeGroup(RuntimeOptionGroup.CPU, mapOf("queue_seconds" to "42"))
+            fail("A group edit must reject keys from other groups")
+        } catch (_: IllegalArgumentException) { }
+        assertEquals(before, store.data.value.asMap())
     }
 }

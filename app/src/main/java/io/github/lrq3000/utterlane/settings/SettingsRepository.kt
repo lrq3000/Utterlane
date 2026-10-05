@@ -2,6 +2,7 @@ package io.github.lrq3000.utterlane.settings
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -36,6 +37,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         private val DIARIZATION_KEY = booleanPreferencesKey("speaker_diarization")
         private val SPEAKER_COUNT_KEY = intPreferencesKey("speaker_count")
         private val RUNTIME_KEYS = RuntimeOptions().toMap().keys.associateWith { stringPreferencesKey("runtime_$it") }
+        private val RUNTIME_GROUP_KEYS = RuntimeOptions.fields.groupBy { it.group }
+            .mapValues { (_, fields) -> fields.map { it.key }.toSet() }
 
         const val BUTTON_SIZE_SMALL = "small"   // 44dp
         const val BUTTON_SIZE_MEDIUM = "medium" // 56dp (default)
@@ -47,20 +50,41 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     // One DataStore transaction publishes a complete, validated snapshot. Reading raw
     // values also tolerates a wrongly typed preference left by a corrupt/older build.
-    val runtimeOptions: Flow<RuntimeOptions> = dataStore.data.map { preferences ->
+    val runtimeOptions: Flow<RuntimeOptions> = dataStore.data.map { readRuntimeOptions(it) }
+
+    private fun readRuntimeOptions(preferences: Preferences): RuntimeOptions {
         val raw = preferences.asMap()
-        RuntimeOptions.fromMap(RUNTIME_KEYS.mapNotNull { (name, key) ->
+        return RuntimeOptions.fromMap(RUNTIME_KEYS.mapNotNull { (name, key) ->
             (raw[key] as? String)?.let { name to it }
         }.toMap())
     }
 
     suspend fun setRuntimeOptions(options: RuntimeOptions) {
         val values = options.requireValid().toMap()
-        dataStore.edit { preferences -> values.forEach { (name, value) -> preferences[RUNTIME_KEYS.getValue(name)] = value } }
+        dataStore.edit { writeRuntimeOptions(it, values) }
+    }
+
+    private fun writeRuntimeOptions(preferences: MutablePreferences, values: Map<String, String>) {
+        values.forEach { (name, value) -> preferences[RUNTIME_KEYS.getValue(name)] = value }
     }
 
     suspend fun resetRuntimeOptions() {
         dataStore.edit { preferences -> RUNTIME_KEYS.values.forEach { preferences.remove(it) } }
+    }
+
+    suspend fun updateRuntimeGroup(group: RuntimeOptionGroup, draftValues: Map<String, String>) {
+        // Freeze the caller's draft before suspension; it can only affect its own group.
+        val draft = draftValues.toMap()
+        val allowed = RUNTIME_GROUP_KEYS.getValue(group)
+        require(draft.keys.all { it in allowed }) { "Draft contains keys outside runtime group $group" }
+        dataStore.edit { preferences ->
+            // Read, merge, validate and write under the same DataStore transaction.
+            // A prior Flow.first() could race with another independent group edit.
+            val latest = readRuntimeOptions(preferences).toMap()
+            val result = RuntimeOptions.parseDraft(latest + draft)
+            val options = requireNotNull(result.options) { result.errors.values.distinct().joinToString("; ") }
+            writeRuntimeOptions(preferences, options.toMap())
+        }
     }
 
     val serviceEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
