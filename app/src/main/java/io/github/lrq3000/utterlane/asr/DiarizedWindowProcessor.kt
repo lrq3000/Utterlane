@@ -103,15 +103,24 @@ class DiarizedWindowProcessor(
     private fun drain(output: SpanCollector) {
         while (pending.isNotEmpty()) {
             val word = pending.peekFirst()
-            val ready = count == 1 || timeline.endSample >= word.end +
+            val horizonReady = count == 1 || timeline.endSample >= word.end +
                 maxOf(options.labelLookaheadMs, paddingMs) * 16L
+            val labelReady = timeline.endSample >= word.end + options.labelLookaheadMs * 16L
+            // Committed probabilities inside the word cannot be changed by
+            // later input. Only undecided intervals need the longer horizon
+            // for alignment, gap bridging, or initial-speech backfill.
+            val directSpeaker = if (!finished && !horizonReady && labelReady) {
+                if (word.text.none { it.isLetterOrDigit() }) previous
+                else timeline.speakerDuring(word.start, word.end, previous, word.coarse, allowFallback = false)
+            } else -1
+            val ready = horizonReady || directSpeaker >= 0
             val expired = fed - word.end >= waitSamples
             if (!finished && !ready && !expired) break // Never wait for future input inside this call.
-            emit(pending.removeFirst(), output, forceUnknown = !ready && !finished)
+            emit(pending.removeFirst(), output, forceUnknown = !ready && !finished, directSpeaker = directSpeaker)
         }
     }
 
-    private fun emit(word: WindowText.Word, output: SpanCollector, forceUnknown: Boolean = false) {
+    private fun emit(word: WindowText.Word, output: SpanCollector, forceUnknown: Boolean = false, directSpeaker: Int = -1) {
         pendingCharacters -= word.text.length
         val speaker = when {
             count == 1 -> 0
@@ -119,6 +128,7 @@ class DiarizedWindowProcessor(
             // timestamp still controls text ownership, not a new voice label.
             word.text.none { it.isLetterOrDigit() } -> previous
             forceUnknown || word.end > timeline.endSample -> -1
+            directSpeaker >= 0 -> directSpeaker
             else -> timeline.speakerDuring(word.start, word.end, previous, word.coarse)
         }
         previous = speaker

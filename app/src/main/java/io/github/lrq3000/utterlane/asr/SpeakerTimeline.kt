@@ -88,14 +88,19 @@ class SpeakerTimeline(
         return identity(channelAt(frame))
     }
 
-    /** Integrate voiced evidence over a lexical interval, never just its onset. */
-    fun speakerDuring(start: Long, stop: Long, previous: Int = -1, coarse: Boolean = false): Int {
+    /**
+     * Integrate voiced evidence over a lexical interval, never just its onset.
+     * Callers can disable future-dependent fallbacks for early commitment.
+     */
+    fun speakerDuring(start: Long, stop: Long, previous: Int = -1, coarse: Boolean = false,
+                      allowFallback: Boolean = true): Int {
         require(start >= 0 && stop >= start)
         if (start < first * 160 || stop > endSample) return -1
         val evidence = evidence(start, stop)
         if (coarse && evidence.support.count { it >= 3 * 160 } > 1) return -1
         val winner = evidence.winner(previous)
         if (winner >= 0) return identity(winner)
+        if (!allowFallback) return -1
 
         val tolerance = options.alignmentToleranceMs * 16L
         // ASR endpoints can straddle an unvoiced onset/offset. Inspect only
