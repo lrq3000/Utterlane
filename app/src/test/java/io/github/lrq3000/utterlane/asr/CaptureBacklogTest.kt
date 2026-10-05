@@ -40,4 +40,14 @@ class CaptureBacklogTest {
         assertEquals(RecognitionStage.ERROR, metrics.state.value.recognition.stage)
         assertNotEquals(100, metrics.state.value.percent)
     }
+
+    @Test fun processedCallbackRacingAcceptedCaptureDoesNotLoseOwnership() {
+        val metrics = CaptureMetrics()
+        // queue.offer wakes its consumer before the recorder publishes its metrics.
+        metrics.processed(800, 20)
+        assertEquals(0.0, metrics.state.value.backlogSeconds, 0.0)
+        metrics.samples(ShortArray(800), true)
+        assertEquals(800, metrics.state.value.processedSamples)
+        assertEquals(0.0, metrics.state.value.backlogSeconds, 0.0)
+    }
 }

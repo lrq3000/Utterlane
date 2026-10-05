@@ -52,6 +52,9 @@ class UtterlaneApp : Application() {
     lateinit var recognizerManager: RecognizerManager
         private set
 
+    lateinit var recognitionDiagnostics: io.github.lrq3000.utterlane.diagnostics.LocalRecognitionDiagnostics
+        private set
+
     lateinit var dictionaryManager: DictionaryManager
         private set
 
@@ -77,7 +80,9 @@ class UtterlaneApp : Application() {
         settingsRepository = SettingsRepository(this)
         dictionaryManager = DictionaryManager(this)
         modelManager = ModelManager(this)
+        recognitionDiagnostics = io.github.lrq3000.utterlane.diagnostics.AndroidRecognitionDiagnostics.create(this)
         recognizerManager = RecognizerManager(this, modelManager)
+        recognizerManager.setActivityListener(recognitionDiagnostics::activity)
         // Application lifetime, not Settings lifetime: file transcription and
         // background microphone entry points share the same idle policy.
         applicationScope.launch(Dispatchers.IO) {

@@ -50,6 +50,8 @@ class MicrophoneSession(
             var phase = SessionFailure.Kind.MODEL
             var finalizationWarning: String? = null
             var activityObserver: Job? = null
+            var diagnosticObserver: Job? = null
+            var captureDiagnostics: io.github.lrq3000.utterlane.diagnostics.CaptureDiagnosticSession? = null
             val captureFailure = java.util.concurrent.atomic.AtomicReference<SessionFailure?>(null)
             val historyWriteFailed = java.util.concurrent.atomic.AtomicBoolean(false)
             try {
@@ -64,6 +66,8 @@ class MicrophoneSession(
                 // Capture, queue and every wake reopen retain one immutable snapshot.
                 // Preferences changed during recording take effect only next session.
                 val captureOptions = app.settingsRepository.runtimeOptions.first()
+                captureDiagnostics = app.recognitionDiagnostics.capture(captureOptions)
+                diagnosticObserver = launch { metrics.state.collect { captureDiagnostics.record(it) } }
                 metrics.model(app.modelManager.selected.value.name)
                 session = app.recognizerManager.createSession(onProcessed = { end, ms -> metrics.processed(end, ms) }) { delta ->
                     if (!cancelled) withContext(Dispatchers.Main) { onText(delta, session!!.store) }
@@ -171,6 +175,7 @@ class MicrophoneSession(
                 failure = SessionFailure(phase, e.message ?: context.getString(R.string.transcribe_error_failed))
             } finally {
                 activityObserver?.cancel()
+                diagnosticObserver?.cancel()
                 try {
                     recorder.stop()
                     withContext(NonCancellable + Dispatchers.IO) {
@@ -186,6 +191,7 @@ class MicrophoneSession(
                     }
                     withContext(NonCancellable + Dispatchers.Main) {
                         if (cancelled) metrics.cancelled() else metrics.completed(failure?.message)
+                        captureDiagnostics?.record(metrics.state.value)
                         if (!cancelled) finalizationWarning?.let { onWarning(it) }
                         if (resetRequested) onComplete(session?.store, SessionFailure(SessionFailure.Kind.MODEL, context.getString(R.string.model_reset_done)))
                         else if (!cancelled) onComplete(session?.store, failure)

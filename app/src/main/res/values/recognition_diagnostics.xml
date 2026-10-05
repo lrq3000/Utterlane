@@ -17,4 +17,12 @@
     <string name="recognition_times">active %1$.1f s · last progress %2$.1f s ago</string>
     <string name="recognition_opaque">Stage inferred; native computational progress unavailable. Waiting does not establish a native freeze.</string>
     <string name="recognition_backlog">Audio received %1$.1f s · processed %2$.1f s · backlog %3$.1f s</string>
+    <string name="diagnostics_title">Local recognition diagnostics</string>
+    <string name="diagnostics_enabled">Enabled for new operations. Active operations keep their original setting.</string>
+    <string name="diagnostics_disabled">Disabled for new operations. Enable Runtime diagnostics under Diagnostics and experimental cache to collect metrics.</string>
+    <string name="diagnostics_privacy">Content-free timing, sample counts, effective options, build and device metadata only. No audio, transcript or speaker probabilities. Two local cache logs, up to 1 MiB each, expire after 7 days of inactivity. Nothing is uploaded automatically. Share exports a snapshot; only the latest two exports are retained for up to 24 hours.</string>
+    <string name="diagnostics_share">Share diagnostics</string>
+    <string name="diagnostics_clear">Clear diagnostics</string>
+    <string name="diagnostics_cleared">Local logs and exports cleared; counters reset. Enabled active operations may create new records.</string>
+    <string name="diagnostics_action_failed">Could not access local diagnostics. Please try again.</string>
 </resources>

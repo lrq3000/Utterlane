@@ -77,6 +77,7 @@ fun AdvancedRecognitionSettings(repository: SettingsRepository = UtterlaneApp.in
                 Text(stringResource(R.string.advanced_reset_all))
             }
             if (editing == null) error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
+            LocalDiagnosticsPanel(enabled = current.diagnostics)
         }
     }
     val group = editing

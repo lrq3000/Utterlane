@@ -15,6 +15,8 @@ class RecognitionStatusTest {
             elapsedMillis = 10000, sinceProgressMillis = 0, completedUnits = 13))
         assertEquals(RecognitionStage.SPEAKER_TRANSFORMER, callback.stage)
         assertFalse(callback.opaque)
+        assertEquals(RecognitionStage.SPEAKER_FEATURES, RecognitionStatus.from(
+            RecognitionActivity(stage = "speaker_load/features", active = true)).stage)
     }
 
     @Test fun arbitraryNativeNamesAndMessagesDoNotCrossTheContentFreeBoundary() {

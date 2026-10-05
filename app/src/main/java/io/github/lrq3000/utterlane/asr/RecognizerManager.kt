@@ -46,6 +46,11 @@ class RecognizerManager(
     val failure: StateFlow<String?> = _failure
     private val _activity = MutableStateFlow(RecognitionActivity())
     val activity: StateFlow<RecognitionActivity> = _activity
+    @Volatile private var activityListener: (RecognitionActivity, RuntimeOptions) -> Unit = { _, _ -> }
+    // Snapshot changes only at the same safe boundary as backend.configure. Diagnostics
+    // must not read current preferences while a session still owns its old configuration.
+    private var activityOptions = RuntimeOptions()
+    fun setActivityListener(listener: (RecognitionActivity, RuntimeOptions) -> Unit) { activityListener = listener }
 
     suspend fun initialize(): Boolean = withModelOperation { expected ->
         withContext(Dispatchers.IO) {
@@ -126,6 +131,7 @@ class RecognizerManager(
                         // No active session may have its recovery budget changed by
                         // another caller. The inference mutex also excludes live JNI.
                         checkNotNull(recognizer).configure(options)
+                        activityOptions = options
                         runtimeConfiguration.applied(options)
                         return true
                     }
@@ -160,17 +166,23 @@ class RecognizerManager(
                 }
             }
             candidate.setActivityListener { activity ->
-                synchronized(stateLock) {
+                val observedOptions = synchronized(stateLock) {
                     // A request number is only unique within its worker. Both
                     // generation and backend identity guard a replacement's status.
-                    if (expected == generation && recognizer === ownedCandidate) _activity.value = activity
+                    if (expected == generation && recognizer === ownedCandidate) {
+                        _activity.value = activity
+                        activityOptions
+                    } else null
                 }
+                // Nonblocking content-free handoff, outside the manager ownership lock.
+                if (observedOptions != null) activityListener(activity, observedOptions)
             }
             candidate.configure(options)
             val published = synchronized(stateLock) {
                 if (expected != generation) false else {
                     // Publish before preparation: reset can abort a blocked worker load.
                     recognizer = candidate
+                    activityOptions = options
                     true
                 }
             }
