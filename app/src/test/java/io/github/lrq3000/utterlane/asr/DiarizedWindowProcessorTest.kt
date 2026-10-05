@@ -70,6 +70,13 @@ class DiarizedWindowProcessorTest {
         override fun close() {}
     }
 
+    private class ScriptedBackend(private vararg val results: WindowResult) : RecognitionBackend {
+        var calls = 0
+        override fun transcribeWindow(samples: ShortArray): WindowResult =
+            results.getOrNull(calls++) ?: WindowResult(emptyArray(), floatArrayOf())
+        override fun close() {}
+    }
+
     private class Frames(private val labels: IntArray) : SpeakerProbabilityStream {
         var fed = 0
         var calls = 0
@@ -160,6 +167,62 @@ class DiarizedWindowProcessorTest {
             val b = processor.process(AudioWindow(ShortArray(48000), 32000, 32000, 80000, true))
             assertEquals("first last first last", (a + b).joinToString(" ") { it.text.trim() })
             assertTrue((a + b).all { it.speaker == 0 })
+            assertEquals(2, asr.calls)
+        }
+    }
+
+    @Test fun confidentWordEmitsAtLabelLookaheadWithoutWaitingForTheLongerBridge() {
+        val asr = ScriptedBackend(WindowResult(arrayOf(" ready"), floatArrayOf(.1f), ends = floatArrayOf(.2f)))
+        val stream = Frames(IntArray(150) { 0 })
+        val options = RuntimeOptions(unknownBridgeMs = 1000, labelLookaheadMs = 300)
+        DiarizedWindowProcessor(asr, stream, 0, options = options).use { processor ->
+            assertTrue(processor.process(AudioWindow(ShortArray(7840), 0, 0, 7840)).isEmpty())
+            assertEquals(listOf(SpeechSpan("ready", 0)),
+                processor.process(AudioWindow(ShortArray(160), 7840, 7840, 8000)))
+            assertTrue(processor.process(AudioWindow(ShortArray(16000), 8000, 8000, 24000, true)).isEmpty())
+        }
+        assertEquals(3, asr.calls)
+        assertEquals(24000, stream.fed)
+    }
+
+    @Test fun briefDirectSpeakerTurnAlsoEmitsBeforeTheBridgeHorizon() {
+        val asr = Backend(WindowResult(arrayOf(" brief"), floatArrayOf(.1f), ends = floatArrayOf(.14f)))
+        val stream = Frames(IntArray(44) { if (it in 10..13) 1 else 0 })
+        DiarizedWindowProcessor(asr, stream, 0, options = RuntimeOptions(unknownBridgeMs = 1000)).use {
+            assertEquals(listOf(SpeechSpan("brief", 1)),
+                it.process(AudioWindow(ShortArray(7040), 0, 0, 7040)))
+        }
+        assertEquals(1, asr.calls)
+    }
+
+    @Test fun ambiguousPauseKeepsItsLeftEvidenceUntilTheConfiguredBridgeCanSeeTheReturningVoice() {
+        for (returning in listOf(0, 1)) {
+            val asr = ScriptedBackend(WindowResult(arrayOf(" pending"), floatArrayOf(1.4f), ends = floatArrayOf(1.56f)))
+            val stream = Frames(IntArray(270) { if (it < 100) 0 else if (it < 170) -1 else returning })
+            val options = RuntimeOptions(unknownBridgeMs = 1000, labelLookaheadMs = 80, alignmentToleranceMs = 0)
+            DiarizedWindowProcessor(asr, stream, 0, options = options).use { processor ->
+                assertTrue(processor.process(AudioWindow(ShortArray(26400), 0, 0, 26400)).isEmpty())
+                assertEquals(listOf(SpeechSpan("pending", if (returning == 0) 0 else -1)),
+                    processor.process(AudioWindow(ShortArray(15200), 26400, 26400, 41600)))
+                assertTrue(processor.process(AudioWindow(ShortArray(1600), 41600, 41600, 43200, true)).isEmpty())
+            }
+            assertEquals(3, asr.calls)
+            assertEquals(43200, stream.fed)
+        }
+    }
+
+    @Test fun firstSpeechBackfillWaitsForFullHorizonUnlessFinalFlushComesEarlier() {
+        for (final in listOf(false, true)) {
+            val asr = ScriptedBackend(WindowResult(arrayOf(" onset"), floatArrayOf(1.28f), ends = floatArrayOf(1.68f)))
+            val stream = Frames(IntArray(270) { if (it < 187) -1 else 0 })
+            DiarizedWindowProcessor(asr, stream, 0, options = RuntimeOptions(unknownBridgeMs = 1000)).use { processor ->
+                // Label lookahead is satisfied and first-speech fallback already
+                // has an answer, but the word itself has no direct evidence.
+                assertTrue(processor.process(AudioWindow(ShortArray(32000), 0, 0, 32000)).isEmpty())
+                val end = if (final) 32800L else 43200L
+                assertEquals(listOf(SpeechSpan("onset", 0)),
+                    processor.process(AudioWindow(ShortArray((end - 32000).toInt()), 32000, 32000, end, final)))
+            }
             assertEquals(2, asr.calls)
         }
     }
