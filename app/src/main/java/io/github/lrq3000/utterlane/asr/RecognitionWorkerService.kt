@@ -125,7 +125,7 @@ class RecognitionWorkerService : Service() {
     private fun decode(data: Bundle): Bundle {
         val result = checkNotNull(backend) { "Model is not loaded" }.transcribeWindow(readPcm(data))
         check(result.tokens.size == result.timestamps.size && result.tokens.size <= 8192) { "Invalid native result size" }
-        return Bundle().apply { putStringArray("tokens", result.tokens); putFloatArray("timestamps", result.timestamps); putString("text", result.text) }
+        return Bundle().apply { putStringArray("tokens", result.tokens); putFloatArray("timestamps", result.timestamps); putFloatArray("ends", result.ends); putString("text", result.text) }
     }
     private fun readPcm(data: Bundle): ShortArray {
         val bytes = requireNotNull(data.getByteArray("pcm"))

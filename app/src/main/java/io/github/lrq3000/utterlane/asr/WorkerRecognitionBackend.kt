@@ -95,7 +95,7 @@ class WorkerRecognitionBackend(context: Context, private val model: ModelDefinit
     override fun transcribeWindow(samples: ShortArray): WindowResult {
         val snapshot = options
         val result = request(RecognitionProtocol.DECODE, pcmBundle(samples), snapshot.inferenceStallSeconds, snapshot.absoluteOperationSeconds)
-        return WindowResult(requireNotNull(result.getStringArray("tokens")), requireNotNull(result.getFloatArray("timestamps")), result.getString("text"))
+        return WindowResult(requireNotNull(result.getStringArray("tokens")), requireNotNull(result.getFloatArray("timestamps")), result.getString("text"), result.getFloatArray("ends") ?: floatArrayOf())
     }
     private fun pcmBundle(samples: ShortArray): Bundle {
         require(samples.size in 1..RecognitionProtocol.MAX_SAMPLES)

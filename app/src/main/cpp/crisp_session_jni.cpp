@@ -57,7 +57,7 @@ Java_io_github_lrq3000_utterlane_asr_CrispGenericBackend_openNative(JNIEnv* env,
     return reinterpret_cast<jlong>(session);
 }
 
-extern "C" JNIEXPORT jstring JNICALL
+extern "C" JNIEXPORT jobjectArray JNICALL
 Java_io_github_lrq3000_utterlane_asr_CrispGenericBackend_decodeNative(JNIEnv* env, jobject, jlong handle, jfloatArray input) {
     try {
         if (!handle) throw std::runtime_error("Model is closed");
@@ -68,12 +68,40 @@ Java_io_github_lrq3000_utterlane_asr_CrispGenericBackend_decodeNative(JNIEnv* en
         const int n = crispasr_session_result_n_segments(result.get());
         if (n < 0 || n > 8192) throw std::runtime_error("Invalid transcription result");
         std::string text;
+        std::vector<std::string> words;
+        std::vector<jfloat> starts, ends;
         for (int i = 0; i < n; ++i) {
             const char* piece = crispasr_session_result_segment_text(result.get(), i);
             if (piece && *piece) { if (!text.empty()) text += ' '; text += piece; }
             if (text.size() > 128000) throw std::runtime_error("Transcription result exceeds IPC budget");
+            const int nw = crispasr_session_result_n_words(result.get(), i);
+            if (nw < 0 || nw + words.size() > 8192) throw std::runtime_error("Word metadata exceeds IPC budget");
+            for (int j = 0; j < nw; ++j) {
+                const char* word = crispasr_session_result_word_text(result.get(), i, j);
+                words.emplace_back(word ? word : "");
+                starts.push_back(crispasr_session_result_word_t0(result.get(), i, j) / 100.0f);
+                ends.push_back(crispasr_session_result_word_t1(result.get(), i, j) / 100.0f);
+            }
         }
-        return utf8(env, text.c_str());
+        // Preserve the authoritative full text. Timing metadata is optional and
+        // must never force a second ASR pass or silently remove unmatched words.
+        auto pieces = env->NewObjectArray(words.size(), env->FindClass("java/lang/String"), nullptr);
+        auto t0 = env->NewFloatArray(words.size());
+        auto t1 = env->NewFloatArray(words.size());
+        for (size_t i = 0; i < words.size(); ++i) {
+            auto word = utf8(env, words[i].c_str());
+            env->SetObjectArrayElement(pieces, i, word); env->DeleteLocalRef(word);
+        }
+        if (!words.empty()) {
+            env->SetFloatArrayRegion(t0, 0, words.size(), starts.data());
+            env->SetFloatArrayRegion(t1, 0, words.size(), ends.data());
+        }
+        auto output = env->NewObjectArray(4, env->FindClass("java/lang/Object"), nullptr);
+        auto raw = utf8(env, text.c_str());
+        env->SetObjectArrayElement(output, 0, pieces); env->SetObjectArrayElement(output, 1, t0);
+        env->SetObjectArrayElement(output, 2, t1); env->SetObjectArrayElement(output, 3, raw);
+        env->DeleteLocalRef(pieces); env->DeleteLocalRef(t0); env->DeleteLocalRef(t1); env->DeleteLocalRef(raw);
+        return output;
     } catch (const std::exception& e) { error(env, e.what()); return nullptr; }
 }
 
