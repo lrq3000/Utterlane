@@ -194,6 +194,8 @@ Java_io_github_lrq3000_utterlane_asr_CrispSpeakerStream_pushNative(JNIEnv* env, 
         std::vector<float> combined;
         auto collect = [&](float* raw, int rows) {
             std::unique_ptr<float, decltype(&std::free)> data(raw, std::free);
+            if (utterlane_n3d_stream_failed(owner->stream))
+                throw std::runtime_error("Native speaker inference failed; the speaker session must be restarted");
             if (rows < 0 || rows > 1400 || (rows > 0 && !raw)) throw std::runtime_error("Invalid diarization result");
             if (rows) combined.insert(combined.end(), raw, raw + rows * 8);
         };

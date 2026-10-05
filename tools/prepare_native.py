@@ -20,15 +20,15 @@ class NativeSources:
     def git(self, *args):
         return subprocess.check_output(["git", "-C", str(self.source), *args], text=True).strip()
 
-    def adaptations(self):
+    def adaptations(self, failure_state=True):
         cmake = self.git("show", "HEAD:src/CMakeLists.txt")
         cache = self.git("show", "HEAD:src/crispasr_cache.cpp")
         entry = "static bool fetch_download(const std::string& url, const std::string& dest, bool quiet) {"
         if cache.count(entry) != 1:
             raise RuntimeError("Pinned native download entry point changed; review the Android offline adaptation")
         return {
-            "src/nemotron3_diar.h": adapt_header(self.git("show", "HEAD:src/nemotron3_diar.h") + "\n").strip(),
-            "src/nemotron3_diar.cpp": adapt_source(self.git("show", "HEAD:src/nemotron3_diar.cpp") + "\n").strip(),
+            "src/nemotron3_diar.h": adapt_header(self.git("show", "HEAD:src/nemotron3_diar.h") + "\n", failure_state).strip(),
+            "src/nemotron3_diar.cpp": adapt_source(self.git("show", "HEAD:src/nemotron3_diar.cpp") + "\n", failure_state).strip(),
             "src/CMakeLists.txt": cmake.replace("${CMAKE_SOURCE_DIR}", "${PROJECT_SOURCE_DIR}"),
             # Missing companion weights must be imported by the user, not fetched
             # by a hidden native curl/wget subprocess on rooted Android devices.
@@ -44,8 +44,11 @@ class NativeSources:
         dirty = self.git("status", "--porcelain", "--untracked-files=no")
         if dirty:
             known = self.adaptations()
+            previous = self.adaptations(failure_state=False)
             changed = self.git("diff", "--name-only", "HEAD").splitlines()
-            if not changed or any(name not in known or (self.source / name).read_text(encoding="utf-8").strip() != known[name] for name in changed):
+            # Permit only the exact earlier application-generated adaptation to
+            # upgrade. Unrelated local native edits are still never overwritten.
+            if not changed or any(name not in known or (self.source / name).read_text(encoding="utf-8").strip() not in (known[name], previous[name]) for name in changed):
                 raise RuntimeError("Native source checkout has changes; refusing to overwrite it")
         if self.git("rev-parse", "HEAD") != CRISP_REVISION:
             self.git("fetch", "--quiet", "--depth", "1", "origin", CRISP_REVISION)
