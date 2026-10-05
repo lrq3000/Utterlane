@@ -60,6 +60,45 @@ The optional fixture `*_transcript_no-diarization.txt` is repeated for its
 gold-consistency comparison too. Candidate output is always read exactly as
 supplied, never repeated. Original fixture files are read-only throughout.
 
+### Same-build On/Off word parity
+
+Use `--plain-baseline PATH` to compare the candidate's words with an actual
+diarization-Off transcript of the **same audio, recorded with the same build**:
+
+```console
+python tools/qa/diarization_regression.py /path/to/fixtures /path/to/on.txt --recording recording-id --repeat-reference 2 --plain-baseline /path/to/off-full-recording.txt --format json --check
+python tools/qa/diarization_regression.py /path/to/fixtures /path/to/on-directory --plain-baseline /path/to/off-directory --format json
+```
+
+A file applies to exactly one evaluated recording (several candidate runs of
+that recording are allowed). A directory must contain exactly one of
+`<recording>_transcript_no-diarization.txt` or `<recording>.txt` for each evaluated
+recording. Missing, empty, ambiguous, or conflicting known-recording baselines
+are errors. Supply explicit files or select `--recording` for arbitrary names.
+
+Each candidate gets a `plain_baseline` object (null when omitted):
+
+- `path`: the actual Off transcript used.
+- `text`: the usual word-only edit counts, WER and coverage, with **Off words
+  as the reference denominator** and On words as the candidate. This includes
+  `reference_words`, `candidate_words`, `matched_reference_coverage`,
+  `aligned_reference_coverage` and `trailing_reference_deletions`.
+- `identical_normalized_words`: true exactly when the two complete normalized
+  word sequences match. There is no speaker comparison against this baseline.
+
+This comparison is diagnostic only. Existing gold metrics and strict `--check`
+thresholds still apply independently. If On and Off make the same ASR
+substitution, parity is true and paired WER is zero, while **gold WER remains
+nonzero and strict acceptance fails**. Conversely, different On/Off words do
+not automatically establish worse accuracy: consult gold scoring to distinguish
+a regression from a correction.
+
+Unlike the static fixture's gold-consistency text, an explicit plain baseline
+is **never auto-repeated**, even with `--repeat-reference`. Supply the complete
+Off output for the concatenated audio; continuous recognition windows can
+produce different words in successive copies. An incomplete baseline stays
+incomplete and its actual word counts and candidate insertions remain visible.
+
 ## Metrics and denominators
 
 JSON has `schema_version: 1`, a `recordings` array, and an `acceptance` object.
