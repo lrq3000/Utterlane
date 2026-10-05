@@ -42,13 +42,19 @@ class DiarizedWindowProcessor(
         val end = window.startSample + window.samples.size
         require(window.samples.size <= 192000 && window.startSample <= fed && fed <= end &&
             window.ownedStart >= window.startSample && window.ownedEnd <= end)
-        // Exactly one recognition pass on the original PCM/context in every mode.
-        // Generic models without trustworthy times keep their complete raw text.
-        val result = backend.transcribeWindow(window.samples)
+        // Match Off's ASR input: built-in models use overlap; custom models
+        // decode disjoint ownership once. Their times are relative to this
+        // sliced PCM, so its absolute origin must move with the slice too.
+        val recognitionWindow = if (textOnly) window.copy(
+            samples = window.samples.copyOfRange((window.ownedStart - window.startSample).toInt(),
+                (window.ownedEnd - window.startSample).toInt()),
+            startSample = window.ownedStart
+        ) else window
+        val result = backend.transcribeWindow(recognitionWindow.samples)
         val words = when {
-            textOnly && result.text != null -> WindowText.alignRawText(result, window) ?: rawText(result, window)
-            WindowText.hasTimings(result) -> WindowText.ownedWords(result.tokens, result.timestamps, window, result.ends)
-            else -> rawText(result, window)
+            textOnly && result.text != null -> WindowText.alignRawText(result, recognitionWindow) ?: rawText(result, recognitionWindow)
+            WindowText.hasTimings(result) -> WindowText.ownedWords(result.tokens, result.timestamps, recognitionWindow, result.ends)
+            else -> rawText(result, recognitionWindow)
         }
         val output = SpanCollector()
         if (count != 1) {

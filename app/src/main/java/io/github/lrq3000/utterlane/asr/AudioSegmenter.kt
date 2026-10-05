@@ -138,10 +138,10 @@ object WindowText {
         val suffix = text.substring(cursor)
         if (suffix.any { it.isLetterOrDigit() }) return null
         aligned[aligned.lastIndex] += suffix
-        // The existing generic Off contract emits full result.text, including
-        // context. Timing adds labels only; changing text ownership is separate.
-        return ownedWords(aligned, result.timestamps,
-            window.copy(ownedStart = window.startSample, ownedEnd = window.startSample + window.samples.size), result.ends)
+        // The caller supplies the actual recognition PCM window. For custom
+        // models this is disjoint ownership, with timestamps rebased to its
+        // origin; raw-text alignment must not expand it back into overlap.
+        return ownedWords(aligned, result.timestamps, window, result.ends)
     }
 
     fun select(tokens: Array<String>, timestamps: FloatArray, window: AudioWindow, sampleRate: Int = 16000): String {
