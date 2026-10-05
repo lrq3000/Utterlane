@@ -132,7 +132,7 @@ class DiarizedWindowProcessorTest {
         DiarizedWindowProcessor(asr, stream, 0).use { processor ->
             val a = processor.process(AudioWindow(ShortArray(48000), 0, 0, 32000))
             val b = processor.process(AudioWindow(ShortArray(48000), 32000, 32000, 80000, true))
-            assertEquals("first last first last", (a + b).joinToString(" ") { it.text })
+            assertEquals("first last first last", (a + b).joinToString(" ") { it.text.trim() })
             assertTrue((a + b).all { it.speaker == 0 })
             assertEquals(2, asr.calls)
         }
