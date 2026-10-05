@@ -27,10 +27,11 @@ class DiarizedWindowProcessor(
         else -> (6 + 2) * 80
     }
     private val paddingMs = maxOf(options.alignmentToleranceMs, options.unknownBridgeMs, options.speakerConfirmationMs)
+    private val historyMs = maxOf(paddingMs, 2 * options.unknownBridgeMs)
     private val waitSamples = (nativeLagMs + options.labelLookaheadMs + paddingMs + 20) * 16L
     // Retain the pending word's entire (possibly untimed) window, its wait budget,
     // and one incoming IPC window. This is independent of recording duration.
-    private val timeline = SpeakerTimeline(count, ((2 * 192000 + waitSamples + paddingMs * 16L + 319) / 160).toInt(), options)
+    private val timeline = SpeakerTimeline(count, ((2 * 192000 + waitSamples + historyMs * 16L + 319) / 160).toInt(), options)
     private val pending = ArrayDeque<WindowText.Word>()
     private var pendingCharacters = 0
     private var fed = 0L
@@ -59,7 +60,7 @@ class DiarizedWindowProcessor(
         }
         val output = SpanCollector()
         if (count != 1) {
-            val keepFrom = minOf(pending.peekFirst()?.start ?: window.startSample, window.startSample) - paddingMs * 16L
+            val keepFrom = minOf(pending.peekFirst()?.start ?: window.startSample, window.startSample) - historyMs * 16L
             timeline.discardBefore(keepFrom.coerceAtLeast(0))
             val fresh = window.samples.copyOfRange((fed - window.startSample).toInt(), window.samples.size)
             timeline.append(stream.push(fresh, window.isFinal))

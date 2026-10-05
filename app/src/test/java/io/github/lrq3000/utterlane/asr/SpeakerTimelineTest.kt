@@ -270,6 +270,55 @@ class SpeakerTimelineTest {
 
     private fun trackFrames(count: Int, channel: Int) = FloatArray(count * 8) { if (it % 8 == channel) .95f else .01f }
 
+    @Test fun newSpeechIslandUsesReturningVoiceAfterProvenSilenceRatherThanPreviousIdentity() {
+        for (count in listOf(0, 2)) {
+            val timeline = speechIslandTimeline(count)
+            assertEquals(if (count == 0) 6 else 0,
+                timeline.speakerDuring(5540 * 16L, 5860 * 16L, previous = if (count == 0) 4 else 1))
+        }
+    }
+
+    @Test fun speechIslandCannotInferSilenceFromAPrunedLookback() {
+        val timeline = speechIslandTimeline()
+        timeline.discardBefore(5300 * 16L)
+        assertEquals(-1, timeline.speakerDuring(5540 * 16L, 5860 * 16L, previous = 4))
+    }
+
+    @Test fun speechIslandDoesNotReachBeyondConfiguredFutureGap() {
+        val timeline = speechIslandTimeline(silentFrames = 500)
+        assertEquals(-1, timeline.speakerDuring(5540 * 16L, 5860 * 16L, previous = 4))
+    }
+
+    @Test fun speechIslandRejectsCompetitionInLookbackOrBeforeTheFollowingOnset() {
+        for (competingFrame in listOf(500, 590)) {
+            val timeline = speechIslandTimeline(competingFrame = competingFrame)
+            assertEquals(-1, timeline.speakerDuring(5540 * 16L, 5860 * 16L, previous = 4))
+        }
+    }
+
+    @Test fun speechIslandNeverOverridesABriefRealWordTurn() {
+        val timeline = speechIslandTimeline(interjection = true)
+        assertEquals(4, timeline.speakerDuring(5540 * 16L, 5860 * 16L, previous = 6))
+    }
+
+    private fun speechIslandTimeline(count: Int = 0, silentFrames: Int = 400, competingFrame: Int = -1,
+                                     interjection: Boolean = false): SpeakerTimeline {
+        val timeline = SpeakerTimeline(count, options = RuntimeOptions(unknownBridgeMs = 1000))
+        timeline.append(FloatArray((300 + silentFrames) * 8) { i ->
+            val frame = i / 8
+            val channel = i % 8
+            when {
+                competingFrame >= 0 && frame in competingFrame until competingFrame + 3 ->
+                    if (channel == 4 || channel == 6) .8f else .01f
+                interjection && frame in 560..563 -> if (channel == 4) .95f else .01f
+                frame < 100 || frame >= 200 + silentFrames -> if (channel == 6) .95f else .01f
+                frame < 200 -> if (channel == 4) .95f else .01f
+                else -> .01f
+            }
+        })
+        return timeline
+    }
+
     private fun alignmentTimeline(tolerance: Int, probability: (Int, Int) -> Float) =
         // Isolate timestamp tolerance from independently configurable gap bridging.
         SpeakerTimeline(0, options = RuntimeOptions(alignmentToleranceMs = tolerance, unknownBridgeMs = 350)).apply {
