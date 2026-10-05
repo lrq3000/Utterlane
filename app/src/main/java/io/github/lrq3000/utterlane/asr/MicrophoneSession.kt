@@ -53,6 +53,9 @@ class MicrophoneSession(
             try {
                 power = TranscriptionPower(context) { recorder.resumeAfterSleep() }
                 val app = UtterlaneApp.instance
+                // Capture, queue and every wake reopen retain one immutable snapshot.
+                // Preferences changed during recording take effect only next session.
+                val captureOptions = app.settingsRepository.runtimeOptions.first()
                 metrics.model(app.modelManager.selected.value.name)
                 session = app.recognizerManager.createSession(onProcessed = { end, ms -> metrics.processed(end, ms) }) { delta ->
                     if (!cancelled) withContext(Dispatchers.Main) { onText(delta, session!!.store) }
@@ -68,7 +71,7 @@ class MicrophoneSession(
                     Log.e("MicrophoneSession", warning, e)
                     withContext(Dispatchers.Main) { onWarning(warning) }
                 }
-                val queue = BoundedAudioQueue()
+                val queue = BoundedAudioQueue(captureOptions)
                 coroutineScope {
                     val ticker = launch { while (isActive) { metrics.tick(); delay(200) } }
                     val capture = launch(Dispatchers.IO) {
@@ -79,7 +82,7 @@ class MicrophoneSession(
                                 override fun onStarted() { metrics.started() }
                                 override fun onSilenced(silenced: Boolean) { metrics.silenced(silenced) }
                             })
-                            recorder.startRecording({ samples ->
+                            recorder.startRecording(captureOptions, { samples ->
                                 val accepted = queue.offer(samples)
                                 metrics.samples(samples, accepted)
                                 if (!accepted) {
