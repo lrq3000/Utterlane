@@ -2,6 +2,8 @@ package io.github.lrq3000.utterlane.asr
 
 import android.util.Log
 import io.github.lrq3000.utterlane.settings.RuntimeOptions
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /** File and live sources share ownership, corrections and append-only result delivery. */
 class TranscriptionSession(
@@ -18,30 +20,54 @@ class TranscriptionSession(
     private val speakerText = if (decodeSpeakers != null) SpeakerText(corrections, speakerLabel) else null
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
     private val segmenter = AudioSegmenter(flushPendingOnFinish = decodeSpeakers != null, options = options) { window ->
+        if (!mayContinue()) return@AudioSegmenter
         val started = System.nanoTime()
         if (decodeSpeakers != null) {
-            for (text in checkNotNull(speakerText).accept(decodeSpeakers.invoke(window))) emit(text)
-        } else emit(corrections.accept(decode(window)))
+            val spans = decodeSpeakers.invoke(window)
+            if (!mayContinue()) return@AudioSegmenter
+            for (text in checkNotNull(speakerText).accept(spans)) emit(text)
+        } else {
+            val text = decode(window)
+            if (!mayContinue()) return@AudioSegmenter
+            emit(corrections.accept(text))
+        }
+        if (!mayContinue()) return@AudioSegmenter
         onProcessed(window.ownedEnd, (System.nanoTime() - started) / 1000000)
+        if (!mayContinue()) return@AudioSegmenter
         Log.i("TranscriptionSession", "Segment ${window.ownedStart}..${window.ownedEnd}; input=${window.samples.size}; completed=${store.segments}")
     }
     private var finished = false
     suspend fun accept(samples: ShortArray) {
         check(!closed.get()) { "Transcription session is closed" }
+        if (!mayContinue()) return
         segmenter.accept(samples)
+        currentCoroutineContext().ensureActive()
     }
     suspend fun finish() {
         if (finished || closed.get()) return
         try {
+            if (!mayContinue()) return
             segmenter.finish()
+            if (!mayContinue()) return
             emit(speakerText?.finish() ?: corrections.finish())
+            if (!mayContinue()) return
             finished = true
         } finally { close() }
     }
     override fun close() { if (closed.compareAndSet(false, true)) onClosed() }
+
+    // Closing does not itself cancel an in-flight decoder or callback. Check
+    // both signals after suspension so a late result cannot enter corrections,
+    // publish text, or trigger the deferred final flush after its owner closes.
+    private suspend fun mayContinue(): Boolean {
+        currentCoroutineContext().ensureActive()
+        return !closed.get()
+    }
+
     private suspend fun emit(text: String) {
-        if (text.isBlank()) return
+        if (text.isBlank() || !mayContinue()) return
         store.append(text)
+        if (!mayContinue()) return
         onSegment(text.trimEnd())
     }
 }
