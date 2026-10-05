@@ -113,3 +113,50 @@ coverage and unknown-rate limits are at most 1; count limits are integers.
 An undefined metric fails its check. JSON includes thresholds and individual
 failures with the actual value and comparison, even in report-only mode.
 Results are never averaged across recordings to hide a failed recording.
+
+## Optional performance JSONL
+
+Pass `--performance-jsonl /path/to/timing.jsonl` (repeatable) to include a
+`performance` summary alongside the quality results. Without timing input,
+`performance` is null. Timing summaries are observational and do not affect
+the transcript acceptance thresholds. No timing is inferred from audio or
+text length.
+
+Emit one JSON object per completed chunk or stage; blank lines are allowed.
+Example instrumentation records:
+
+```jsonl
+{"recording":"sample","run_id":"run1","phase":"cold","stage":"model_load","elapsed_ms":4200}
+{"recording":"sample","run_id":"run1","phase":"warm","stage":"chunk","chunk_id":1,"elapsed_ms":240,"audio_ms":1000,"backlog_ms":0}
+{"recording":"sample","run_id":"run1","phase":"warm","stage":"speaker_embedding","chunk_id":1,"elapsed_ms":90,"audio_ms":1000,"backlog_ms":0}
+```
+
+| Field | Contract |
+| --- | --- |
+| `elapsed_ms` | Required finite, nonnegative numeric wall duration for this event. |
+| `recording`, `run_id` | Optional nonempty strings; default `unspecified`. Include run identity when combining files from different executions. |
+| `phase` | `cold`, `warm`, or `unspecified` (default). The producer classifies cold initialization explicitly; the scorer never guesses from chunk numbers. |
+| `stage` | Optional nonempty string, default `chunk`. Use distinct stages for end-to-end chunk latency and nested operations. |
+| `chunk_id` | Optional nonnegative integer or nonempty string. Unique within a recording/run/phase/stage; duplicates are rejected, including across files. Omit for non-chunk stages such as loading. |
+| `audio_ms` | Optional finite **positive** audio duration processed by this event, for RTF. Omit/null for loading or events without an audio-duration denominator. |
+| `backlog_ms` | Optional finite nonnegative queued-audio duration sampled at a consistent point (for example, after processing the chunk). Omit/null when unavailable. |
+
+Additional keys are ignored so instrumentation can include device, timestamp,
+thread, backend, or memory details. Invalid records fail with file and line
+context; an empty performance stream fails instead of presenting empty success.
+
+Groups are keyed by `(recording, run_id, phase, stage)`. Each group contains
+event count, total/mean/p50/p95/max elapsed milliseconds, per-chunk observations,
+and backlog sample count/mean/max/last. Percentiles use nearest rank, not
+interpolation; `last` follows file argument order then line order (no implied
+timestamp sorting).
+
+`rtf = sum(elapsed_ms) / sum(audio_ms)` using **only events with audio_ms** in
+both sums. `rtf_event_count`, `rtf_elapsed_ms`, and `rtf_audio_ms` expose that
+scope. Missing denominators give null RTF, not zero. This is duration-weighted
+RTF, not the unweighted average of chunk ratios. An RTF above 1 means the
+measured stage takes longer than its supplied audio duration. For overlapping
+windows, that duration is processed-window audio, not necessarily new incoming
+audio: use end-to-end `chunk` events and unique incoming audio durations to
+evaluate streaming throughput. Do not add nested/overlapping stage totals;
+the scorer deliberately reports stages and cold/warm phases separately.

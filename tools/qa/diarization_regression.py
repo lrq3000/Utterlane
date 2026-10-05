@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 import json
 import math
@@ -351,6 +351,98 @@ class FixtureRunner:
         raise ValueError(f"Cannot associate {path} with a reference; use '<recording>_transcript_<tag>.txt' or --recording")
 
 
+class PerformanceSummary:
+    """Summarize explicit instrumentation without inferring timing from text.
+
+    Phases, runs and stages stay separate: adding overlapping stage durations
+    or pooling cold model loads with warm chunks creates misleading RTFs.
+    """
+
+    DIMENSIONS = ("recording", "run_id", "phase", "stage")
+
+    def read(self, paths):
+        return self._summarize(self._read_events(paths))
+
+    def _read_events(self, paths):
+        for path in paths:
+            with path.open(encoding="utf-8-sig") as source:
+                for number, line in enumerate(source, 1):
+                    if not line.strip():
+                        continue
+                    try:
+                        event = self._event(json.loads(line))
+                    except ValueError as error:
+                        raise ValueError(f"{path}:{number}: {error}") from error
+                    event["source"] = f"{path}:{number}"
+                    yield event
+
+    def summarize(self, records):
+        return self._summarize(self._event(record) for record in records)
+
+    def _event(self, record):
+        if not isinstance(record, dict):
+            raise ValueError("Performance record must be a JSON object")
+        event = {}
+        for name in self.DIMENSIONS:
+            value = record.get(name, "chunk" if name == "stage" else "unspecified")
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be a nonempty string")
+            event[name] = value.strip()
+        if event["phase"] not in ("cold", "warm", "unspecified"):
+            raise ValueError("phase must be cold, warm or unspecified")
+        for name in ("elapsed_ms", "audio_ms", "backlog_ms"):
+            value = record.get(name)
+            if value is None and name != "elapsed_ms":
+                event[name] = None
+                continue
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or not math.isfinite(value) or value < 0 or (name == "audio_ms" and value == 0)):
+                raise ValueError(f"{name} must be a finite {'positive' if name == 'audio_ms' else 'nonnegative'} number")
+            event[name] = value
+        chunk = record.get("chunk_id")
+        if chunk is not None and not ((type(chunk) is int and chunk >= 0) or (isinstance(chunk, str) and chunk.strip())):
+            raise ValueError("chunk_id must be a nonnegative integer or nonempty string")
+        event["chunk_id"] = chunk
+        return event
+
+    def _summarize(self, events):
+        groups, seen = defaultdict(list), set()
+        for event in events:
+            key = tuple(event[name] for name in self.DIMENSIONS)
+            if event["chunk_id"] is not None:
+                identity = (*key, event["chunk_id"])
+                if identity in seen:
+                    raise ValueError(f"{event.get('source', 'Performance data')}: duplicate chunk/stage event {identity}")
+                seen.add(identity)
+            groups[key].append(event)
+        if not groups:
+            raise ValueError("Performance input contains no events")
+        summaries = []
+        for key, records in sorted(groups.items()):
+            elapsed = sorted(record["elapsed_ms"] for record in records)
+            paired = [record for record in records if record["audio_ms"] is not None]
+            audio_ms = sum(record["audio_ms"] for record in paired)
+            paired_elapsed = sum(record["elapsed_ms"] for record in paired)
+            backlog = [record["backlog_ms"] for record in records if record["backlog_ms"] is not None]
+            summaries.append({
+                **dict(zip(self.DIMENSIONS, key)), "event_count": len(records),
+                "elapsed_ms": {"total": sum(elapsed), "mean": sum(elapsed) / len(elapsed),
+                               "p50": elapsed[math.ceil(len(elapsed) * 0.5) - 1],
+                               "p95": elapsed[math.ceil(len(elapsed) * 0.95) - 1], "max": elapsed[-1]},
+                # Use only paired durations in both numerator and denominator.
+                # Missing audio duration must not inflate or dilute the RTF.
+                "rtf": paired_elapsed / audio_ms if paired else None,
+                "rtf_event_count": len(paired), "rtf_elapsed_ms": paired_elapsed, "rtf_audio_ms": audio_ms,
+                "backlog_ms": {"count": len(backlog), "mean": sum(backlog) / len(backlog),
+                               "max": max(backlog), "last": backlog[-1]} if backlog else None,
+                "chunks": [{"chunk_id": record["chunk_id"], "elapsed_ms": record["elapsed_ms"],
+                            "audio_ms": record["audio_ms"], "backlog_ms": record["backlog_ms"],
+                            "rtf": record["elapsed_ms"] / record["audio_ms"] if record["audio_ms"] is not None else None}
+                           for record in records if record["chunk_id"] is not None],
+            })
+        return {"event_count": sum(len(records) for records in groups.values()), "groups": summaries}
+
+
 class ScorerCli:
     # Strict defaults give --check a useful meaning without extra switches.
     # Thresholds apply to every candidate independently, never to an average.
@@ -377,6 +469,8 @@ class ScorerCli:
         parser.add_argument("candidates", type=Path, nargs="*", help="Text files or directories; default: fixture current-diarization files")
         parser.add_argument("--recording", help="Select one reference recording (also permits arbitrary candidate filenames)")
         parser.add_argument("--format", choices=("text", "json"), default="text")
+        parser.add_argument("--performance-jsonl", type=Path, action="append", default=[],
+                            help="Optional timing records; repeat for multiple files (schema in docs/qa/diarization-scoring.md)")
         parser.add_argument("--check", action="store_true", help="Exit 1 if any acceptance threshold fails (strict defaults)")
         for name, _, _, default, _ in self.LIMITS:
             parser.add_argument("--" + name.replace("_", "-"), type=self.nonnegative, default=default)
@@ -404,6 +498,7 @@ class ScorerCli:
             output = {
                 "schema_version": 1, "metric_kind": "timestamp-free word and speaker evaluation; not DER",
                 "recordings": reports,
+                "performance": PerformanceSummary().read(args.performance_jsonl) if args.performance_jsonl else None,
                 "acceptance": {"passed": not failures, "checked": args.check,
                                "thresholds": {name: getattr(args, name) for name, *_ in self.LIMITS}, "failures": failures},
             }
@@ -445,6 +540,14 @@ class ScorerCli:
         for failure in acceptance["failures"]:
             print(f"  {Path(failure['candidate']).name}: {failure['metric']}={failure['actual']} "
                   f"requires {failure['comparison']} {failure['threshold']}")
+        if output["performance"]:
+            print("\nPerformance (separate recording/run/phase/stage groups):")
+            for group in output["performance"]["groups"]:
+                elapsed, rtf, backlog = group["elapsed_ms"], group["rtf"], group["backlog_ms"]
+                print(f"  {group['recording']}/{group['run_id']}/{group['phase']}/{group['stage']}: "
+                      f"{group['event_count']} events; total {elapsed['total']:g} ms; "
+                      f"p95 {elapsed['p95']:g} ms; RTF {f'{rtf:.3f}' if rtf is not None else 'n/a'}; "
+                      f"backlog max {str(backlog['max']) + ' ms' if backlog else 'n/a'}")
 
 
 if __name__ == "__main__":
