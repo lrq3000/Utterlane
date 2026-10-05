@@ -22,7 +22,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /** Editors keep a whole group as a draft: FIFO/update and window/context can change together. */
@@ -84,14 +83,7 @@ fun AdvancedRecognitionSettings(repository: SettingsRepository = UtterlaneApp.in
     val current = options
     if (group != null && current != null) {
         AdvancedGroupEditor(group, current, saving, error, onDismiss = { if (!saving) editing = null }) { draft ->
-            save {
-                // Merge only this group with the latest saved snapshot. Another editor
-                // changing a different group cannot be overwritten by an older dialog.
-                val latest = repository.runtimeOptions.first().toMap()
-                val result = RuntimeOptions.parseDraft(latest + draft)
-                requireNotNull(result.options) { result.errors.values.distinct().joinToString("; ") }
-                repository.setRuntimeOptions(result.options)
-            }
+            save { repository.updateRuntimeGroup(group, draft) }
         }
     }
 }
