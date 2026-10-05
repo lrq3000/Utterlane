@@ -36,6 +36,7 @@
     </script>
     <link rel="stylesheet" href="./src/styles.css">
     <link rel="stylesheet" href="./src/illustrations.css">
+    <link rel="stylesheet" href="./src/comparison.css">
     <script type="module" src="./src/main.ts"></script>
   </head>
   <body>
@@ -61,6 +62,15 @@
         <symbol id="voice-wave" viewBox="0 0 240 54"><path d="M10 22v10m12-16v22m12-28v34m12-23v12m12-29v46m12-33v20m12-27v34m12-42v50m12-31v12m12-22v32m12-40v48m12-37v26m12-20v14m12-29v44m12-33v22m12-16v10m12-21v32m12-24v16m12-12v8"/></symbol>
         <symbol id="scene-person" viewBox="0 0 60 84"><circle cx="30" cy="18" r="14" fill="currentColor"/><path d="M5 84V59a25 25 0 0 1 50 0v25" fill="currentColor"/><path d="M19 15q11-10 22 0" fill="none" stroke="#fff" stroke-opacity=".65" stroke-width="3" stroke-linecap="round"/></symbol>
         <symbol id="github" viewBox="0 0 24 24"><path stroke="none" fill="currentColor" d="M12 .7a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.2.8-.5v-2c-3.2.7-3.9-1.3-3.9-1.3-.5-1.3-1.3-1.6-1.3-1.6-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.3 1 .1-.8.4-1.3.7-1.6-2.5-.3-5.2-1.3-5.2-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11.2 11.2 0 0 1 5.8 0C17.3 5.4 18.3 5.7 18.3 5.7c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.2 5.7.4.3.8 1 .8 2.1v2.9c0 .3.2.6.8.5A11.5 11.5 0 0 0 12 .7Z"/></symbol>
+        <!-- Reusable parts keep the eight comparison scenes consistent without
+             requiring runtime illustration generation or external requests. -->
+        <symbol id="comparison-phone" viewBox="0 0 70 110"><rect x="2" y="2" width="66" height="106" rx="13" fill="#15263f"/><rect x="7" y="9" width="56" height="92" rx="8" fill="#eaf1ff"/><path d="M28 14h14" stroke="#b7cbea" stroke-width="3" stroke-linecap="round"/></symbol>
+        <symbol id="comparison-cloud" viewBox="0 0 100 65"><path d="M23 54C0 54 1 22 23 22 22-3 62-7 69 18 97 6 110 54 78 54Z" fill="#eaf1ff" stroke="#abc4e9" stroke-width="2"/></symbol>
+        <symbol id="comparison-paper" viewBox="0 0 60 80"><rect x="1" y="1" width="58" height="78" rx="9" fill="#fff" stroke="#c7d8f0" stroke-width="2"/><path d="M12 20h35m-35 12h27m-27 12h35m-35 12h20" stroke="#a0bde4" stroke-width="3" stroke-linecap="round"/></symbol>
+        <symbol id="comparison-person" viewBox="0 0 40 62"><circle cx="20" cy="13" r="12" fill="currentColor"/><path d="M2 60V42a18 18 0 0 1 36 0v18" fill="currentColor"/></symbol>
+        <symbol id="comparison-ground" viewBox="0 0 240 150"><ellipse cx="120" cy="136" rx="109" ry="10" fill="var(--comparison-ground, #e7eef9)"/></symbol>
+        <radialGradient id="comparison-shield-glow"><stop stop-color="#3ded92" stop-opacity=".5"/><stop offset="1" stop-color="#3ded92" stop-opacity="0"/></radialGradient>
+        <linearGradient id="comparison-shield-green" x1="0" x2="1" y2="1"><stop stop-color="#6bf5ad"/><stop offset=".45" stop-color="#13bd69"/><stop offset="1" stop-color="#087d46"/></linearGradient>
       </defs>
     </svg>
 
@@ -107,7 +117,7 @@
             <figcaption>Illustrative demo</figcaption>
           </figure>
         </div>
-        <div class="container hero-footer"><ul class="qualities"><li><svg class="icon" aria-hidden="true"><use href="#check"/></svg>On-device recognition</li><li><svg class="icon" aria-hidden="true"><use href="#check"/></svg>25 languages</li><li><svg class="icon" aria-hidden="true"><use href="#check"/></svg>No subscription</li></ul><a class="scroll-cue" href="#on-device">Less typing. More freedom. <svg class="icon" aria-hidden="true"><use href="#arrow-down"/></svg></a></div>
+        <div class="container hero-footer"><ul class="qualities"><li><svg class="icon" aria-hidden="true"><use href="#check"/></svg>On-device recognition</li><li><svg class="icon" aria-hidden="true"><use href="#check"/></svg>25 languages</li><li><svg class="icon" aria-hidden="true"><use href="#check"/></svg>No subscription</li></ul><a class="scroll-cue" href="#compare">Less typing. More freedom. <svg class="icon" aria-hidden="true"><use href="#arrow-down"/></svg></a></div>
       </section>
 
       <section class="speed-interlude" id="speed" aria-labelledby="speed-title" data-motion-surface>
@@ -130,6 +140,145 @@
             <svg class="icon" aria-hidden="true"><use href="#shield"/></svg>
             <div><h3>Robust by design. Your progress, saved.</h3><p>Completed transcript segments are saved as you go. If transcription crashes, recovery can preserve the words already processed, while recording history keeps saved audio available to replay or transcribe again.</p><p class="recovery-detail">Recording history defaults to one-hour retention. Keep recordings longer or turn history off in Settings.</p></div>
           </div>
+        </div>
+      </section>
+
+      <section class="comparison section-pad" id="compare" aria-labelledby="comparison-title">
+        <div class="container">
+          <div class="comparison-intro">
+            <p class="section-kicker">Less tapping. More thought.</p>
+            <h2 id="comparison-title">Your voice moves faster<br>than <em>your thumbs.</em></h2>
+            <p class="comparison-intro-copy">A small keyboard should not set the pace of a big idea. Speak naturally. Utterlane turns your speech into text on your phone, while you keep talking.</p>
+            <div class="comparison-pace" data-motion-surface>
+              <div><div class="comparison-multiplier">≈4×</div><p class="comparison-pace-copy">the pace of smartphone typing, when speaking naturally.</p></div>
+              <div>
+                <h3>Picture a 100-word message.</h3>
+                <p class="comparison-pace-hint">Smaller is faster and better.</p>
+                <!-- Bar lengths encode estimated time, not throughput. The
+                     shorter speech bar is faster; motion does not simulate ASR. -->
+                <div class="comparison-pace-line"><span>Thumb typing</span><div class="comparison-track" aria-hidden="true"><span class="comparison-bar" style="width:100%"></span></div><strong>≈2m 46s</strong></div>
+                <div class="comparison-pace-line"><span>Speaking</span><div class="comparison-track" aria-hidden="true"><span class="comparison-bar comparison-bar-speech" style="width:22.6%"></span></div><strong>≈38s</strong></div>
+                <p class="comparison-pace-note">36.2 words/minute typing · about 160 words/minute speaking.<br>Illustrative estimate from separate studies, before recognition finalization or editing.</p>
+              </div>
+            </div>
+            <p class="comparison-source-note">The speech advantage comes from human conversation research, not a voice-typing test. Utterlane outputs completed segments; actual turnaround depends on your phone, model, and pauses. <a href="#comparison-sources">Sources &amp; how this comparison works ↓</a></p>
+          </div>
+          <div class="comparison-heading-row"><h3>Same thought.<br>A different experience.</h3><p>Four ways to get your words down on Android. “Other offline transcription” compares the legacy, older-model batch workflows illustrated here. Cloud features depend on the service and plan.</p></div>
+          <div class="comparison-legend"><span><b class="comparison-badge comparison-good" aria-hidden="true">✓</b>Strength</span><span><b class="comparison-badge comparison-mixed" aria-hidden="true">−</b>Depends / limited</span><span><b class="comparison-badge comparison-limited" aria-hidden="true">×</b>Limitation</span></div>
+
+          <article class="comparison-card" aria-labelledby="comparison-speed-title">
+            <div class="comparison-card-top"><div><p class="comparison-number">01 / Writing speed</p><h3 id="comparison-speed-title">Keep the thought moving.</h3><p class="comparison-summary">Voice removes the tapping bottleneck. Utterlane starts processing while you speak, so the whole recording does not have to wait until the end.</p></div>
+              <svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-ground"/><use href="#comparison-phone" x="14" y="22" width="66" height="110"/><path d="M28 83h38m-38 10h38m-38 10h38" stroke="#98acc9" stroke-width="6" stroke-dasharray="6 3"/><path d="M85 61h54m-8-7 8 7-8 7" class="comparison-route"/><use href="#comparison-phone" x="153" y="22" width="66" height="110"/><path d="M165 56h34m-34 10h29m-29 10h34m-34 10h22" stroke="#155ecc" stroke-width="3" stroke-linecap="round"/><path d="M101 87v12m9-20v28m9-36v44m9-33v22" class="comparison-wave"/></svg>
+            </div>
+            <dl class="comparison-columns">
+              <div class="comparison-cell"><dt>Phone keyboard</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-limited" aria-hidden="true">×</span><span><span class="sr-only">Limitation: </span>One tap at a time</span></strong><p>36.2 WPM average in the mobile typing study. Speed can be improved by training with sliding on optimized layouts (eg, <a href="https://futo.tech/blog/swipe-keyboard">KASROZ</a>) but retraining can be long and tedious.</p></dd></div>
+              <div class="comparison-cell"><dt>Cloud transcription</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>Live text is possible</span></strong><p>Depends on the service and connection.</p></dd></div>
+              <div class="comparison-cell"><dt>Other offline transcription</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-mixed" aria-hidden="true">−</span><span><span class="sr-only">Depends / limited: </span>Record. Stop. Wait.</span></strong><p>Batch workflows process the recording afterward.</p></dd></div>
+              <div class="comparison-cell"><dt>Utterlane</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>Write as fast as you speak</span></strong><p>Clever optimizations allows SOTA models to stream write your thoughts as you speak. Even speakers labelling in meetings transcripts is done in near-real-time.</p></dd></div>
+            </dl>
+            <p class="comparison-extra">Near real-time is device- and model-dependent. It does not mean instant word-by-word text or zero finishing time.</p>
+          </article>
+
+          <article class="comparison-card" aria-labelledby="comparison-privacy-title">
+            <div class="comparison-card-top"><div><p class="comparison-number">02 / Privacy</p><h3 id="comparison-privacy-title">Your thoughts stay yours.</h3><p class="comparison-summary">A private idea does not need a round trip to a speech-recognition server. The audio-to-text journey happens inside your phone.</p></div>
+              <svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-ground"/><use href="#comparison-cloud" x="4" y="20" width="88" height="60"/><path d="M39 101V75m-5 8 5-8 5 8" class="comparison-route"/><use href="#comparison-phone" x="149" y="15" width="70" height="117"/><path d="m185 51 18 7v17c0 13-18 22-18 22s-18-9-18-22V58Z" fill="#155ecc"/><path d="m176 73 6 6 12-14" stroke="#fff" stroke-width="3" fill="none"/><path d="M111 18v108" stroke="#d9e4f3"/></svg>
+            </div>
+            <dl class="comparison-columns">
+              <div class="comparison-cell"><dt>Phone keyboard</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>No speech upload</span></strong><p>Keyboard and receiving-app privacy still apply.</p></dd></div>
+              <div class="comparison-cell"><dt>Cloud transcription</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-limited" aria-hidden="true">×</span><span><span class="sr-only">Limitation: </span>Audio leaves the phone</span></strong><p>Processed on a server; policies vary.</p></dd></div>
+              <div class="comparison-cell"><dt>Other offline transcription</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>Recognition stays local</span></strong><p>When using an entirely offline workflow.</p></dd></div>
+              <div class="comparison-cell"><dt>Utterlane</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>On-device recognition</span></strong><p>No speech uploads. No analytics. No account.</p></dd></div>
+            </dl>
+          </article>
+
+          <article class="comparison-card" aria-labelledby="comparison-offline-title">
+            <div class="comparison-card-top"><div><p class="comparison-number">03 / Offline reliability</p><h3 id="comparison-offline-title">No signal. Still your words.</h3><p class="comparison-summary">On a train, in a basement, or with airplane mode on: recognition remains available after model setup.</p></div>
+              <svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-ground"/><ellipse cx="120" cy="74" rx="103" ry="74" fill="url(#comparison-shield-glow)"/><path d="m120 6 65 24v40c0 40-65 70-65 70S55 110 55 70V30Z" fill="url(#comparison-shield-green)" stroke="#8ffac0" stroke-width="3"/><path d="m120 16 55 20v33c0 31-55 60-55 60S65 100 65 69V36Z" fill="none" stroke="#d8ffe8" stroke-opacity=".6"/><use href="#comparison-phone" x="97" y="29" width="46" height="75"/><path d="M106 58h27m-27 9h20m-20 9h27" stroke="#155ecc" stroke-width="2.5"/><path d="M33 35v15m-7-8h14m160 43v13m-6-7h13m-22-70v9m-4-4h9" stroke="#16bd6c" stroke-width="2.5" stroke-linecap="round"/></svg>
+            </div>
+            <dl class="comparison-columns">
+              <div class="comparison-cell"><dt>Phone keyboard</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>Keep typing</span></strong><p>Text entry itself can work offline.</p></dd></div>
+              <div class="comparison-cell"><dt>Cloud transcription</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-limited" aria-hidden="true">×</span><span><span class="sr-only">Limitation: </span>Needs a connection</span></strong><p>For the cloud recognition step.</p></dd></div>
+              <div class="comparison-cell"><dt>Other offline transcription</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>Works offline</span></strong><p>Once the required model is installed.</p></dd></div>
+              <div class="comparison-cell"><dt>Utterlane</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>Works offline</span></strong><p>Download once, or import a local model.</p></dd></div>
+            </dl>
+          </article>
+
+          <article class="comparison-card" aria-labelledby="comparison-recovery-title">
+            <div class="comparison-card-top"><div><p class="comparison-number">04 / Recovery</p><h3 id="comparison-recovery-title">A second chance, built in.</h3><p class="comparison-summary">If recognition is interrupted, saved audio lets you try again. Completed transcript segments are saved along the way.</p></div>
+              <svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-ground"/><use href="#comparison-paper" x="145" y="24" width="70" height="97"/><rect x="14" y="41" width="96" height="61" rx="12" fill="#eaf1ff" stroke="#c7d8f0"/><path d="M28 65v12m10-19v26m10-34v41m10-28v16m10-34v41m10-28v16m10-23v28" class="comparison-wave"/><path d="M106 116q18 16 31-5m-12 1 12-1-2 13" stroke="#15804b" stroke-width="3" fill="none"/><text x="27" y="28" class="comparison-art-label">SAVED AUDIO</text></svg>
+            </div>
+            <dl class="comparison-columns">
+              <div class="comparison-cell"><dt>Phone keyboard</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-limited" aria-hidden="true">×</span><span><span class="sr-only">Limitation: </span>No recording</span></strong><p>Draft recovery entirely depends on the receiving app.</p></dd></div>
+              <div class="comparison-cell"><dt>Cloud transcription</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-mixed" aria-hidden="true">−</span><span><span class="sr-only">Depends / limited: </span>Service-dependent</span></strong><p>Recording retention and recovery vary.</p></dd></div>
+              <div class="comparison-cell"><dt>Other offline transcription</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-limited" aria-hidden="true">×</span><span><span class="sr-only">Limitation: </span>Recovery is not assured</span></strong><p>Without saved audio and partial transcripts, a failed session can mean starting over.</p></dd></div>
+              <div class="comparison-cell"><dt>Utterlane</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>Replay. Retranscribe.</span></strong><p>Local audio history plus saved text segments.</p></dd></div>
+            </dl>
+            <p class="comparison-extra">One-hour history retention by default; adjustable or disabled in Settings. Recovery covers saved material, not an unconditional guarantee against all failures.</p>
+          </article>
+
+          <article class="comparison-card" aria-labelledby="comparison-accuracy-title">
+            <div class="comparison-card-top"><div><p class="comparison-number">05 / Accuracy</p><h3 id="comparison-accuracy-title">Speech recognition in real environments.</h3><p class="comparison-summary">SOTA speech models with clever optimizations battletested for everyday recordings. Speak, whisper, sing, at home or in a noisy train: your words need to follow you anywhere you go, not just in a perfectly soundproofed studio.</p></div>
+              <svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-ground"/><use href="#comparison-person" x="21" y="63" width="45" height="69"/><path d="M77 67v5m9-10v15m9-17v20m9-16v11" class="comparison-wave"/><use href="#comparison-paper" x="144" y="25" width="75" height="100"/><circle cx="210" cy="31" r="17" fill="#15804b"/><path d="m202 31 6 6 10-12" stroke="#fff" stroke-width="3" fill="none"/><text x="18" y="30" class="comparison-art-label">SOFT VOICE</text></svg>
+            </div>
+            <dl class="comparison-columns">
+              <div class="comparison-cell"><dt>Phone keyboard</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-neutral" aria-hidden="true">·</span><span><span class="sr-only">Not applicable: </span>You choose the words</span></strong><p>Typos and autocorrect still need attention.</p></dd></div>
+              <div class="comparison-cell"><dt>Cloud transcription</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>Modern frontier models</span></strong><p>Strong recognition: the experience we aim to bring on-device.</p></dd></div>
+              <div class="comparison-cell"><dt>Other offline transcription</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-limited" aria-hidden="true">×</span><span><span class="sr-only">Limitation: </span>Legacy-model limitations</span></strong><p>Older models (eg, Whisper, Vosk) can struggle with challenging speech.</p></dd></div>
+              <div class="comparison-cell"><dt>Utterlane</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>Modern models, locally</span></strong><p>Parakeet Ultra plus custom vocabulary corrections.</p></dd></div>
+            </dl>
+            <p class="comparison-extra">Accuracy varies with model, voice, microphone, and surroundings. Whispered or sung audio may need corrections. Tip: Clear articulation and speaking closer to the microphone can improve accuracy, especially in noisy environments.</p>
+          </article>
+
+          <article class="comparison-card" aria-labelledby="comparison-language-title">
+            <div class="comparison-card-top"><div><p class="comparison-number">06 / Multilingual</p><h3 id="comparison-language-title">Switch languages, not your flow.</h3><p class="comparison-summary">Start in one language and continue in another. Automatic language detection supports multilingual recordings without restarting.</p></div>
+              <svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-ground"/><rect x="10" y="23" width="124" height="40" rx="14" fill="#eaf1ff"/><text x="24" y="48" class="comparison-art-bubble">Let’s meet at six.</text><rect x="89" y="78" width="143" height="40" rx="14" fill="#eee7fa"/><text x="106" y="103" class="comparison-art-bubble">À tout à l’heure.</text><path d="M33 73q8 34 41 27m-8-7 8 7-8 7" class="comparison-route"/></svg>
+            </div>
+            <dl class="comparison-columns">
+              <div class="comparison-cell"><dt>Phone keyboard</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-mixed" aria-hidden="true">−</span><span><span class="sr-only">Depends / limited: </span>Keyboard-dependent</span></strong><p>Layouts and multilingual suggestions vary.</p></dd></div>
+              <div class="comparison-cell"><dt>Cloud transcription</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>Often multilingual</span></strong><p>Automatic detection and mixing vary.</p></dd></div>
+              <div class="comparison-cell"><dt>Other offline transcription</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-limited" aria-hidden="true">×</span><span><span class="sr-only">Limitation: </span>Mixed-language limitations</span></strong><p>Legacy workflows can miss mid-segment language switches. Automatic detection and unintended translation depend on the model and settings.</p></dd></div>
+              <div class="comparison-cell"><dt>Utterlane</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>25 languages</span></strong><p>Automatic language switching detection in the same recording: start in one language, switch to another one, all faithfully recorded in the language spoke in.</p></dd></div>
+            </dl>
+            <p class="comparison-extra">Language switching within a recording is supported; reliability of switching inside a single short segment has not been established here.</p>
+          </article>
+
+          <article class="comparison-card" aria-labelledby="comparison-meeting-title">
+            <div class="comparison-card-top"><div><p class="comparison-number">07 / Meetings</p><h3 id="comparison-meeting-title">Follow the people. Keep the conversation.</h3><p class="comparison-summary">Turn a meeting into a running transcript, with optional streaming speaker labelling to help follow who said what.</p></div>
+              <svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-ground"/><use href="#comparison-person" x="13" y="53" width="35" height="65"/><use href="#comparison-person" x="58" y="30" width="35" height="65" style="color:#7750bc"/><use href="#comparison-person" x="102" y="63" width="35" height="65" style="color:#16829c"/><use href="#comparison-paper" x="164" y="15" width="65" height="117"/><path d="M176 49h39" stroke="#155ecc" stroke-width="6"/><path d="M176 73h34" stroke="#7750bc" stroke-width="6"/><path d="M176 96h39" stroke="#16829c" stroke-width="6"/></svg>
+            </div>
+            <dl class="comparison-columns">
+              <div class="comparison-cell"><dt>Phone keyboard</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-limited" aria-hidden="true">×</span><span><span class="sr-only">Limitation: </span>Manual notes</span></strong><p>No automatic conversation capture or labels.</p></dd></div>
+              <div class="comparison-cell"><dt>Cloud transcription</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>Available in services</span></strong><p>Meeting transcription can include speaker labels.</p></dd></div>
+              <div class="comparison-cell"><dt>Other offline transcription</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-limited" aria-hidden="true">×</span><span><span class="sr-only">Limitation: </span>Never live</span></strong><p>In these legacy batch workflows, speaker labelling is a post-processing step after the whole recording ends, rather than a live stream.</p></dd></div>
+              <div class="comparison-cell"><dt>Utterlane</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>Live stream offline speakers labels</span></strong><p>Optional automatic diarization (speakers labelling) of up to 8 speakers, in near real-time. Never lose track of a meeting to write down the minutes: let your phone be your scribe.</p></dd></div>
+            </dl>
+            <p class="comparison-extra">Speaker labels require a separate model and add processing work. Uncertain speech can appear as “Unknown speaker”.</p>
+          </article>
+
+          <article class="comparison-card" aria-labelledby="comparison-ownership-title">
+            <div class="comparison-card-top"><div><p class="comparison-number">08 / Ownership and rate limits</p><h3 id="comparison-ownership-title">More words. No subscription.</h3><p class="comparison-summary">A free, open-source tool on the phone you own. Choose your model and your retention settings, without an account.</p></div>
+              <svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-ground"/><use href="#comparison-phone" x="24" y="16" width="74" height="118"/><text x="41" y="81" fill="#155ecc" font-size="28" font-family="monospace">&lt;/&gt;</text><rect x="119" y="31" width="109" height="80" rx="16" fill="#eaf1ff"/><text x="135" y="65" fill="#155ecc" font-size="21" font-weight="650">0 fees</text><text x="135" y="88" class="comparison-art-bubble">100% yours</text></svg>
+            </div>
+            <dl class="comparison-columns">
+              <div class="comparison-cell"><dt>Phone keyboard</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>Unlimited</span></strong><p>The good old trusty input scheme, no rates, no limits, except your hands speed.</p></dd></div>
+              <div class="comparison-cell"><dt>Cloud transcription</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-limited" aria-hidden="true">×</span><span><span class="sr-only">Limitation: </span>Plans and limits vary</span></strong><p>Limited free tiers, subscriptions with rate limits, or usage billing.</p></dd></div>
+              <div class="comparison-cell"><dt>Other offline transcription</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-mixed" aria-hidden="true">−</span><span><span class="sr-only">Depends / limited: </span>Technically unlimited, practically not</span></strong><p>Can generate unlimited transcripts, but speed, accuracy, or reliability can limit practical use.</p></dd></div>
+              <div class="comparison-cell"><dt>Utterlane</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>Truly unlimited and yours</span></strong><p>Free &amp; open source &amp; accurate &amp; fast enough to hold the promise of unlimited transcripts.</p></dd></div>
+            </dl>
+            <p class="comparison-extra">Unlimited means no service-imposed transcription quotas or per-minute charges.</p>
+          </article>
+
+          <div class="comparison-tail"><div><h3>Your voice. In the apps you already use.</h3><p>Keyboard mic, accessibility button, or floating mic. Custom word corrections for the names that matter to you.</p></div><a class="button primary" href="https://github.com/lrq3000/Utterlane/releases">Explore Utterlane <svg class="icon" aria-hidden="true"><use href="#arrow-right"/></svg></a></div>
+          <details class="comparison-research" id="comparison-sources">
+            <summary>Sources &amp; comparison notes <span class="disclosure" aria-hidden="true"></span></summary>
+            <ol>
+              <li><a href="https://dl.acm.org/doi/10.1145/3338286.3340120">Palin et al., MobileHCI 2019</a>: 37,370 volunteers averaged 36.2 WPM copying English sentences on mobile devices. Typing WPM uses five-character words; volunteers were self-selected.</li>
+              <li><a href="https://www.isca-archive.org/interspeech_2006/yuan06_interspeech.html">Yuan, Liberman &amp; Cieri, Interspeech 2006</a>: spontaneous conversation, not dictation. English Switchboard turn-wise rate: 164 WPM; total-conversation rate: 196 WPM. This illustration uses a rounded 160 WPM speaking pace. Natural spoken words and standardized typing words are different units: the ≈4× comparison is approximate, not a controlled head-to-head result or measured app speedup.</li>
+              <li><a href="https://huggingface.co/moondream/parakeet-ultra">Parakeet Ultra model card</a>: developer-reported improvements over original Parakeet on multilingual, noisy, and long-form audio. These GPU-runtime measurements are not Utterlane phone accuracy measurements.</li>
+              <li><a href="https://github.com/lrq3000/Utterlane/blob/main/docs/user-guide.md">Utterlane user guide</a>: segment-based output, automatic recognition across 25 languages, history controls, optional speaker labels and their model requirement.</li>
+              <li>The “Other offline transcription” column describes the legacy record-first, transcribe-later Android workflows illustrated here, not every offline product. <a href="https://alphacephei.com/vosk/">Vosk, for example, already supports offline streaming.</a> Cloud processing sends audio to a server; retention and training use depend on the service and settings.</li>
+            </ol>
+          </details>
         </div>
       </section>
 

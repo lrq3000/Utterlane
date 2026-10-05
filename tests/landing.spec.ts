@@ -57,7 +57,7 @@ test('places the speed interlude before the complete on-device and everyday stor
     'Experience the fastest accurate offline transcription on Android.',
   );
   const sectionIds = await page.locator('main > section[id]').evaluateAll(sections => sections.map(section => section.id));
-  expect(sectionIds).toEqual(['speed', 'on-device', 'everyday', 'privacy', 'setup', 'faq']);
+  expect(sectionIds).toEqual(['speed', 'compare', 'on-device', 'everyday', 'privacy', 'setup', 'faq']);
   await expect(page.locator('#speed')).toContainText('25 languages.');
   await expect(page.locator('#setup')).toContainText('Moondream Parakeet Ultra');
   await expect(page.locator('.closing')).toContainText('Open source from the start.');
@@ -212,7 +212,7 @@ test('keeps content and FAQ usable with JavaScript disabled', async ({ browser }
   const page = await context.newPage();
   await page.goto('http://127.0.0.1:4175/Utterlane/');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  for (const id of ['speed', 'on-device', 'everyday', 'privacy', 'setup', 'faq']) {
+  for (const id of ['speed', 'compare', 'on-device', 'everyday', 'privacy', 'setup', 'faq']) {
     await expect(page.locator(`#${id}`).getByRole('heading').first()).toBeVisible();
   }
   await page.getByText('Does it really work offline?', { exact: true }).click();
@@ -235,6 +235,12 @@ test('loads assets from the Pages subpath without third-party requests or runtim
   for (const theme of ['light', 'dark']) {
     if (theme === 'dark') await page.getByRole('button', { name: 'Switch to dark mode' }).click();
     await page.locator('footer').scrollIntoViewIfNeeded();
+    // Visiting the footer does not load images in the middle of a long page.
+    // Exercise each displayed lazy image in its own viewport instead of relying
+    // on Chromium's distance-based prefetch threshold or forcing eager loads.
+    for (const image of await page.locator('img[loading="lazy"]').all()) {
+      if (await image.isVisible()) await image.scrollIntoViewIfNeeded();
+    }
     // Hidden lazy wordmarks intentionally wait for their theme to become
     // visible. Exercise both themes instead of requiring unnecessary eager
     // downloads; non-lazy images remain checked even when currently hidden.
@@ -256,7 +262,7 @@ for (const reducedMotion of ['reduce', 'no-preference'] as const) {
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       // Check every section, not only overflow at the hero.
-      for (const id of ['speed', 'on-device', 'everyday', 'privacy', 'setup', 'faq']) {
+      for (const id of ['speed', 'compare', 'on-device', 'everyday', 'privacy', 'setup', 'faq']) {
         await page.locator(`#${id}`).scrollIntoViewIfNeeded();
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       }
