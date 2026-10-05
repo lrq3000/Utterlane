@@ -26,8 +26,11 @@ With no candidate arguments, every recording uses its supplied
 are scored, excluding gold and no-diarization files. A directory/default run
 must cover every selected reference: missing candidates are errors. Explicit
 file arguments can score a subset or several runs. For a single selected
-reference, candidate files may have arbitrary names; `--recording` selects
-one reference in a multi-recording fixture directory.
+reference, **explicit candidate file arguments** may have arbitrary names;
+directory entries must always identify a known recording. `--recording`
+selects one reference in a multi-recording fixture directory and filters out
+directory entries for other known recordings. An explicit file identifying
+a different known recording is an error, never reassigned to the selection.
 
 Labels are line-leading `Speaker N:` or `Unknown speaker:` (case-insensitive).
 Speaker numbers are identifiers, not their order of appearance. Wrapped lines

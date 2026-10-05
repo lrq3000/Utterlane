@@ -235,6 +235,31 @@ class CommandLineTests(unittest.TestCase):
         result = self.run_cli(self.directory, "--format", "json")
         self.assertEqual(result.returncode, 2)
 
+    def test_recording_selection_filters_directory_without_reassigning_other_recordings(self):
+        self.write("other_transcript_true-diarization.txt", "Speaker 1: hello")
+        self.write("other_transcript_current-diarization.txt", "Speaker 1: hello")
+        result = self.run_cli(self.directory, "--recording", "sample", "--format", "json", "--check")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(len(json.loads(result.stdout)["recordings"]), 1)
+
+    def test_explicit_known_recording_cannot_be_reassigned_by_selection(self):
+        self.write("other_transcript_true-diarization.txt", "Speaker 1: hello")
+        candidate = self.write("other_transcript_current-diarization.txt", "Speaker 1: hello")
+        result = self.run_cli(candidate, "--recording", "sample", "--format", "json")
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("other", json.loads(result.stdout)["error"])
+
+    def test_directory_requires_identifiable_names_but_explicit_files_can_be_arbitrary(self):
+        arbitrary = self.write("run.txt", SIX_TURNS)
+        result = self.run_cli(self.directory, "--format", "json")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("run.txt", json.loads(result.stdout)["error"])
+        result = self.run_cli(arbitrary, "--format", "json", "--check")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.write("other_transcript_true-diarization.txt", "Speaker 1: hello")
+        result = self.run_cli(arbitrary, "--recording", "sample", "--format", "json", "--check")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_performance_jsonl_files_are_optional_and_composable(self):
         cold = self.write("cold.jsonl", json.dumps({"stage": "load", "phase": "cold", "elapsed_ms": 3000}) + "\n")
         warm = self.write("warm.jsonl", "\n" + json.dumps({"stage": "chunk", "phase": "warm", "chunk_id": 1,
