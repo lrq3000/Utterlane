@@ -52,7 +52,7 @@ class VoiceInputMethodService : InputMethodService() {
             onCancelClick = { cleanup(); switchBackToPreviousKeyboard() })
         statusText = ui.statusText
         recordingPanel = ui.panel
-        microphoneSession?.let { ui.panel.bind(serviceScope, it.telemetry.state) }
+        microphoneSession?.let { ui.panel.bind(serviceScope, it.metrics.state) }
         return ui.view
     }
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
@@ -121,7 +121,7 @@ class VoiceInputMethodService : InputMethodService() {
             onWarning = { Toast.makeText(this, it, Toast.LENGTH_LONG).show() },
             onReady = { statusText?.text = getString(R.string.state_listening) },
             onSessionClosed = { target.sessionClosed() })
-        microphoneSession?.let { recordingPanel?.bind(serviceScope, it.telemetry.state); it.start() }
+        microphoneSession?.let { recordingPanel?.bind(serviceScope, it.metrics.state); it.start() }
     }
     private fun stopRecordingAndTranscribe() {
         Log.i(TAG, "Stopping recording")

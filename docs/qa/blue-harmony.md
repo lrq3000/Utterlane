@@ -18,7 +18,7 @@ launcher/store artwork remains byte-identical. No additional runtime dependency.
 
 - `python tools/generate_brand_assets.py`: generated the two transparent wordmarks.
 - `gradlew.bat --offline --console=plain --quiet testDebugUnitTest assembleDebug assembleDebugAndroidTest`:
-  passed; 31 unit tests, zero failures/errors (15 pipeline, 4 capture telemetry,
+  passed; 31 unit tests, zero failures/errors (15 pipeline, 4 capture metrics,
   5 model catalog, 7 history). Debug and instrumentation APKs built.
 - Installed with `adb -s emulator-5554 install -r`.
 - `adb -s emulator-5554 shell am instrument -w -e class io.github.lrq3000.utterlane.CapturePanelAndroidTest io.github.lrq3000.utterlane.test/androidx.test.runner.AndroidJUnitRunner`:

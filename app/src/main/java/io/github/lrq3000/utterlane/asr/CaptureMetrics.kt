@@ -20,8 +20,11 @@ data class CaptureSnapshot(
     val error: String? = null
 )
 
-/** PCM-derived acquisition feedback. Clock is monotonic; no raw recording is retained. */
-class CaptureTelemetry(private val clock: () -> Long = { System.nanoTime() / 1000000 }) {
+/**
+ * PCM-derived, in-memory feedback for the recording UI; no persistence or network reporting.
+ * The clock is monotonic, the waveform is bounded, and no raw recording is retained here.
+ */
+class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 1000000 }) {
     private val mutable = MutableStateFlow(CaptureSnapshot())
     val state: StateFlow<CaptureSnapshot> = mutable
     private val history = FloatArray(64)

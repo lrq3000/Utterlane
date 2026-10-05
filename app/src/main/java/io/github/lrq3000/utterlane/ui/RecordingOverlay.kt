@@ -45,7 +45,7 @@ class RecordingOverlay(private val context: Context) {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN, PixelFormat.TRANSLUCENT).apply { gravity = Gravity.BOTTOM }
         windowManager?.addView(ui.view, params)
     }
-    fun bind(scope: CoroutineScope, session: MicrophoneSession) { panel?.bind(scope, session.telemetry.state) }
+    fun bind(scope: CoroutineScope, session: MicrophoneSession) { panel?.bind(scope, session.metrics.state) }
     fun setStatus(text: String) { panel?.preview(text) }
     fun hide() {
         panel?.release()

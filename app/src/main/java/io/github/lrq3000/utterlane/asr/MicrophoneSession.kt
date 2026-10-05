@@ -30,7 +30,7 @@ class MicrophoneSession(
         fun resetActive() { active.get()?.let { it.resetRequested = true; it.cancel() } }
     }
     private var job: Job? = null
-    val telemetry = CaptureTelemetry()
+    val metrics = CaptureMetrics()
     @Volatile private var cancelled = false
     @Volatile private var resetRequested = false
 
@@ -53,12 +53,12 @@ class MicrophoneSession(
             try {
                 power = TranscriptionPower(context) { recorder.resumeAfterSleep() }
                 val app = UtterlaneApp.instance
-                telemetry.model(app.modelManager.selected.value.name)
-                session = app.recognizerManager.createSession(onProcessed = { end, ms -> telemetry.processed(end, ms) }) { delta ->
+                metrics.model(app.modelManager.selected.value.name)
+                session = app.recognizerManager.createSession(onProcessed = { end, ms -> metrics.processed(end, ms) }) { delta ->
                     if (!cancelled) withContext(Dispatchers.Main) { onText(delta, session!!.store) }
                 }
                 phase = SessionFailure.Kind.INFERENCE
-                telemetry.model(app.modelManager.selected.value.name)
+                metrics.model(app.modelManager.selected.value.name)
                 val retention = app.settingsRepository.historyRetention.first()
                 try {
                     recording = app.recordingHistory.begin(retention)
@@ -70,18 +70,18 @@ class MicrophoneSession(
                 }
                 val queue = BoundedAudioQueue()
                 coroutineScope {
-                    val ticker = launch { while (isActive) { telemetry.tick(); delay(200) } }
+                    val ticker = launch { while (isActive) { metrics.tick(); delay(200) } }
                     val capture = launch(Dispatchers.IO) {
                         try {
                             val captureContext = currentCoroutineContext()
                             withContext(Dispatchers.Main) { if (!cancelled) onReady() }
                             recorder.setObserver(object : CaptureObserver {
-                                override fun onStarted() { telemetry.started() }
-                                override fun onSilenced(silenced: Boolean) { telemetry.silenced(silenced) }
+                                override fun onStarted() { metrics.started() }
+                                override fun onSilenced(silenced: Boolean) { metrics.silenced(silenced) }
                             })
                             recorder.startRecording({ samples ->
                                 val accepted = queue.offer(samples)
-                                telemetry.samples(samples, accepted)
+                                metrics.samples(samples, accepted)
                                 if (!accepted) {
                                     captureFailure.compareAndSet(null, SessionFailure(SessionFailure.Kind.CAPACITY, context.getString(R.string.stream_overload)))
                                     recorder.stop()
@@ -93,7 +93,7 @@ class MicrophoneSession(
                             captureFailure.compareAndSet(null, SessionFailure(SessionFailure.Kind.AUDIO, e.message ?: context.getString(R.string.toast_recording_error)))
                         } finally {
                             queue.close()
-                            telemetry.captureEnded()
+                            metrics.captureEnded()
                             withContext(NonCancellable + Dispatchers.Main) { if (!cancelled) onCaptureEnded() }
                         }
                     }
@@ -173,7 +173,7 @@ class MicrophoneSession(
                         catch (e: Exception) { Log.e("MicrophoneSession", "History pruning failed", e) }
                     }
                     withContext(NonCancellable + Dispatchers.Main) {
-                        if (cancelled) telemetry.cancelled() else telemetry.completed(failure?.message)
+                        if (cancelled) metrics.cancelled() else metrics.completed(failure?.message)
                         if (!cancelled) finalizationWarning?.let { onWarning(it) }
                         if (resetRequested) onComplete(session?.store, SessionFailure(SessionFailure.Kind.MODEL, context.getString(R.string.model_reset_done)))
                         else if (!cancelled) onComplete(session?.store, failure)
@@ -189,6 +189,6 @@ class MicrophoneSession(
         job!!.invokeOnCompletion { active.compareAndSet(this, null) }
     }
 
-    fun stop() { telemetry.stopping(); recorder.stop() }
-    fun cancel() { cancelled = true; telemetry.cancelled(); recorder.stop(); job?.cancel() }
+    fun stop() { metrics.stopping(); recorder.stop() }
+    fun cancel() { cancelled = true; metrics.cancelled(); recorder.stop(); job?.cancel() }
 }

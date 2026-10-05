@@ -1,6 +1,6 @@
 # Privacy Policy for Utterlane
 
-**Last updated:** October 2026
+**Last updated:** October 5, 2026
 
 ## Overview
 
@@ -13,22 +13,42 @@ Utterlane is a voice-to-text application maintained by Stephen Karl Larroque tha
 - Audio and text are processed locally and are not automatically uploaded
 - Microphone audio is saved locally only when you enable recording history
 - Transcription uses temporary local text files for bounded-memory display, recovery, and export
-- No usage analytics or telemetry
+- No usage analytics or remote metrics reporting
 - No account required
 - No advertisements
 
+## Local Capture Metrics
+
+The recording interface computes microphone levels, a bounded waveform, signal
+status, and transcription progress and time estimates on your device. These
+capture metrics exist only in memory to provide recording feedback; they are
+not saved to a metrics log or sent to a server. The metrics component does not
+retain raw recordings. Optional recording history is separate and described below.
+
 ## Permissions
 
-The app requires the following permissions:
+The app declares the following permissions for its features. Runtime permissions
+and special access are requested when needed; local capture metrics do not require
+any additional permission beyond the microphone access used for recording.
 
 | Permission | Purpose |
 |------------|---------|
-| Microphone | Record speech for on-device transcription |
-| Accessibility Service | Inject transcribed text into other apps |
-| Display Over Other Apps | Show floating microphone button |
-| Internet | Requested downloads of speech recognition models (approximately 159–674 MB each) |
-| Storage/Media | Access audio files for voice message transcription |
-| Notifications | Show service status |
+| Microphone (`RECORD_AUDIO`) | Record speech for on-device transcription |
+| Display Over Other Apps (`SYSTEM_ALERT_WINDOW`) | Show the optional floating microphone button |
+| Internet (`INTERNET`) | User-requested downloads of speech recognition models (approximately 159–674 MB each) and the optional speaker-label model (approximately 107 MB); local model import is also available |
+| Storage/Media (`READ_EXTERNAL_STORAGE` through Android 12L; `READ_MEDIA_AUDIO` on Android 13+) | Access audio files for optional folder monitoring and transcription; files explicitly shared or selected can instead use the access granted by Android |
+| Notifications (`POST_NOTIFICATIONS`) | Show recording/monitoring status, transcription results, and service alerts |
+| Wake lock (`WAKE_LOCK`) | Keep active recording and transcription running and support the screen-awake behavior during these operations |
+| Foreground services (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`, `FOREGROUND_SERVICE_SPECIAL_USE`) | Run the optional floating microphone and audio-folder monitoring services with visible notifications |
+| Boot completed (`RECEIVE_BOOT_COMPLETED`) | Restore enabled services after restart, or notify you to open the app when Android restricts automatic restart |
+
+The accessibility service and voice keyboard are additionally protected by
+`BIND_ACCESSIBILITY_SERVICE` and `BIND_INPUT_METHOD`, respectively. These declarations
+restrict which system components can bind to those services; you enable the
+optional integrations in Android Settings. Accessibility inserts requested text
+into the focused field, and the voice keyboard delivers text through Android's
+input-method interface. No permission is used for usage analytics or remote
+metrics reporting.
 
 ## Speech Recognition Model
 
@@ -39,7 +59,7 @@ The app requires the following permissions:
 
 ## Third-Party Services
 
-- **HuggingFace**: Used only for user-requested model downloads (NVIDIA Parakeet v3 and Moondream Ultra/Redux GGUF conversions)
+- **HuggingFace**: Used only for user-requested model downloads (NVIDIA Parakeet v3, Moondream Ultra/Redux GGUF conversions, and the optional NVIDIA Nemotron speaker-label model)
 - Download hosts and their delivery providers necessarily receive connection information such as your IP address and the requested model URL. Their own privacy policies govern their server logs. Utterlane does not send audio, transcripts, account identifiers, or advertising identifiers with these downloads. You can import model files locally instead.
 - Links you explicitly open, including this policy and model information, use your browser. The destination website and browser have their own privacy practices.
 
