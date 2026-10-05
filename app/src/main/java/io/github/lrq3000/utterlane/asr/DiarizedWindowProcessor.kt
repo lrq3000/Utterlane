@@ -50,7 +50,7 @@ class DiarizedWindowProcessor(
             WindowText.hasTimings(result) -> WindowText.ownedWords(result.tokens, result.timestamps, window, result.ends)
             else -> rawText(result, window)
         }
-        val output = mutableListOf<SpeechSpan>()
+        val output = SpanCollector()
         if (count != 1) {
             val keepFrom = minOf(pending.peekFirst()?.start ?: window.startSample, window.startSample) - paddingMs * 16L
             timeline.discardBefore(keepFrom.coerceAtLeast(0))
@@ -64,16 +64,20 @@ class DiarizedWindowProcessor(
         finished = window.isFinal
         drain(output)
         for ((index, original) in words.withIndex()) {
-            val word = if (index == 0) original.copy(text = original.text.trimStart()) else original
+            var text = original.text
+            if (index == 0) text = text.trimStart()
+            if (index == words.lastIndex) text = text.trimEnd()
+            val word = original.copy(text = text)
             // Bound pathological metadata density too, independently of duration.
             while (pending.isNotEmpty() && (pending.size >= 8192 || pendingCharacters + word.text.length > 262144)) {
                 emit(pending.removeFirst(), output, forceUnknown = true)
             }
             pending.addLast(word)
             pendingCharacters += word.text.length
+            if (pendingCharacters > 262144) emit(pending.removeFirst(), output, forceUnknown = true)
         }
         drain(output)
-        return output
+        return output.finish()
     }
 
     private fun rawText(result: WindowResult, window: AudioWindow): List<WindowText.Word> =
@@ -81,7 +85,7 @@ class DiarizedWindowProcessor(
             listOf(WindowText.Word(it, window.startSample, window.startSample + window.samples.size, coarse = true))
         }.orEmpty()
 
-    private fun drain(output: MutableList<SpeechSpan>) {
+    private fun drain(output: SpanCollector) {
         while (pending.isNotEmpty()) {
             val word = pending.peekFirst()
             val ready = count == 1 || timeline.endSample >= word.end +
@@ -92,7 +96,7 @@ class DiarizedWindowProcessor(
         }
     }
 
-    private fun emit(word: WindowText.Word, output: MutableList<SpeechSpan>, forceUnknown: Boolean = false) {
+    private fun emit(word: WindowText.Word, output: SpanCollector, forceUnknown: Boolean = false) {
         pendingCharacters -= word.text.length
         val speaker = when {
             count == 1 -> 0
@@ -100,16 +104,33 @@ class DiarizedWindowProcessor(
             else -> timeline.speakerDuring(word.start, word.end, previous, word.coarse)
         }
         previous = speaker
-        if (word.text.isBlank()) return
-        val last = output.lastOrNull()
         // Preserve internal ASR whitespace (dictionary rules can depend on it).
         // Only an original audio-window boundary is normalized above. A delayed
         // tail can start a callback mid-window: its leading separator still
         // belongs to the recognizer and may be part of a multi-word correction.
-        val text = word.text.trimEnd()
-        if (last?.speaker == speaker) output[output.lastIndex] = last.copy(text = last.text +
-            (if (text.firstOrNull()?.isWhitespace() == true) "" else " ") + text)
-        else output += SpeechSpan(text, speaker)
+        output.append(word.text, speaker)
+    }
+
+    /** Linear accumulation even for dense timestamp arrays in a single callback. */
+    private class SpanCollector {
+        private val spans = mutableListOf<SpeechSpan>()
+        private val text = StringBuilder()
+        private var speaker = -1
+
+        fun append(value: String, next: Int) {
+            if (value.isBlank()) return
+            if (next != speaker) flush()
+            speaker = next
+            if (text.isNotEmpty() && !text.last().isWhitespace() && !value.first().isWhitespace()) text.append(' ')
+            text.append(value)
+        }
+
+        private fun flush() {
+            if (text.isNotEmpty()) spans += SpeechSpan(text.toString(), speaker)
+            text.setLength(0)
+        }
+
+        fun finish(): List<SpeechSpan> { flush(); return spans }
     }
 
     override fun close() {
