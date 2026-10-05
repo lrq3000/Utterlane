@@ -9,6 +9,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicReference
 
@@ -48,11 +49,18 @@ class MicrophoneSession(
             var failure: SessionFailure? = null
             var phase = SessionFailure.Kind.MODEL
             var finalizationWarning: String? = null
+            var activityObserver: Job? = null
             val captureFailure = java.util.concurrent.atomic.AtomicReference<SessionFailure?>(null)
             val historyWriteFailed = java.util.concurrent.atomic.AtomicBoolean(false)
             try {
                 power = TranscriptionPower(context) { recorder.resumeAfterSleep() }
                 val app = UtterlaneApp.instance
+                activityObserver = launch {
+                    app.recognizerManager.activity.collect {
+                        // Ignore a previous operation's resting status at subscription time.
+                        if (it.active || metrics.state.value.recognition.active) metrics.recognition(it)
+                    }
+                }
                 // Capture, queue and every wake reopen retain one immutable snapshot.
                 // Preferences changed during recording take effect only next session.
                 val captureOptions = app.settingsRepository.runtimeOptions.first()
@@ -162,6 +170,7 @@ class MicrophoneSession(
                 Log.e("MicrophoneSession", "Transcription failed", e)
                 failure = SessionFailure(phase, e.message ?: context.getString(R.string.transcribe_error_failed))
             } finally {
+                activityObserver?.cancel()
                 try {
                     recorder.stop()
                     withContext(NonCancellable + Dispatchers.IO) {

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recognition_idle">Idle</string>
+    <string name="recognition_queued">Queued</string>
+    <string name="recognition_connecting">Connecting to recognition worker</string>
+    <string name="recognition_loading">Loading speech model</string>
+    <string name="recognition_warmup">Warming up speech model</string>
+    <string name="recognition_asr">Recognizing speech</string>
+    <string name="recognition_speaker_load">Loading speaker model</string>
+    <string name="recognition_speakers">Processing speakers</string>
+    <string name="recognition_features">Speaker features</string>
+    <string name="recognition_transformer">Speaker transformer</string>
+    <string name="recognition_cache">Speaker cache update</string>
+    <string name="recognition_finished">Worker request finished</string>
+    <string name="recognition_error">Recognition error</string>
+    <string name="recognition_working">Recognition worker active</string>
+    <string name="recognition_times">active %1$.1f s · last progress %2$.1f s ago</string>
+    <string name="recognition_opaque">Stage inferred; native computational progress unavailable. Waiting does not establish a native freeze.</string>
+    <string name="recognition_backlog">Audio received %1$.1f s · processed %2$.1f s · backlog %3$.1f s</string>
+</resources>
