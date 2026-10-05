@@ -268,6 +268,113 @@ class CommandLineTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("repeat", result.stdout + result.stderr)
 
+    def test_plain_baseline_shared_asr_error_has_parity_but_still_fails_gold_check(self):
+        self.set_reference("Speaker 1: alpha beta gamma")
+        self.write("sample_transcript_current-diarization.txt", "Speaker 7: alpha wrong gamma")
+        baseline = self.write("off.txt", "ALPHA, wrong gamma!")
+        result = self.run_cli("--plain-baseline", baseline, "--format", "json", "--check")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        output = json.loads(result.stdout)
+        report = output["recordings"][0]
+        self.assertAlmostEqual(report["text"]["wer"], 1 / 3)
+        self.assertEqual(report["speakers"]["matched_word_accuracy"], 1)
+        paired = report["plain_baseline"]
+        self.assertEqual(paired["path"], str(baseline))
+        self.assertTrue(paired["identical_normalized_words"])
+        self.assertEqual(paired["text"]["wer"], 0)
+        self.assertEqual(paired["text"]["matched_reference_coverage"], 1)
+        self.assertNotIn("speakers", paired)
+        self.assertFalse(output["acceptance"]["passed"])
+        self.assertTrue(any(failure["metric"] == "wer" for failure in output["acceptance"]["failures"]))
+        text = self.run_cli("--plain-baseline", baseline)
+        self.assertEqual(text.returncode, 0, text.stderr)
+        self.assertIn("Plain-baseline word parity: identical", text.stdout)
+        self.assertIn("WER 0.00%", text.stdout)
+
+    def test_plain_baseline_detects_candidate_word_regression(self):
+        self.set_reference("Speaker 1: alpha beta gamma")
+        self.write("sample_transcript_current-diarization.txt", "Speaker 7: alpha beta")
+        baseline = self.write("off.txt", "alpha beta gamma")
+        result = self.run_cli("--plain-baseline", baseline, "--format", "json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        paired = json.loads(result.stdout)["recordings"][0]["plain_baseline"]
+        self.assertFalse(paired["identical_normalized_words"])
+        self.assertAlmostEqual(paired["text"]["wer"], 1 / 3)
+        self.assertAlmostEqual(paired["text"]["matched_reference_coverage"], 2 / 3)
+        self.assertEqual(paired["text"]["trailing_reference_deletions"], 1)
+
+    def test_plain_baseline_differences_do_not_replace_gold_acceptance(self):
+        baseline = self.write("off.txt", "different words")
+        result = self.run_cli("--plain-baseline", baseline, "--format", "json", "--check")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertTrue(output["acceptance"]["passed"])
+        self.assertFalse(output["recordings"][0]["plain_baseline"]["identical_normalized_words"])
+
+    def test_plain_baseline_is_never_auto_repeated(self):
+        self.set_reference("Speaker 1: alpha beta")
+        # A continuous ASR run may produce different words in its second copy.
+        self.write("sample_transcript_current-diarization.txt", "Speaker 1: alpha beta alpha delta")
+        baseline = self.write("off.txt", "alpha beta alpha delta")
+        result = self.run_cli("--repeat-reference", "2", "--plain-baseline", baseline, "--format", "json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)["recordings"][0]
+        self.assertEqual(report["text"]["wer"], 0.25)
+        self.assertEqual(report["plain_baseline"]["text"]["reference_words"], 4)
+        self.assertEqual(report["plain_baseline"]["text"]["wer"], 0)
+        self.assertTrue(report["plain_baseline"]["identical_normalized_words"])
+        self.write("off.txt", "alpha beta")
+        result = self.run_cli("--repeat-reference", "2", "--plain-baseline", baseline, "--format", "json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        paired = json.loads(result.stdout)["recordings"][0]["plain_baseline"]
+        self.assertEqual(paired["text"]["reference_words"], 2)
+        self.assertEqual(paired["text"]["insertions"], 2)
+        self.assertFalse(paired["identical_normalized_words"])
+
+    def test_plain_baseline_directory_pairs_each_recording(self):
+        self.write("other_transcript_true-diarization.txt", "Speaker 1: hello")
+        self.write("other_transcript_current-diarization.txt", "Speaker 1: hello")
+        directory = self.directory / "off"
+        directory.mkdir()
+        self.write("off/sample_transcript_no-diarization.txt", " ".join(line.split(": ", 1)[1] for line in SIX_TURNS.splitlines()))
+        self.write("off/other.txt", "hello")
+        result = self.run_cli("--plain-baseline", directory, "--format", "json", "--check")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        reports = json.loads(result.stdout)["recordings"]
+        self.assertEqual(len(reports), 2)
+        self.assertTrue(all(report["plain_baseline"]["identical_normalized_words"] for report in reports))
+        self.assertEqual([report["plain_baseline"]["text"]["reference_words"] for report in reports], [1, 12])
+
+    def test_plain_baseline_missing_empty_and_ambiguous_inputs_are_errors(self):
+        missing = self.directory / "missing.txt"
+        result = self.run_cli("--plain-baseline", missing, "--format", "json")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("missing.txt", result.stdout)
+        empty = self.write("off.txt", "")
+        result = self.run_cli("--plain-baseline", empty, "--format", "json")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("contain words", result.stdout)
+        directory = self.directory / "off"
+        directory.mkdir()
+        result = self.run_cli("--plain-baseline", directory, "--format", "json")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Missing plain baseline", result.stdout)
+        self.write("off/sample.txt", "alpha")
+        self.write("off/sample_transcript_no-diarization.txt", "beta")
+        result = self.run_cli("--plain-baseline", directory, "--format", "json")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Ambiguous plain baseline", result.stdout)
+
+    def test_plain_baseline_file_cannot_be_shared_across_different_recordings(self):
+        self.write("other_transcript_true-diarization.txt", "Speaker 1: hello")
+        other = self.write("other_transcript_current-diarization.txt", "Speaker 1: hello")
+        result = self.run_cli("--plain-baseline", other, "--format", "json")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("one recording", result.stdout)
+        result = self.run_cli("--recording", "sample", "--plain-baseline", other, "--format", "json")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("other", result.stdout)
+
     def test_check_rejects_truncated_prefix_and_can_be_configured(self):
         self.write("sample_transcript_current-diarization.txt", SIX_TURNS.splitlines()[0])
         report_only = self.run_cli("--format", "json")

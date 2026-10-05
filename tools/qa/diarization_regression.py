@@ -109,6 +109,9 @@ class WordAligner:
         self._align(reference, candidate, 0, len(reference), 0, len(candidate), result)
         return result
 
+    def compare(self, reference, candidate):
+        return self.summary(reference, candidate, self.align(reference, candidate))
+
     def _row(self, reference, candidate, reference_indices, candidate_indices):
         previous = list(range(len(candidate_indices) + 1))
         for depth, i in enumerate(reference_indices, 1):
@@ -315,7 +318,7 @@ class FixtureRunner:
         self.parser = TranscriptParser()
         self.scorer = DiarizationScorer()
 
-    def run(self, fixture_dir, candidates, recording=None, repeat_reference=1):
+    def run(self, fixture_dir, candidates, recording=None, repeat_reference=1, plain_baseline=None):
         gold_paths = {path.name.removesuffix(self.GOLD_SUFFIX): path
                       for path in sorted(fixture_dir.glob(f"*{self.GOLD_SUFFIX}"))}
         all_gold_paths = gold_paths
@@ -344,6 +347,7 @@ class FixtureRunner:
                 if name not in gold_paths:
                     raise ValueError(f"{source} identifies unselected recording {name}")
                 inputs.append((name, source))
+        plain_baselines = self._plain_baselines(plain_baseline, {name for name, _ in inputs}, all_gold_paths)
         reports, references, baselines = [], {}, {}
         for name, path in inputs:
             if name not in references:
@@ -352,14 +356,54 @@ class FixtureRunner:
                 if baseline.exists():
                     tokens = self.parser.read(baseline).repeated(repeat_reference).tokens
                     gold = references[name].tokens
-                    baselines[name] = self.scorer.aligner.summary(gold, tokens, self.scorer.aligner.align(gold, tokens))
-            report = self.scorer.score(references[name], self.parser.read(path))
+                    baselines[name] = self.scorer.aligner.compare(gold, tokens)
+            candidate = self.parser.read(path)
+            report = self.scorer.score(references[name], candidate)
             report.update(recording=name, candidate=str(path), reference_repetitions=repeat_reference,
-                          no_diarization_text=baselines.get(name))
+                          no_diarization_text=baselines.get(name), plain_baseline=None)
+            if name in plain_baselines:
+                baseline_path, baseline_tokens = plain_baselines[name]
+                candidate_tokens = candidate.tokens
+                report["plain_baseline"] = {
+                    "path": str(baseline_path),
+                    "text": self.scorer.aligner.compare(baseline_tokens, candidate_tokens),
+                    "identical_normalized_words": baseline_tokens == candidate_tokens,
+                }
             if baselines.get(name, {}).get("wer", 0):
                 report["warnings"].append("No-diarization text differs from gold; gold remains the scoring reference.")
             reports.append(report)
         return reports
+
+    def _plain_baselines(self, source, recordings, gold_paths):
+        if source is None:
+            return {}
+        paths = {}
+        if source.is_dir():
+            for name in sorted(recordings):
+                matches = [path for path in (source / f"{name}_transcript_no-diarization.txt", source / f"{name}.txt")
+                           if path.is_file()]
+                if not matches:
+                    raise ValueError(f"Missing plain baseline for {name} in {source}")
+                if len(matches) != 1:
+                    raise ValueError(f"Ambiguous plain baseline for {name} in {source}")
+                paths[name] = matches[0]
+        else:
+            if len(recordings) != 1:
+                raise ValueError("A plain-baseline file requires one recording; use a directory or --recording")
+            name = next(iter(recordings))
+            identified = self._recording_for(source, gold_paths, name)
+            if identified != name:
+                raise ValueError(f"Plain baseline {source} identifies recording {identified}, not {name}")
+            paths[name] = source
+        baselines = {}
+        for name, path in paths.items():
+            # A same-build Off run covers the actual complete audio. Never
+            # synthesize copies: continuous ASR windows can differ at the seam.
+            tokens = self.parser.read(path).tokens
+            if not tokens:
+                raise ValueError(f"Plain baseline {path} must contain words")
+            baselines[name] = (path, tokens)
+        return baselines
 
     def _recording_for(self, path, gold_paths, fallback=None):
         name = path.name.split("_transcript_", 1)[0] if "_transcript_" in path.name else path.stem
@@ -489,6 +533,8 @@ class ScorerCli:
         parser.add_argument("--recording", help="Select one reference recording (also permits arbitrary candidate filenames)")
         parser.add_argument("--repeat-reference", type=int, default=1, metavar="N",
                             help="Repeat fixture references in memory for concatenated audio (1..100; default 1)")
+        parser.add_argument("--plain-baseline", type=Path, metavar="PATH",
+                            help="Same-build Off text file/directory for word parity only; never repeated or used to relax gold checks")
         parser.add_argument("--format", choices=("text", "json"), default="text")
         parser.add_argument("--performance-jsonl", type=Path, action="append", default=[],
                             help="Optional timing records; repeat for multiple files (schema in docs/qa/diarization-scoring.md)")
@@ -507,7 +553,8 @@ class ScorerCli:
             if not float(getattr(args, name)).is_integer():
                 parser.error(f"--{name.replace('_', '-')} must be an integer")
         try:
-            reports = FixtureRunner().run(args.fixture_dir, args.candidates, args.recording, args.repeat_reference)
+            reports = FixtureRunner().run(args.fixture_dir, args.candidates, args.recording,
+                                          args.repeat_reference, args.plain_baseline)
             failures = []
             for report in reports:
                 for name, section, metric, _, minimum in self.LIMITS:
@@ -556,6 +603,12 @@ class ScorerCli:
                   f"false fragmentation: {turns['false_fragmentations']}; missed boundaries: {turns['missed_boundaries']}; "
                   f"turn sequence edits: {turns['sequence_edit_distance']}")
             print(f"  Recording-wide speaker mapping: {json.dumps(speakers['mapping'], sort_keys=True)}")
+            paired = report["plain_baseline"]
+            if paired is not None:
+                words = paired["text"]
+                print(f"  Plain-baseline word parity: {'identical' if paired['identical_normalized_words'] else 'different'}; "
+                      f"WER {words['wer']:.2%}; matched baseline coverage {words['matched_reference_coverage']:.2%}; "
+                      f"words {words['candidate_words']}/{words['reference_words']} [{paired['path']}]")
             for warning in report["warnings"]:
                 print(f"  Note: {warning}")
         acceptance = output["acceptance"]
