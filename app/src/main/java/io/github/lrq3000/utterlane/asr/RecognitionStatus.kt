@@ -30,6 +30,9 @@ data class RecognitionStatus private constructor(
             "speaker/features" to RecognitionStage.SPEAKER_FEATURES,
             "speaker/transformer" to RecognitionStage.SPEAKER_TRANSFORMER,
             "speaker/cache" to RecognitionStage.SPEAKER_CACHE,
+            "speaker_load/features" to RecognitionStage.SPEAKER_FEATURES,
+            "speaker_load/transformer" to RecognitionStage.SPEAKER_TRANSFORMER,
+            "speaker_load/cache" to RecognitionStage.SPEAKER_CACHE,
             "completed" to RecognitionStage.FINISHED, "error" to RecognitionStage.ERROR
         )
 

@@ -37,6 +37,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.first
 import io.github.lrq3000.utterlane.asr.TranscriptStore
 import androidx.core.content.FileProvider
 
@@ -175,6 +176,8 @@ fun TranscribeScreen(
         processingJob = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
         var activeSession: io.github.lrq3000.utterlane.asr.TranscriptionSession? = null
         var power: io.github.lrq3000.utterlane.asr.TranscriptionPower? = null
+        var captureDiagnostics: io.github.lrq3000.utterlane.diagnostics.CaptureDiagnosticSession? = null
+        var diagnosticObserver: kotlinx.coroutines.Job? = null
         try {
             if (transcriptPath != null) {
                 val recovered = withContext(Dispatchers.IO) {
@@ -190,6 +193,11 @@ fun TranscribeScreen(
             power = io.github.lrq3000.utterlane.asr.TranscriptionPower(context)
             withContext(Dispatchers.IO) {
                 val app = UtterlaneApp.instance
+                val diagnosticSession = app.recognitionDiagnostics.capture(app.settingsRepository.runtimeOptions.first())
+                captureDiagnostics = diagnosticSession
+                // Owned by the screen operation, not the decoder coroutine (which must
+                // be free to return before this indefinitely collecting child is stopped).
+                diagnosticObserver = scope.launch { captureMetrics.state.collect { diagnosticSession.record(it) } }
                 check(app.modelManager.isModelReady()) { context.getString(R.string.transcribe_error_no_model) }
                 var session: io.github.lrq3000.utterlane.asr.TranscriptionSession? = null
                 session = app.recognizerManager.createSession(onProcessed = captureMetrics::processed) {
@@ -237,6 +245,8 @@ fun TranscribeScreen(
             android.util.Log.e("TranscribeActivity", "Incremental transcription failed", e)
             message = e.message ?: context.getString(R.string.transcribe_error_failed)
         } finally {
+            diagnosticObserver?.cancel()
+            captureDiagnostics?.record(captureMetrics.state.value)
             try {
                 activeSession?.close()
                 // Cancellation can happen between file creation and the first UI
