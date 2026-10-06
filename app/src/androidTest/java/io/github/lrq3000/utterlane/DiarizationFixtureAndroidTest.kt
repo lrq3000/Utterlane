@@ -170,7 +170,7 @@ class DiarizationFixtureAndroidTest {
         }, decodeSpeakers = processor?.let { p -> { window ->
             words.appendText(JSONObject().put("window", windowIndex).put("start", window.startSample).put("owned_start", window.ownedStart).put("owned_end", window.ownedEnd).toString() + "\n")
             p.process(window)
-        } }, options = options)
+        } }, options = options, finishSpeakers = processor?.let { p -> { p.finish() } })
         val started = SystemClock.elapsedRealtime()
         var accepted = 0L
         try {
