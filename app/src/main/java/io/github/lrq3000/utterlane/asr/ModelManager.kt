@@ -10,14 +10,18 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import java.io.File
 import java.io.InputStream
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resumeWithException
 
 /** Catalog-based private storage. Only verified, fully published artifacts are loadable. */
 class ModelManager(private val context: Context, private val client: OkHttpClient? = null, private val fixedModel: ModelDefinition? = null) {
@@ -90,14 +94,35 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
         }
         return true
     }
-    suspend fun downloadModel(onProgress: (Int) -> Unit = {}) = transfer(false, onProgress) { artifact ->
+    suspend fun downloadModel(onProgress: (Int) -> Unit = {}) = transfer(false, onProgress, ::openDownload)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun openDownload(artifact: ModelArtifact): InputStream = suspendCancellableCoroutine { continuation ->
         val request = Request.Builder().url(artifact.url).build()
         val call = httpClient.newCall(request)
         activeCall = call
-        val response = call.execute()
-        if (!response.isSuccessful) { response.close(); error("Download failed: ${response.code}") }
-        val body = response.body ?: run { response.close(); error("Empty model response") }
-        object : java.io.FilterInputStream(body.byteStream()) { override fun close() { try { super.close() } finally { response.close() } } }
+        // execute() holds the transfer coroutine in native DNS resolution, which
+        // cannot always be interrupted. Await headers asynchronously so Cancel
+        // releases staging and the mutex even when the OS resolver is stalled.
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, error: IOException) { continuation.resumeWithException(error) }
+            override fun onResponse(call: Call, response: Response) {
+                val body = response.body
+                if (!response.isSuccessful || body == null) {
+                    val error = IOException(if (!response.isSuccessful) "Download failed: ${response.code}" else "Empty model response")
+                    response.close()
+                    continuation.resumeWithException(error)
+                    return
+                }
+                val input = object : java.io.FilterInputStream(body.byteStream()) {
+                    override fun close() { try { super.close() } finally { response.close() } }
+                }
+                // Cancellation can win between receiving headers and resuming
+                // the importer; that undelivered response still needs closing.
+                continuation.resume(input, onCancellation = { input.close() })
+            }
+        })
     }
     /** Imports accept the catalog's remote or local filename; unknown checkpoints are not silently substituted. */
     suspend fun importFromFolder(uri: Uri) {
@@ -153,7 +178,7 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
             staging.deleteRecursively(); transferJob = null; checkModelStatus(); operation.unlock()
         }
     }
-    private suspend fun transfer(importing: Boolean, onProgress: (Int) -> Unit = {}, open: (ModelArtifact) -> InputStream) = withContext(Dispatchers.IO) {
+    private suspend fun transfer(importing: Boolean, onProgress: (Int) -> Unit = {}, open: suspend (ModelArtifact) -> InputStream) = withContext(Dispatchers.IO) {
         initializeSelection()
         check(operation.tryLock()) { "A model transfer is already running" }
         val model = selected.value
