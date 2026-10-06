@@ -70,6 +70,27 @@ and `settings/` and `ui/` provide the interface. Native glue is in
 `app/src/main/cpp/`; [native dependency notices](../app/src/main/assets/native-licenses.txt)
 are also included in the APK.
 
+### Onboarding module
+
+`onboarding/` contains the native first-launch guide. `OnboardingContent` owns
+ordered, stable page descriptors; `OnboardingFlow` owns conditional navigation.
+The ViewModel combines a separate onboarding DataStore with `OnboardingServices`.
+Only `AppOnboardingServices` depends on the app's existing model managers,
+preferences, capture factory and optional services. Android activity-result
+handoffs live in `OnboardingActivity`; pages consume snapshots and typed actions.
+
+Add/reorder informational pages in the registry and provide the matching renderer;
+keep model identities and capability integration in the adapter. The four named
+model cards use stable catalog IDs, so changing the app's default cannot silently
+relabel a different engine as Parakeet Ultra. Current custom models remain usable
+when replaying the guide.
+
+Local vector resources and `assets/onboarding/` are independent of the website.
+`python tools/fetch_onboarding_sample.py --check` verifies the bundled audio
+offline. Regeneration additionally uses FFmpeg and downloads the hash-pinned
+Commons source; neither tool is a runtime or Android-build dependency. See
+[onboarding verification](qa/onboarding.md) for test and emulator details.
+
 ### Streaming and long sessions
 
 Utterlane processes microphone audio while capture continues and delivers
@@ -109,7 +130,7 @@ the model. See [user-facing memory settings](user-guide.md#model-memory).
 | Model | Runtime | Approximate model download |
 | --- | --- | --- |
 | NVIDIA Parakeet TDT v3 | sherpa-onnx / ONNX INT8 | 670 MB |
-| Moondream Parakeet Ultra — Q8_0 is the first-launch default | CrispASR / GGUF Q8_0 or Q4_K | 674 MB or 402 MB |
+| Moondream Parakeet Ultra — Q8_0 is the catalog default; onboarding recommends by RAM | CrispASR / GGUF Q8_0 or Q4_K | 674 MB or 402 MB |
 | Moondream Parakeet Redux | CrispASR / GGUF Q8_0 or Q4_K | 674 MB or 402 MB |
 | Moondream Parakeet Redux — compact native ternary | transcribe.cpp / TQ1_Q8_0 | **159.1 MB** |
 

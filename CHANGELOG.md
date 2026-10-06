@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+- Native, resumable onboarding with device-aware model recommendations, optional
+  permissions and speaker-label setup, appearance selection on every page, and
+  real dictation/file-sharing trials. The guide can be reopened from Settings.
+- Bundled vector illustrations and an attributed public-domain audiobook sample.
+
+### Fixed
+- Model-download cancellation no longer waits for a stalled DNS resolver.
+- Folder monitoring uses a FileObserver constructor compatible with Android 8/9.
+
 ## [2.0.0] - 2026-10-04
 
 ### Added

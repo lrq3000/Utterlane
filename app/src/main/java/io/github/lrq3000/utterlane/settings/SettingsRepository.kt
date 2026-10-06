@@ -47,6 +47,10 @@ class SettingsRepository(private val context: Context) {
         preferences[SERVICE_ENABLED_KEY] ?: false
     }
 
+    // Used only when deciding whether to introduce onboarding to an installation
+    // for the first time. Onboarding stores its own initialized/completed state.
+    val hasSavedSettings: Flow<Boolean> = context.dataStore.data.map { it.asMap().isNotEmpty() }
+
     val historyRetention: Flow<HistoryRetention> = context.dataStore.data.map { preferences ->
         HistoryRetention.fromKey(preferences[HISTORY_RETENTION_KEY])
     }

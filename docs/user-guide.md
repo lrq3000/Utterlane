@@ -46,6 +46,46 @@ the old app first, which removes its private data. Export anything you need firs
 Utterlane installs separately from its predecessor, TranSlander. Settings, model
 files, recording history, and permissions do not migrate automatically.
 
+## First-launch setup guide
+
+New installations open a step-by-step guide explaining dictation, shared audio,
+and meeting transcripts. Use the top-right **Appearance** selector on any page
+to choose **System**, **Light**, or **Dark**. Incomplete setup resumes after a
+restart. Previously configured installations continue to Settings; choose
+**Setup guide** there to revisit the introduction or try-it pages.
+
+The model recommendation uses Android-reported total RAM, not free RAM:
+
+| Total RAM | Suggested model |
+| --- | --- |
+| Up to and including 1 GB | Native ternary Parakeet Redux |
+| Above 1 GB, up to and including 2 GB | Parakeet Ultra Q4 |
+| Above 2 GB | Parakeet Ultra Q8 |
+
+The thresholds use binary gigabytes. You can choose any featured model, including
+the original Parakeet v3. A recommendation does not guarantee memory availability.
+**Next/Download** installs the selected model; progress, retry and cancellation
+are shown on a separate page. **Import from folder** supports offline setup,
+including the optional speaker model.
+
+Microphone access is optional for people who only transcribe files. Keyboard,
+floating-mic and accessibility shortcuts can be configured later. Folder
+monitoring requests audio access only when selected; choose a supported local
+folder or **Use Downloads**. You can remove unavailable folders from the list.
+Speaker labels are also optional and need an additional model (about 107 MB).
+Replaying the guide retains existing settings unless you explicitly change them.
+
+The optional **Try your voice** page records directly into an editable text field
+without a keyboard setup. Practice recordings stop after two minutes and follow
+the app's current history-retention setting. Enunciate clearly and keep the
+microphone close for better results in noise.
+
+The sharing trial includes a nine-second public-domain LibriVox reading from
+*Alice's Adventures in Wonderland*, sourced through Wikimedia Commons. Its
+recording and attribution are bundled with the app. Share it to Utterlane through
+Android's share sheet to see a real transcription. Both trials have a **Skip**
+action. The final page summarizes all choices in a vertically scrolling list.
+
 ## Models and languages
 
 Select a recognition model in Utterlane, then download it or use **Import from
@@ -55,7 +95,7 @@ works without a network connection.
 | Model | Approximate download |
 | --- | --- |
 | NVIDIA Parakeet v3 | 670 MB |
-| Moondream Parakeet Ultra (first-launch default) | 674 MB or 402 MB |
+| Moondream Parakeet Ultra | 674 MB or 402 MB |
 | Moondream Parakeet Redux | 674 MB or 402 MB |
 | Moondream Parakeet Redux — compact native ternary | 159.1 MB |
 

@@ -1,0 +1,31 @@
+Alice's Adventures in Wonderland, chapter 1 — short reading excerpt
+Text: Lewis Carroll (1865). Reader: Kristen McQuillin, for LibriVox.
+Source recording date listed by Commons: 11 January 2006.
+
+Source: Wikimedia Commons, File:Alice's Adventures in Wonderland, chapter 1.ogg
+https://commons.wikimedia.org/wiki/File:Alice%27s_Adventures_in_Wonderland,_chapter_1.ogg
+https://archive.org/details/alice_in_wonderland_librivox
+
+Rights: the text is public domain; the recording was donated to the public domain
+through LibriVox. The Commons file uses the "LibriVox public domain" and
+"PD-old-100-expired" templates. LibriVox's policy explicitly permits copying,
+editing and redistribution of its public-domain recordings (definitely in the US).
+https://librivox.org/pages/public-domain/
+Reviewed 2026-10-06. Credit is retained as courtesy and provenance.
+
+Original Ogg: 7,509,828 bytes.
+Original SHA-256: f9d4bd3f1f892e66338b6294d4331aa657d10d2591b6a663ab7a394d4a1d1719
+Bundled excerpt: 00:48–00:57, 9 seconds, PCM16 mono WAV at 16,000 Hz.
+Excerpt: 288,044 bytes.
+Excerpt SHA-256: 7382d35e88949640179e233a32157d9fe85907e0342f6a22bd08ccef26e293f5
+Extracted/resampled with FFmpeg 6.0 using bitexact PCM output; no narration added.
+Reproduce: python tools/fetch_onboarding_sample.py [--source original.ogg]
+Check without network or FFmpeg: python tools/fetch_onboarding_sample.py --check
+
+This is an audiobook transcription example, not an endorsement. The selected
+Utterlane model generates the transcript; the reader does not verify that output.
+
+Onboarding illustrations are original Utterlane project artwork, informed by
+the project's Blue harmony design kit and website compositions. They follow
+the repository's Apache-2.0 license. The app bundles its own native vector
+layers; it does not load artwork from the website.

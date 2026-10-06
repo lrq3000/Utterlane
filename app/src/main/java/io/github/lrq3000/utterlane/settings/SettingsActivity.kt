@@ -41,6 +41,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.asr.DictionaryManager
@@ -54,6 +55,8 @@ import android.widget.Toast
 import io.github.lrq3000.utterlane.ui.theme.UtterlaneTheme
 import io.github.lrq3000.utterlane.ui.BrandHeader
 import io.github.lrq3000.utterlane.ui.BrandSection
+import io.github.lrq3000.utterlane.onboarding.OnboardingActivity
+import io.github.lrq3000.utterlane.onboarding.OnboardingRepository
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -123,6 +126,18 @@ class SettingsActivity : LocalizedActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        lifecycleScope.launch {
+            val app = UtterlaneApp.instance
+            app.modelManager.initializeSelection()
+            val configured = app.settingsRepository.hasSavedSettings.first() || app.modelManager.isModelReady()
+            if (OnboardingRepository(this@SettingsActivity).prepareAutomaticLaunch(configured)) {
+                startActivity(Intent(this@SettingsActivity, OnboardingActivity::class.java))
+                finish()
+            } else showSettings()
+        }
+    }
+
+    private fun showSettings() {
         setContent {
             val settingsRepository = UtterlaneApp.instance.settingsRepository
             val themeMode by settingsRepository.themeMode.collectAsStateWithLifecycle(
@@ -827,6 +842,16 @@ fun SettingsScreen(
                     }
                 )
             }
+
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.onboarding_title)) },
+                supportingContent = { Text(stringResource(R.string.onboarding_replay)) },
+                leadingContent = { Icon(Icons.Default.AutoStories, contentDescription = null) },
+                modifier = Modifier.clickable {
+                    context.startActivity(Intent(context, OnboardingActivity::class.java)
+                        .putExtra(OnboardingActivity.EXTRA_REPLAY, true))
+                }
+            )
 
             // A persistent in-app policy link is also required for Play's Data
             // safety disclosure. Opening it is explicit and uses the user's browser.
