@@ -58,3 +58,15 @@ server 5038), with an isolated app ID. Original user fixtures stay intact in
 Working branch `fix/diarization-recovery` starts at current origin/main `1b1c12e`.
 Baseline `gradlew.bat testDebugUnitTest --console=plain -q` passed before changes.
 The plan is not permission to push or merge main; preserve focused local commits.
+
+## Completion evidence
+
+All seven implementation checkpoints are complete. The work includes explicit
+speaker-only EOF draining, per-operation diagnostic consent, and regression fixes
+found by independent spec/quality reviews. Final accuracy, runtime limitations,
+configuration defaults, commit rationale and reproduction commands are documented
+in `docs/qa/diarization-recovery.md` and `docs/qa/diarization-scoring.md`.
+
+The supplied private audio remains outside committed sources. The acoustic
+scorer keeps raw ASR differences visible instead of relaxing the gold reference;
+speaker accuracy and paired On/Off wording are evaluated independently.
