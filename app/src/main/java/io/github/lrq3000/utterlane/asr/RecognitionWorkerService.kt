@@ -18,6 +18,7 @@ internal object RecognitionProtocol {
     const val END_SESSION = 5
     const val RESULT = 6
     const val PROGRESS = 7
+    const val FINISH_SPEAKERS = 8
     const val PROCESS_SUFFIX = ":recognition"
     const val MAX_SAMPLES = 192000
 }
@@ -29,7 +30,7 @@ class RecognitionWorkerService : Service() {
     private var textOnly = false
     // Read/written exclusively on the native executor, never polled via JNI on main.
     private var activeProgress: RecognitionProgressReporter? = null
-    private class SpeakerSession(val processor: DiarizedWindowProcessor, val count: Int, val options: RuntimeOptions)
+    internal class SpeakerSession(val processor: DiarizedWindowProcessor, val count: Int, val options: RuntimeOptions)
     private val speakerSessions = mutableMapOf<Long, SpeakerSession>()
     private val messenger by lazy { Messenger(Handler(Looper.getMainLooper()) { message ->
         if (message.what == RecognitionProtocol.END_SESSION) {
@@ -60,6 +61,7 @@ class RecognitionWorkerService : Service() {
                         RecognitionProtocol.LOAD -> load(data.getString("model"), OptionsCodec.fromBundle(requireNotNull(data.getBundle("options"))))
                         RecognitionProtocol.DECODE -> decode(data)
                         RecognitionProtocol.SPEAKERS -> speakers(data)
+                        RecognitionProtocol.FINISH_SPEAKERS -> finishSpeakers(data)
                         else -> error("Unknown recognition operation")
                     }
                 } catch (failure: Throwable) {
@@ -152,17 +154,18 @@ class RecognitionWorkerService : Service() {
         try {
             require(session.count == count && session.options == options) { "Speaker session options changed during recognition" }
             val spans = session.processor.process(AudioWindow(readPcm(data), data.getLong("start"), data.getLong("ownedStart"), data.getLong("ownedEnd"), data.getBoolean("final")))
-            check(spans.size <= 8192 && spans.sumOf { it.text.length } <= 128000) { "Speaker result exceeds IPC budget" }
-            return Bundle().apply {
-                putStringArray("texts", spans.map { it.text }.toTypedArray())
-                putIntArray("speakers", spans.map { it.speaker }.toIntArray())
-            }
+            return ResultSpanCodec.toBundle(spans)
         } catch (failure: Throwable) {
             speakerSessions.remove(id)?.processor?.close(); throw failure
         } finally {
             if (data.getBoolean("final")) speakerSessions.remove(id)?.processor?.close()
         }
     }
+
+    private fun finishSpeakers(data: Bundle): Bundle = ResultSpanCodec.toBundle(
+        finishSpeakerSession(speakerSessions, data.getLong("session")) {
+            OptionsCodec.fromBundle(requireNotNull(data.getBundle("options")))
+        })
 
     /** One native cache per recording; progress is scoped to the current invocation. */
     private fun getSpeakerStream(path: String, options: RuntimeOptions, progress: (Long, String) -> Unit): SpeakerProbabilityStream =
@@ -193,6 +196,19 @@ class RecognitionWorkerService : Service() {
     }
 
     companion object {
+        /** Executor-confined EOF: remove ownership even if option parsing or JNI fails. */
+        internal fun finishSpeakerSession(sessions: MutableMap<Long, SpeakerSession>, id: Long,
+            options: () -> RuntimeOptions): List<SpeechSpan> {
+            require(id > 0)
+            // No entry means no audio, a final-flagged window, or an earlier
+            // finish/close. In particular this path never constructs a model.
+            val session = sessions.remove(id) ?: return emptyList()
+            return try {
+                require(session.options == options()) { "Speaker session options changed during recognition" }
+                session.processor.finish()
+            } finally { session.processor.close() }
+        }
+
         /** Fixed-one labeling needs ASR only: never even construct native diarization. */
         internal fun speakerStream(count: Int, create: () -> SpeakerProbabilityStream): SpeakerProbabilityStream =
             if (count == 1) object : SpeakerProbabilityStream {

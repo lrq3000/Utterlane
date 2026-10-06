@@ -301,7 +301,11 @@ class RecognizerManager(
                     }, onProcessed = onProcessed,
                         decodeSpeakers = if (diarize) { window -> withSessionBackend(expected, id, options) { it.transcribeSpeakers(id, window, count, options) } } else null,
                         speakerLabel = { speaker -> speakerLabels.getOrElse(speaker) { unknownSpeaker } },
-                        options = options
+                        options = options,
+                        // The session lease remains held until onClosed. Use the
+                        // same snapshot/mutex/activity owner for its native EOF
+                        // drain so even Immediate idle unloading cannot race it.
+                        finishSpeakers = if (diarize) { { withSessionBackend(expected, id, options) { it.finishSpeakers(id, options) } } } else null
                     ).also { created = it }
                 }
             }
