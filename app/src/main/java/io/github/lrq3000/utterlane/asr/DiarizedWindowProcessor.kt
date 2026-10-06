@@ -63,10 +63,7 @@ class DiarizedWindowProcessor(
             val keepFrom = minOf(pending.peekFirst()?.start ?: window.startSample, window.startSample) - historyMs * 16L
             timeline.discardBefore(keepFrom.coerceAtLeast(0))
             val fresh = window.samples.copyOfRange((fed - window.startSample).toInt(), window.samples.size)
-            timeline.append(stream.push(fresh, window.isFinal))
-            // Only the documented centered-FFT tail may inherit the last frame.
-            // Larger final shortfalls remain Unknown, while all text still flushes.
-            if (window.isFinal && window.ownedEnd - timeline.endSample in 0..256) timeline.finishAt(window.ownedEnd)
+            pushProbabilities(fresh, window.isFinal, window.ownedEnd)
         }
         fed = end
         finished = window.isFinal
@@ -95,6 +92,25 @@ class DiarizedWindowProcessor(
         }
         drain(output)
         return output.finish()
+    }
+
+    /** Drain native lookahead and pending text without ever invoking ASR again. */
+    fun finish(): List<SpeechSpan> {
+        if (finished || closed) return emptyList()
+        // An exact zero-right-context boundary was already recognized by accept().
+        // No audio is retained or replayed: the native cache owns its bounded tail.
+        if (count != 1) pushProbabilities(ShortArray(0), final = true, endSample = fed)
+        finished = true
+        val output = SpanCollector()
+        drain(output)
+        return output.finish()
+    }
+
+    private fun pushProbabilities(samples: ShortArray, final: Boolean, endSample: Long) {
+        timeline.append(stream.push(samples, final))
+        // Only the documented centered-FFT tail may inherit the last frame.
+        // Larger final shortfalls remain Unknown, while all text still flushes.
+        if (final && endSample - timeline.endSample in 0..256) timeline.finishAt(endSample)
     }
 
     private fun rawText(result: WindowResult, window: AudioWindow): List<WindowText.Word> =

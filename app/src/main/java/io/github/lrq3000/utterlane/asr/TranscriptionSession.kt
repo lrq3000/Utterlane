@@ -15,7 +15,8 @@ class TranscriptionSession(
     private val onProcessed: (Long, Long) -> Unit = { _, _ -> },
     private val decodeSpeakers: (suspend (AudioWindow) -> List<SpeechSpan>)? = null,
     speakerLabel: (Int) -> String = { if (it < 0) "Unknown speaker" else "Speaker ${it + 1}" },
-    options: RuntimeOptions = RuntimeOptions()
+    options: RuntimeOptions = RuntimeOptions(),
+    private val finishSpeakers: (suspend () -> List<SpeechSpan>)? = null
 ) : java.io.Closeable {
     private val speakerText = if (decodeSpeakers != null) SpeakerText(corrections, speakerLabel) else null
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -49,6 +50,15 @@ class TranscriptionSession(
             if (!mayContinue()) return
             segmenter.finish()
             if (!mayContinue()) return
+            // Speaker lookahead can outlive the last ASR window (notably with
+            // zero right context). Its text must reach the same correction
+            // buffer before any pending dictionary phrase is finalized.
+            if (speakerText != null && finishSpeakers != null) {
+                val spans = finishSpeakers.invoke()
+                if (!mayContinue()) return
+                for (text in speakerText.accept(spans)) emit(text)
+                if (!mayContinue()) return
+            }
             emit(speakerText?.finish() ?: corrections.finish())
             if (!mayContinue()) return
             finished = true

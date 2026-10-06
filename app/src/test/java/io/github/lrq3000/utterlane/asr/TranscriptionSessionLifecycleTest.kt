@@ -17,6 +17,72 @@ import org.junit.rules.TemporaryFolder
 class TranscriptionSessionLifecycleTest {
     @get:Rule val directory = TemporaryFolder()
 
+    @Test fun speakerFinisherArrivesBeforePendingDictionaryTailIsFlushedAndSessionCloses(): Unit = runBlocking {
+        val store = TranscriptStore(directory.newFile())
+        val corrections = StreamingCorrections(listOf(DictionaryManager.ReplacementRule("New York", "NYC")))
+        // This prefix is already decoded; native lookahead still owns "York".
+        assertTrue(corrections.acceptSpans(listOf(SpeechSpan("New", 0))).isEmpty())
+        var finishes = 0
+        var closes = 0
+        val published = mutableListOf<String>()
+        val session = TranscriptionSession(store, corrections, onSegment = { published += it },
+            decode = { error("Finalization must not decode audio") }, onClosed = { closes++ },
+            decodeSpeakers = { error("No buffered ASR audio") }, finishSpeakers = {
+                assertEquals(0, closes)
+                assertTrue(published.isEmpty())
+                finishes++
+                listOf(SpeechSpan(" York", 0))
+            })
+        try {
+            session.finish()
+            session.finish()
+            assertEquals(listOf("Speaker 1: NYC"), published)
+            assertEquals("Speaker 1: NYC", store.file.readText())
+            assertEquals(1, finishes)
+            assertEquals(1, closes)
+        } finally { session.close(); store.dispose() }
+    }
+
+    @Test fun closeWhileSpeakerFinisherAwaitsDiscardsLateTextAndKeepsCorrectionTail(): Unit = runBlocking {
+        val store = TranscriptStore(directory.newFile())
+        val corrections = StreamingCorrections(listOf(DictionaryManager.ReplacementRule("New York", "NYC")))
+        corrections.acceptSpans(listOf(SpeechSpan("New", 0)))
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var closes = 0
+        val session = TranscriptionSession(store, corrections, onSegment = { fail("Closed finisher published text") },
+            decode = { error("Unexpected ASR") }, onClosed = { closes++ }, decodeSpeakers = { emptyList() },
+            finishSpeakers = { entered.complete(Unit); release.await(); listOf(SpeechSpan(" York", 0)) })
+        try {
+            val finishing = async(start = CoroutineStart.UNDISPATCHED) { session.finish() }
+            assertTrue("Speaker finisher was never invoked", entered.isCompleted)
+            session.close()
+            release.complete(Unit)
+            finishing.await()
+            assertEquals(0, store.segments)
+            assertEquals("New", corrections.finish())
+            assertEquals(1, closes)
+        } finally { release.complete(Unit); session.close(); store.dispose() }
+    }
+
+    @Test fun cancellationRejectsANonCooperativeLateSpeakerFinisher(): Unit = runBlocking {
+        val store = TranscriptStore(directory.newFile())
+        var closes = 0
+        var late: Continuation<List<SpeechSpan>>? = null
+        val session = TranscriptionSession(store, StreamingCorrections(emptyList()),
+            onSegment = { fail("Cancelled finisher published text") }, decode = { error("Unexpected ASR") },
+            onClosed = { closes++ }, decodeSpeakers = { emptyList() }, finishSpeakers = { suspendCoroutine { late = it } })
+        try {
+            val finishing = launch(start = CoroutineStart.UNDISPATCHED) { session.finish() }
+            assertNotNull("Speaker finisher was never invoked", late)
+            finishing.cancel()
+            checkNotNull(late).resume(listOf(SpeechSpan("late result", 0)))
+            finishing.join()
+            assertEquals(0, store.segments)
+            assertEquals(1, closes)
+        } finally { session.close(); store.dispose() }
+    }
+
     @Test fun cancelledSessionDoesNotDecodeOrPublishItsBufferedTail(): Unit = runBlocking {
         val store = TranscriptStore(directory.newFile())
         var closes = 0
