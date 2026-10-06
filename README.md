@@ -106,6 +106,8 @@ Read the [privacy policy](PRIVACY_POLICY.md) for permissions and retention detai
 
 ## Documentation
 
+- [Core values](CORE_VALUES.md): the product principles guiding responsiveness,
+  speed, reliability, privacy, and user ownership.
 - [User guide](docs/user-guide.md): installation options, models, languages,
   speaker labels, recording history, and settings.
 - [Developer guide](docs/development.md): building, testing, architecture,

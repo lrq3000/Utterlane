@@ -26,7 +26,7 @@ interface TranscriptionTrigger {
  * Currently supports:
  * - Folder monitoring (AudioMonitorService)
  *
- * Future options (documented in CLAUDE.md):
+ * Future options (documented in AGENTS.md):
  * - Quick Settings tile
  * - Home screen widget
  * - File picker button in Settings

@@ -6,6 +6,23 @@ This independently maintained fork has a separate Android application identity.
 See README.md for lineage and CONTRIBUTING.md for human sanity checking of AI
 contributions. Original/derived artwork is documented in docs/design/.
 
+## Mandatory: Read and Apply the Core Values
+
+Before starting any task, agents **must read [CORE_VALUES.md](CORE_VALUES.md) in
+full and apply it** when planning, implementing, reviewing, and verifying changes.
+It is the shared guide for human contributors and AI agents to Utterlane's future
+direction, covering product decisions, architecture, UI/UX, and optimization.
+
+- Treat the values as requirements that guide decisions, not optional background
+  reading. Apply their intent beyond the listed examples; the examples are not an
+  exhaustive checklist or a claim that every behavior is already implemented.
+- Evaluate changes against the complete user workflow and the relevant values.
+  Protect user input, correctness, privacy, and recoverability when values compete;
+  prefer removing redundant work to removing information.
+- Explain material trade-offs or conflicts with these values when proposing or
+  reviewing a change, and seek an approach that preserves them. Existing behavior
+  is not a reason to perpetuate a conflict with the intended direction.
+
 ## What Is This App?
 
 An Android voice typing app that works **completely offline**. Speak into your phone and text appears in any app - no internet, no cloud, no data leaving your device.
