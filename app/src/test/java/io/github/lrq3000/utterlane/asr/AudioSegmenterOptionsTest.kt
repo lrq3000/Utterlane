@@ -49,12 +49,17 @@ class AudioSegmenterOptionsTest {
         assertArrayEquals(audio.copyOfRange(120, 390), out[1].samples)
     }
 
-    @Test fun zeroRightContextStillFlushesNativeAtExactFinalBoundary(): Unit = runBlocking {
+    @Test fun zeroRightContextUsesOrdinaryDeliveryTimingEvenAtExactFinalBoundary(): Unit = runBlocking {
         val options = RuntimeOptions(asrWindowSeconds = 1.0, asrMinSeconds = 1.0,
             asrLeftContextSeconds = 0.0, asrRightContextSeconds = 0.0)
-        val out = windows(ShortArray(200) { 1000 }, options, 1, diarized = true)
+        val out = mutableListOf<AudioWindow>()
+        val segmenter = AudioSegmenter(sampleRate = 100, options = options, flushPendingOnFinish = true) { out += it }
+        val audio = ShortArray(200) { 1000 }
+        segmenter.accept(audio)
         assertEquals(2, out.size)
-        assertTrue(out.last().isFinal)
+        assertFalse(out.last().isFinal)
+        segmenter.finish()
+        sameWindows(windows(audio, options, 1), out)
         assertEquals(200L, out.last().ownedEnd)
     }
 
@@ -68,7 +73,7 @@ class AudioSegmenterOptionsTest {
         }
     }
 
-    @Test fun diarizedFinalCoalescingNeverExceedsTwelveSecondPcmCeiling(): Unit = runBlocking {
+    @Test fun diarizedFinalCutsNeverExceedTwelveSecondPcmCeiling(): Unit = runBlocking {
         val out = mutableListOf<AudioWindow>()
         val segmenter = AudioSegmenter(flushPendingOnFinish = true, options = RuntimeOptions()) { out += it }
         segmenter.accept(ShortArray(335999) { 1000 })

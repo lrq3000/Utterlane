@@ -380,6 +380,7 @@ class DiarizedWindowProcessorTest {
         assertTrue(processor.process(AudioWindow(ShortArray(16000), 0, 0, 16000)).isEmpty())
         processor.close()
         processor.close()
+        assertTrue(processor.finish().isEmpty())
         assertThrows(IllegalStateException::class.java) {
             processor.process(AudioWindow(ShortArray(16000), 16000, 16000, 32000, true))
         }

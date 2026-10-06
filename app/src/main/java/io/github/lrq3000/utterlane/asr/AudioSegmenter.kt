@@ -51,20 +51,20 @@ class AudioSegmenter(
             buffer[size++] = sample
             val end = start + size
             considerBoundary(sample, end)
-            // With no right context, hold one sample of scheduling lookahead so
-            // EOF at an exact boundary still sends a final native flush. The
-            // extra sample is not included in the preceding recognition window.
-            val deliveryContext = if (flushPendingOnFinish && rightContext == 0) 1 else rightContext
-            while (boundary != null && end >= checkNotNull(boundary) + deliveryContext) emit(checkNotNull(boundary))
+            while (boundary != null && end >= checkNotNull(boundary) + rightContext) emit(checkNotNull(boundary))
         }
     }
 
     suspend fun finish() {
         if (finished) return
-        // At EOF a pending boundary lacks its configured right context. Diarization must
-        // flush before owning those samples; coalesce the remaining <=12 s into
-        // one final window. The ordinary unlabeled path keeps its prior cuts.
-        if (!flushPendingOnFinish) while (boundary != null) emit(checkNotNull(boundary))
+        // Keep identical ASR PCM/ownership with and without speakers, even when
+        // EOF truncates right context. A pending cut can carry the native EOF
+        // flag only if no later owned tail remains. Delayed speaker metadata is
+        // drained separately when accept() already emitted the last window.
+        while (boundary != null) {
+            val end = checkNotNull(boundary)
+            emit(end, final = flushPendingOnFinish && end == start + size)
+        }
         if (start + size > ownedStart) emit(start + size, final = true)
         // Commit completion only after consume succeeds, so interruption cannot
         // permanently hide the final buffered window from a resumed finish().
