@@ -110,10 +110,16 @@ class WorkerRecognitionBackend(context: Context, private val model: ModelDefinit
             putLong("ownedStart", window.ownedStart); putLong("ownedEnd", window.ownedEnd); putBoolean("final", window.isFinal)
             putBundle("options", OptionsCodec.toBundle(options))
         }, snapshot.inferenceStallSeconds, snapshot.absoluteOperationSeconds)
-        val texts = requireNotNull(result.getStringArray("texts"))
-        val speakers = requireNotNull(result.getIntArray("speakers"))
-        check(texts.size == speakers.size && speakers.all { it in -1..7 })
-        return texts.indices.map { SpeechSpan(texts[it], speakers[it]) }
+        return ResultSpanCodec.fromBundle(result)
+    }
+    override fun finishSpeakers(sessionId: Long, options: RuntimeOptions): List<SpeechSpan> {
+        val snapshot = this.options
+        // No PCM field: finalization is a distinct operation, not a zero-length
+        // ASR decode. Keep the configured worker's current recovery budgets.
+        val result = request(RecognitionProtocol.FINISH_SPEAKERS, Bundle().apply {
+            putLong("session", sessionId); putBundle("options", OptionsCodec.toBundle(options))
+        }, snapshot.inferenceStallSeconds, snapshot.absoluteOperationSeconds)
+        return ResultSpanCodec.fromBundle(result)
     }
     override fun endSession(sessionId: Long) {
         // Fire-and-forget cleanup is queued behind any cancelled in-flight JNI

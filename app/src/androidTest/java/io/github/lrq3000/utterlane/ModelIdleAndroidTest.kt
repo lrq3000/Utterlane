@@ -4,6 +4,7 @@ import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.lrq3000.utterlane.asr.*
+import io.github.lrq3000.utterlane.settings.RuntimeOptions
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.*
@@ -28,15 +29,23 @@ class ModelIdleAndroidTest {
     private val backends = mutableListOf<FakeBackend>()
     private var nextPrepare: () -> Unit = {}
     private var failDecode = false
+    private var onFinishSpeakers: (RuntimeOptions) -> List<SpeechSpan> = { emptyList() }
 
-    private class FakeBackend(private val onPrepare: () -> Unit, private val failDecode: Boolean) : RecognitionBackend {
+    private class FakeBackend(private val onPrepare: () -> Unit, private val failDecode: Boolean,
+        private val onFinishSpeakers: (RuntimeOptions) -> List<SpeechSpan>) : RecognitionBackend {
         val closed = CountDownLatch(1)
+        var speakerWindows = 0
         override fun prepare() = onPrepare()
         override fun isAvailable() = closed.count > 0
         override fun transcribeWindow(samples: ShortArray): WindowResult {
             check(!failDecode) { "Injected decode failure" }
             return WindowResult(emptyArray(), FloatArray(0))
         }
+        override fun transcribeSpeakers(sessionId: Long, window: AudioWindow, count: Int, options: RuntimeOptions): List<SpeechSpan> {
+            speakerWindows++
+            return emptyList()
+        }
+        override fun finishSpeakers(sessionId: Long, options: RuntimeOptions): List<SpeechSpan> = onFinishSpeakers(options)
         override fun close() { closed.countDown() }
     }
 
@@ -58,7 +67,7 @@ class ModelIdleAndroidTest {
         }
         assertTrue(app.modelManager.ensureVerified())
         manager = RecognizerManager(app, app.modelManager, elapsedMillis = { SystemClock.elapsedRealtime() + offset.get() }) { _, _ ->
-            FakeBackend(nextPrepare, failDecode).also { backends.add(it) }
+            FakeBackend(nextPrepare, failDecode, onFinishSpeakers).also { backends.add(it) }
         }
         manager.setIdleTimeout(ModelIdleTimeout.TWENTY_MINUTES)
     }
@@ -125,6 +134,50 @@ class ModelIdleAndroidTest {
         offset.addAndGet(1_200_000L)
         manager.recheckIdleTimeout()
         awaitUnload()
+    }
+
+    @Test fun immediateWaitsForSpeakerFinisherAndItsTextBeforeClosingTheLastSession(): Unit = runBlocking {
+        val previousCount = app.settingsRepository.speakerCount.first()
+        val previousDictionary = app.settingsRepository.dictionaryEnabled.first()
+        try {
+            // Fixed one bypasses auxiliary weights, while still exercising the
+            // manager/session finisher path with a deliberately delayed backend.
+            app.settingsRepository.setSpeakerCount(1)
+            app.settingsRepository.setDiarizationEnabled(true)
+            app.settingsRepository.setDictionaryEnabled(false)
+            val entered = CountDownLatch(1)
+            val proceed = CountDownLatch(1)
+            val snapshot = RuntimeOptions(asrRightContextSeconds = 0.0)
+            onFinishSpeakers = { actual ->
+                assertEquals(snapshot, actual)
+                entered.countDown()
+                check(proceed.await(5, TimeUnit.SECONDS))
+                listOf(SpeechSpan("last word", 0))
+            }
+            manager.setIdleTimeout(ModelIdleTimeout.IMMEDIATE)
+            val session = manager.createSession(snapshot)
+            try {
+                session.accept(ShortArray(160000) { 1000 })
+                val finishing = async(Dispatchers.IO) { session.finish() }
+                try {
+                    assertTrue(entered.await(5, TimeUnit.SECONDS))
+                    manager.recheckIdleTimeout()
+                    assertTrue(manager.isReady.value)
+                    assertEquals(1L, backends.single().closed.count)
+                    assertEquals(1, backends.single().speakerWindows)
+                    assertEquals(0, session.store.segments)
+                } finally { proceed.countDown() }
+                finishing.await()
+                assertEquals("${app.getString(R.string.speaker_label, 1)}: last word", session.store.file.readText())
+                assertEquals(1, backends.single().speakerWindows)
+                awaitUnload()
+            } finally { proceed.countDown(); session.close(); session.store.dispose() }
+        } finally {
+            withContext(NonCancellable) {
+                app.settingsRepository.setSpeakerCount(previousCount)
+                app.settingsRepository.setDictionaryEnabled(previousDictionary)
+            }
+        }
     }
 
     @Test fun immediateCannotInterruptPendingModelLoad(): Unit = runBlocking {

@@ -18,5 +18,7 @@ interface RecognitionBackend : Closeable {
     fun isAvailable(): Boolean = true
     fun transcribeWindow(samples: ShortArray): WindowResult
     fun transcribeSpeakers(sessionId: Long, window: AudioWindow, count: Int, options: RuntimeOptions = RuntimeOptions()): List<SpeechSpan> = error("This backend does not support streaming diarization")
+    /** Drain existing speaker state only; never recognize or load a model at EOF. */
+    fun finishSpeakers(sessionId: Long, options: RuntimeOptions = RuntimeOptions()): List<SpeechSpan> = emptyList()
     fun endSession(sessionId: Long) {}
 }
