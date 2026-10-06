@@ -6,6 +6,7 @@
   --comparison-highlight-border: #bfd3f4;
   --comparison-tail: #e5ecfb;
   --comparison-ground: #e7eef9;
+  --comparison-invitation-border: #b9cbea;
   /* The approved muted color is just below AA on the blue-tinted panels. */
   --comparison-highlight-text: #56667e;
   background: var(--canvas);
@@ -17,6 +18,7 @@
     --comparison-highlight-border: #47658b;
     --comparison-tail: #233954;
     --comparison-ground: #233954;
+    --comparison-invitation-border: #4b658b;
     --comparison-highlight-text: var(--muted);
   }
 }
@@ -47,11 +49,36 @@
 .comparison-pace-note { color: #bdcce3; line-height: 1.7; font-size: 12px; margin: 24px 0 0; }
 .comparison-source-note { font-size: 12px; color: var(--muted); line-height: 1.8; max-width: 1020px; }
 .comparison a:not(.button) { color: var(--blue); text-decoration: underline; }
-.comparison-disclosure { margin-top: 56px; border-block: 1px solid var(--comparison-border); }
-.comparison-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 24px 0; min-height: 44px; font-size: 18px; line-height: 1.6; font-weight: 600; cursor: pointer; list-style: none; }
+.comparison-disclosure { margin-top: 38px; }
+/* Approved B / Illustrated preview: all invitation content belongs to one native
+   summary, so the entire surface works with a pointer, keyboard, or no JS. */
+.comparison-disclosure > summary { display: grid; grid-template-columns: 1.2fr 1fr; align-items: center; gap: 27px 34px; padding: 30px 34px 23px; min-height: 44px; font-size: 18px; line-height: 1.6; font-weight: 600; cursor: pointer; list-style: none; position: relative; isolation: isolate; border: 1px solid var(--comparison-invitation-border); border-radius: 20px; color: var(--ink); background: radial-gradient(ellipse at 100% 0%, #7750bc0c, transparent 65%), var(--surface); box-shadow: 0 8px 32px #15263f06; }
 .comparison-disclosure > summary::-webkit-details-marker { display: none; }
-.comparison-disclosure > summary:hover { color: var(--blue); }
-.comparison-disclosure > summary .disclosure { flex-shrink: 0; }
+.comparison-disclosure > summary::before { content: ""; position: absolute; inset: 0 22px auto; height: 3px; background: var(--voice-gradient); border-radius: 0 0 4px 4px; opacity: .85; }
+.comparison-disclosure > summary:hover { border-color: var(--blue); box-shadow: 0 10px 30px #155ecc12; }
+.comparison-disclosure[open] > summary { margin-bottom: 35px; }
+.comparison-invitation-copy { display: block; min-width: 0; }
+.comparison-invitation-kicker { display: block; font-size: 10px; line-height: 1.5; text-transform: uppercase; letter-spacing: 1.5px; color: var(--blue); font-weight: 750; margin-bottom: 10px; }
+.comparison-invitation-title { display: block; font-size: clamp(25px, 2.5vw, 33px); line-height: 1.18; font-weight: 650; letter-spacing: -1px; max-width: 360px; }
+.comparison-invitation-description { display: block; font-size: 13px; font-weight: 400; line-height: 1.75; margin-top: 10px; color: var(--muted); max-width: 430px; }
+.comparison-invitation-topics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; align-self: center; }
+.comparison-invitation-topic { display: flex; flex-direction: column; align-items: center; background: var(--soft-surface); border: 1px solid var(--line); border-radius: 13px; padding: 10px 5px 12px; min-width: 0; gap: 8px; }
+.comparison-invitation-topic svg { width: 100%; max-width: 96px; height: 60px; color: #155ecc; }
+.comparison-invitation-topic > span { font-size: 11px; font-weight: 600; line-height: 1.4; color: var(--ink); }
+.comparison-invitation-bottom { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 15px; border-top: 1px solid var(--line); padding-top: 17px; }
+.comparison-invitation-count { font-size: 12px; color: var(--muted); font-weight: 400; line-height: 1.65; }
+.comparison-invitation-count strong { color: var(--ink); font-weight: 650; }
+.comparison-invitation-count small { display: block; font-size: 11px; }
+.comparison-invitation-action { display: inline-flex; gap: 14px; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px; font-weight: 650; padding: 15px 19px; border-radius: 11px; background: var(--blue); color: var(--on-blue); white-space: nowrap; min-height: 48px; }
+.comparison-invitation-arrow { width: 17px; height: 17px; transition: transform 160ms ease; }
+.comparison-invitation-open { display: none; }
+.comparison-disclosure[open] .comparison-invitation-open { display: inline; }
+.comparison-disclosure[open] .comparison-invitation-closed { display: none; }
+.comparison-disclosure[open] .comparison-invitation-arrow { transform: rotate(180deg); }
+[data-motion="paused"] .comparison-invitation-arrow { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .comparison-invitation-arrow { transition: none; }
+}
 .comparison-heading-row { display: flex; align-items: end; justify-content: space-between; gap: 32px; margin: 30px 0 25px; }
 .comparison-heading-row h3 { font-size: 38px; letter-spacing: -1.5px; line-height: 1.15; margin: 0; }
 .comparison-heading-row p { max-width: 410px; font-size: 13px; line-height: 1.8; color: var(--muted); margin: 0; }
@@ -92,6 +119,9 @@
 .comparison-research li { margin-block: 9px; }
 .comparison-research ol { padding-left: 24px; }
 @media (max-width: 800px) {
+  .comparison-disclosure > summary { grid-template-columns: 1fr; gap: 21px; }
+  .comparison-invitation-title { max-width: none; }
+  .comparison-invitation-topic svg { max-width: 100px; }
   .comparison-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .comparison-pace { gap: 25px; padding: 30px; grid-template-columns: 1fr; }
   .comparison-multiplier { font-size: 88px; }
@@ -103,6 +133,14 @@
   .comparison-tail { align-items: start; flex-direction: column; }
 }
 @media (max-width: 480px) {
+  .comparison-disclosure > summary { padding: 25px 21px; border-radius: 17px; }
+  .comparison-invitation-kicker { font-size: 9px; letter-spacing: 1.2px; }
+  .comparison-invitation-title { font-size: 28px; }
+  .comparison-invitation-description { font-size: 12px; }
+  .comparison-invitation-bottom { flex-direction: column; align-items: stretch; gap: 14px; }
+  .comparison-invitation-topic { padding: 7px 3px 10px; gap: 3px; }
+  .comparison-invitation-topic svg { height: 49px; }
+  .comparison-invitation-count small { display: inline; margin-left: 4px; }
   .comparison > .container { width: calc(100% - 32px); }
   .comparison-intro h2 { font-size: 42px; letter-spacing: -2px; }
   .comparison-pace { padding: 25px; }

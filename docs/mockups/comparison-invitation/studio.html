@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="darkreader-lock">
+  <title>Utterlane — Three invitations to explore</title>
+  <link rel="icon" href="/files/icon.png">
+  <style>
+    * { box-sizing: border-box; }
+    :root { font-family: Inter, "Segoe UI", Arial, sans-serif; color: #15263f; background: #edf1f7; font-synthesis: none; }
+    body { margin: 0; }
+    button { font: inherit; cursor: pointer; }
+    button:focus-visible, a:focus-visible { outline: 3px solid #7750bc; outline-offset: 4px; }
+    .studio-header { padding: 19px 34px; background: #fff; border-bottom: 1px solid #dce4ef; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+    .studio-header img { width: 136px; height: auto; display: block; }
+    .studio-label { color: #5c6d85; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.8px; }
+    main { max-width: 1536px; padding: 25px 34px 26px; margin: auto; }
+    .heading { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 20px; }
+    h1 { font-size: clamp(24px, 2.4vw, 33px); font-weight: 600; letter-spacing: -1.1px; margin: 0 0 7px; }
+    .intro { font-size: 13px; line-height: 1.65; color: #5b6d85; margin: 0; }
+    .study-count { font-size: 12px; color: #5b6d85; white-space: nowrap; }
+    .directions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .direction { position: relative; text-align: left; background: #f8faff; border: 1px solid #cfdaea; border-radius: 14px; padding: 14px 19px; color: #15263f; transition: border-color 150ms, background 150ms; }
+    .direction:hover { background: #fff; border-color: #859fc6; }
+    .direction[aria-pressed="true"] { background: #fff; border: 2px solid #155ecc; padding: 13px 18px; box-shadow: 0 5px 16px #155ecc0c; }
+    .direction-label { display: block; color: #5b6d85; font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; font-weight: 700; margin-bottom: 7px; }
+    .direction strong { display: block; font-size: 17px; font-weight: 600; letter-spacing: -.3px; }
+    .recommended { color: #624095; font-size: 9px; font-weight: 700; text-transform: uppercase; background: #efe8fb; border-radius: 20px; padding: 4px 7px; margin-left: 6px; letter-spacing: .3px; vertical-align: 1px; }
+    .workbench { overflow: hidden; border: 1px solid #cfdaea; border-radius: 15px; background: #dde5f0; box-shadow: 0 16px 50px #15263f08; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center; padding: 12px 18px; background: #fff; border-bottom: 1px solid #dce4ef; }
+    .preview-label { display: flex; align-items: center; gap: 8px; color: #50647f; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+    .preview-label::before { content: ""; width: 6px; height: 6px; background: #15804b; border-radius: 50%; }
+    .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .segmented { display: flex; padding: 3px; border: 1px solid #dce4ef; border-radius: 9px; gap: 2px; }
+    .segmented button, .reset { border: 0; border-radius: 6px; background: transparent; padding: 6px 12px; font-size: 11px; color: #526580; min-height: 30px; }
+    .segmented button[aria-pressed="true"] { background: #eaf1ff; color: #124fa9; font-weight: 650; }
+    .reset { border: 1px solid #dce4ef; padding: 9px 12px; }
+    .reset:hover { background: #f1f5fb; }
+    .canvas { padding: 0; display: flex; justify-content: center; transition: padding 150ms; }
+    iframe { display: block; width: 100%; height: max(610px, calc(100vh - 356px)); border: 0; background: #f1f5fb; }
+    .canvas.phone { padding: 18px; }
+    .canvas.phone iframe { max-width: 390px; height: 740px; border-radius: 22px; box-shadow: 0 10px 35px #15263f26; border: 6px solid #25354e; }
+    .footnote { display: flex; align-items: start; justify-content: space-between; gap: 24px; padding: 17px 2px 0; }
+    #design-note { font-size: 12px; color: #526580; line-height: 1.7; margin: 0; max-width: 760px; }
+    .feedback { font-size: 12px; color: #155ecc; margin: 0; line-height: 1.7; text-align: right; }
+    #error { background: #fff3f2; color: #7e241d; border: 1px solid #e7b7b2; padding: 20px; border-radius: 12px; }
+    [hidden] { display: none !important; }
+    @media (max-width: 760px) {
+      .studio-header { padding: 15px 18px; }
+      main { padding: 20px 14px; }
+      .study-count { display: none; }
+      .directions { gap: 7px; }
+      .direction { padding: 12px 10px; }
+      .direction[aria-pressed="true"] { padding: 11px 9px; }
+      .direction strong { font-size: 13px; }
+      .direction-label { font-size: 9px; letter-spacing: .5px; }
+      .recommended { display: none; }
+      .toolbar { padding: 12px; gap: 10px; }
+      .controls { gap: 6px; }
+      .segmented button, .reset { padding-inline: 9px; }
+      .footnote { display: block; }
+      .feedback { text-align: left; margin-top: 8px; }
+      .canvas.phone { padding: 12px 4px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+  </style>
+  <!-- These styles are copied into the real website document inside the frame.
+       Only the comparison invitation changes; its eight original cards remain. -->
+  <style id="invitation-styles" media="not all">
+    html { scroll-behavior: auto; }
+    .comparison-disclosure { margin-top: 38px; border: 0; }
+    .comparison-disclosure > summary { padding: 28px 30px; border-radius: 20px; border: 1px solid #b8cef0; background: var(--surface); gap: 24px; color: var(--ink); position: relative; isolation: isolate; }
+    .comparison-disclosure > summary:hover { color: var(--ink); border-color: var(--blue); box-shadow: 0 10px 30px #155ecc12; }
+    .comparison-disclosure[open] > summary { margin-bottom: 35px; }
+    .invite-copy { display: block; min-width: 0; }
+    .invite-kicker { display: block; font-size: 10px; line-height: 1.5; text-transform: uppercase; letter-spacing: 1.5px; color: var(--blue); font-weight: 750; margin-bottom: 10px; }
+    .invite-title { display: block; font-size: clamp(25px, 2.5vw, 33px); line-height: 1.18; font-weight: 650; letter-spacing: -1px; }
+    .invite-description { display: block; font-size: 13px; font-weight: 400; line-height: 1.75; margin-top: 10px; color: var(--muted); max-width: 430px; }
+    .invite-action { display: inline-flex; gap: 14px; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px; font-weight: 650; padding: 15px 19px; border-radius: 11px; background: var(--blue); color: var(--on-blue); white-space: nowrap; min-height: 48px; }
+    .invite-arrow { width: 17px; height: 17px; transition: transform 160ms ease; }
+    details[open] .invite-arrow { transform: rotate(180deg); }
+    .invite-open { display: none; }
+    details[open] .invite-open { display: inline; }
+    details[open] .invite-closed { display: none; }
+    /* The button-shaped action is a span, keeping the summary a single native
+       control rather than nesting a second interactive target inside it. */
+    .invite-a > summary { background: linear-gradient(110deg, var(--tonal), var(--surface) 75%); padding: 29px 30px; }
+    .invite-a .invite-title { font-size: clamp(23px, 2.2vw, 29px); }
+    .invite-a .invite-description { margin-top: 7px; }
+    .invite-leading { display: flex; align-items: center; gap: 22px; }
+    .invite-emblem { width: 62px; height: 62px; flex: none; border-radius: 17px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--comparison-border); color: var(--blue); }
+    .invite-emblem svg { width: 31px; height: 31px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+    .invite-a .invite-kicker { margin-bottom: 6px; }
+    .invite-b > summary { display: grid; grid-template-columns: 1.2fr 1fr; gap: 27px 34px; background: radial-gradient(ellipse at 100% 0%, #7750bc0c, transparent 65%), var(--surface); padding: 30px 34px 23px; border-color: #b9cbea; box-shadow: 0 8px 32px #15263f06; }
+    .invite-b > summary::before { content: ""; position: absolute; inset: 0 22px auto; height: 3px; background: var(--voice-gradient); border-radius: 0 0 4px 4px; opacity: .85; }
+    .invite-b .invite-title { max-width: 360px; }
+    .invite-topics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; align-self: center; }
+    .invite-topic { display: flex; flex-direction: column; align-items: center; background: var(--soft-surface); border: 1px solid var(--line); border-radius: 13px; padding: 10px 5px 12px; min-width: 0; gap: 8px; }
+    .invite-topic svg { width: 100%; max-width: 96px; height: 60px; color: #155ecc; }
+    .invite-topic > span { font-size: 11px; font-weight: 600; line-height: 1.4; color: var(--ink); }
+    .invite-bottom { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 15px; border-top: 1px solid var(--line); padding-top: 17px; }
+    .invite-count { font-size: 12px; color: var(--muted); font-weight: 400; line-height: 1.65; }
+    .invite-count strong { color: var(--ink); font-weight: 650; }
+    .invite-count small { display: block; font-size: 11px; }
+    .invite-c > summary { display: grid; grid-template-columns: 1.05fr 1fr; gap: 24px 40px; background: radial-gradient(ellipse at 92% 0%, #7750bc4a, transparent 55%), radial-gradient(ellipse at 55% 120%, #155ecc45, transparent 65%), #10203a; color: #f1f5fb; border-color: #516b93; padding: 32px 34px; overflow: hidden; }
+    .invite-c > summary:hover { color: #f1f5fb; border-color: #a4c7ff; box-shadow: 0 12px 32px #15263f22; }
+    .invite-c .invite-kicker { color: #bdd5ff; }
+    .invite-c .invite-title { font-size: clamp(28px, 2.9vw, 39px); letter-spacing: -1.4px; }
+    .invite-c .invite-description { color: #c2cfe3; }
+    .invite-c .invite-action { background: #e5efff; color: #123c7a; }
+    .invite-c .invite-bottom { border-color: #ffffff20; padding-top: 20px; }
+    .invite-c .invite-count { color: #c2cfe3; }
+    .invite-c .invite-count strong { color: #f1f5fb; }
+    .invite-approaches { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; align-self: center; }
+    .invite-approach { display: flex; align-items: center; flex-direction: column; justify-content: center; gap: 14px; padding: 19px 5px 16px; border-radius: 13px; background: #ffffff07; border: 1px solid #ffffff25; font-size: 10px; color: #d9e5f8; text-align: center; line-height: 1.5; font-weight: 500; }
+    .invite-approach:last-child { background: #a4c7ff22; border-color: #a4c7ff; color: #fff; }
+    .invite-approach > svg, .invite-approach > img { width: 32px; height: 32px; object-fit: contain; }
+    .invite-approach > svg { stroke: #b7d1fb; stroke-width: 1.5; fill: none; }
+    [data-theme="dark"] .invite-a > summary, [data-theme="dark"] .invite-b > summary { border-color: #4b658b; }
+    [data-theme="dark"] .invite-b > summary:hover, [data-theme="dark"] .invite-a > summary:hover { border-color: #a4c7ff; }
+    .mockup-return { position: fixed; z-index: 10; bottom: 18px; right: 20px; border: 1px solid var(--line); border-radius: 30px; background: var(--surface); color: var(--blue); box-shadow: 0 4px 20px #15263f20; padding: 13px 18px; font-size: 12px; font-weight: 650; }
+    @media (max-width: 800px) {
+      .invite-a > summary { align-items: start; flex-direction: column; gap: 20px; }
+      .invite-b > summary, .invite-c > summary { grid-template-columns: 1fr; gap: 21px; }
+      .invite-b .invite-title { max-width: none; }
+      .invite-topic svg { max-width: 100px; }
+      .invite-c .invite-description { max-width: none; }
+    }
+    @media (max-width: 480px) {
+      .comparison-disclosure > summary { padding: 25px 21px; border-radius: 17px; }
+      .invite-leading { align-items: start; gap: 13px; }
+      .invite-emblem { width: 39px; height: 39px; border-radius: 11px; }
+      .invite-emblem svg { width: 23px; height: 23px; }
+      .invite-a .invite-title { font-size: 23px; letter-spacing: -.7px; }
+      .invite-a .invite-description { font-size: 12px; }
+      .invite-kicker { font-size: 9px; letter-spacing: 1.2px; }
+      .invite-a .invite-action { width: 100%; }
+      .invite-b .invite-title { font-size: 28px; }
+      .invite-b .invite-description { font-size: 12px; }
+      .invite-bottom { flex-direction: column; align-items: stretch; gap: 14px; }
+      .invite-topic { padding: 7px 3px 10px; gap: 3px; }
+      .invite-topic svg { height: 49px; }
+      .invite-count small { display: inline; margin-left: 4px; }
+      .invite-c .invite-title { font-size: 31px; }
+      .invite-c .invite-description { font-size: 12px; }
+      .invite-approaches { gap: 5px; }
+      .invite-approach { padding: 14px 2px 12px; font-size: 9px; }
+      .invite-approach > svg, .invite-approach > img { width: 27px; height: 27px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .invite-arrow { transition: none; } }
+  </style>
+</head>
+<body>
+  <header class="studio-header">
+    <img src="/files/wordmark.png" width="175" height="53" alt="Utterlane — Fast. Offline. Transcription.">
+    <span class="studio-label">Design study / Comparison discovery</span>
+  </header>
+  <main>
+    <div class="heading">
+      <div><h1>A little invitation. A lot to discover.</h1><p class="intro">Three ways to make the comparison worth opening. Click the card in the preview to explore.</p></div>
+      <span class="study-count">Subtle → expressive</span>
+    </div>
+    <nav class="directions" aria-label="Mockup directions">
+      <button class="direction" data-variant="a" data-choice="a" aria-pressed="false"><span class="direction-label">A / Subtle</span><strong>Highlighted invitation</strong></button>
+      <button class="direction" data-variant="b" data-choice="b" aria-pressed="true"><span class="direction-label">B / A glimpse inside <span class="recommended">Recommended</span></span><strong>Illustrated preview</strong></button>
+      <button class="direction" data-variant="c" data-choice="c" aria-pressed="false"><span class="direction-label">C / Expressive</span><strong>Featured comparison</strong></button>
+    </nav>
+    <p id="error" role="alert" hidden></p>
+    <section class="workbench" aria-label="Interactive website preview">
+      <div class="toolbar">
+        <span class="preview-label">Real page context · Interactive mockup</span>
+        <div class="controls">
+          <div class="segmented" role="group" aria-label="Preview width"><button data-size="desktop" aria-pressed="true">Desktop</button><button data-size="phone" aria-pressed="false">Phone</button></div>
+          <div class="segmented" role="group" aria-label="Preview theme"><button data-theme="light" aria-pressed="true">Light</button><button data-theme="dark" aria-pressed="false">Dark</button></div>
+          <button class="reset" id="reset" type="button">Reset view ↺</button>
+        </div>
+      </div>
+      <div class="canvas" id="canvas"><iframe id="preview" title="Utterlane comparison mockup B: Illustrated preview"></iframe></div>
+    </section>
+    <div class="footnote"><p id="design-note" aria-live="polite"></p><p class="feedback">Try A, B, and C, then tell me your favorite in the conversation.</p></div>
+  </main>
+
+  <template id="action"><span class="invite-action"><span class="invite-closed"></span><span class="invite-open">Hide comparison</span><svg class="icon invite-arrow" aria-hidden="true"><use href="#arrow-down"/></svg></span></template>
+  <template id="variant-a">
+    <span class="invite-leading"><span class="invite-emblem" aria-hidden="true"><svg viewBox="0 0 32 32"><rect x="3" y="4" width="26" height="24" rx="4"/><path d="M3 12h26M12 4v24M21 4v24M7 17h1m8 0h1m8 0h1M7 23h1m8 0h1m8 0h1"/></svg></span><span class="invite-copy"><span class="invite-kicker">Find your fit</span><span class="invite-title">See how Utterlane compares.</span><span class="invite-description">Four approaches. Eight things that matter.</span></span></span>
+    <span data-action="Explore comparison"></span>
+  </template>
+  <template id="variant-b">
+    <span class="invite-copy"><span class="invite-kicker">A closer look</span><span class="invite-title">What makes Utterlane different?</span><span class="invite-description">Compare phone keyboards, cloud transcription, offline tools, and Utterlane.</span></span>
+    <span class="invite-topics"><span class="invite-topic"><span data-art="comparison-speed-title" aria-hidden="true"></span><span>Speed</span></span><span class="invite-topic"><span data-art="comparison-privacy-title" aria-hidden="true"></span><span>Privacy</span></span><span class="invite-topic"><span data-art="comparison-meeting-title" aria-hidden="true"></span><span>Meetings</span></span></span>
+    <span class="invite-bottom"><span class="invite-count"><strong>8 illustrated comparisons</strong><small>These three topics, plus five more.</small></span><span data-action="Expand the comparison"></span></span>
+  </template>
+  <template id="variant-c">
+    <span class="invite-copy"><span class="invite-kicker">Compare the experience</span><span class="invite-title">Same thought.<br>A different experience.</span><span class="invite-description">From the way you write to where your words go.<br>Explore the differences that matter to you.</span></span>
+    <span class="invite-approaches"><span class="invite-approach"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="6" width="28" height="20" rx="4"/><path d="M7 12h2m3 0h2m3 0h2m3 0h2M7 17h2m3 0h2m3 0h2m3 0h2M10 22h12"/></svg><span>Phone<br>keyboard</span></span><span class="invite-approach"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M8 24C0 24 1 13 8 13 7 2 24 2 24 13 32 11 34 24 26 24ZM16 23V13m-4 4 4-4 4 4"/></svg><span>Cloud<br>transcription</span></span><span class="invite-approach"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#lock"/></svg><span>Other<br>offline tools</span></span><span class="invite-approach"><img src="/files/icon.png" width="32" height="32" alt=""><span>Utterlane<br>on your phone</span></span></span>
+    <span class="invite-bottom"><span class="invite-count"><strong>4 approaches. 8 perspectives.</strong><small>One side-by-side comparison.</small></span><span data-action="See all 8 comparisons"></span></span>
+  </template>
+  <script type="module">
+    /** One document and one frame keep all three options faithful to the same
+        website revision, rather than maintaining three divergent page copies. */
+    class ComparisonStudio {
+      constructor() {
+        this.variant = ['a', 'b', 'c'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'b';
+        this.theme = 'light';
+        this.frame = document.querySelector('#preview');
+        this.notes = {
+          a: 'A / The smallest footprint. A softly highlighted card, a comparison icon, and an unmistakable expand action. Quiet, but clearly interactive.',
+          b: 'B / A preview of the value inside. Three real illustrations invite exploration; the full eight-topic comparison stays folded until you open it.',
+          c: 'C / The strongest invitation. A navy feature panel introduces all four approaches. More prominent, with more visual weight next to the existing speed chart.',
+        };
+      }
+
+      async start() {
+        const response = await fetch('/files/website-source.txt');
+        if (!response.ok) throw new Error(`Website source could not be loaded (${response.status}).`);
+        this.source = await response.text();
+        document.querySelectorAll('[data-variant]').forEach(button => button.addEventListener('click', () => {
+          this.variant = button.dataset.variant;
+          history.replaceState(null, '', `#${this.variant}`);
+          this.render();
+        }));
+        document.querySelectorAll('[data-size]').forEach(button => button.addEventListener('click', () => {
+          this.select('[data-size]', 'size', button.dataset.size);
+          document.querySelector('#canvas').classList.toggle('phone', button.dataset.size === 'phone');
+          requestAnimationFrame(() => this.recenter());
+        }));
+        document.querySelectorAll('[data-theme]').forEach(button => button.addEventListener('click', () => {
+          this.theme = button.dataset.theme;
+          this.select('[data-theme]', 'theme', this.theme);
+          this.frame.contentDocument.documentElement.dataset.theme = this.theme;
+        }));
+        document.querySelector('#reset').addEventListener('click', () => {
+          this.frame.contentDocument.querySelector('.comparison-disclosure').open = false;
+          this.recenter();
+        });
+        this.render();
+      }
+
+      select(selector, key, value) {
+        document.querySelectorAll(selector).forEach(button => button.setAttribute('aria-pressed', String(button.dataset[key] === value)));
+      }
+
+      recenter() {
+        const doc = this.frame.contentDocument;
+        const disclosure = doc?.querySelector('.comparison-disclosure');
+        if (!disclosure) return;
+        // Leave a strip of the preceding chart visible, so prominence can be
+        // judged against its real neighbors rather than on an empty canvas.
+        const context = this.frame.clientWidth < 600 ? 48 : 125;
+        this.frame.contentWindow.scrollTo({ top: disclosure.getBoundingClientRect().top + this.frame.contentWindow.scrollY - context, behavior: 'instant' });
+      }
+
+      render() {
+        const doc = new DOMParser().parseFromString(this.source, 'text/html');
+        // This is a visual study: existing motion remains in its static, readable
+        // state, and the studio owns theme choice without altering saved settings.
+        doc.querySelectorAll('script, .motion-toggle, .theme-toggle').forEach(node => node.remove());
+        doc.documentElement.dataset.theme = this.theme;
+        const style = doc.createElement('style');
+        style.textContent = document.querySelector('#invitation-styles').textContent;
+        doc.head.append(style);
+        const disclosure = doc.querySelector('.comparison-disclosure');
+        disclosure.classList.add(`invite-${this.variant}`);
+        disclosure.open = false;
+        const summary = disclosure.querySelector(':scope > summary');
+        summary.replaceChildren(document.querySelector(`#variant-${this.variant}`).content.cloneNode(true));
+        summary.querySelectorAll('[data-action]').forEach(slot => {
+          const action = document.querySelector('#action').content.cloneNode(true);
+          action.querySelector('.invite-closed').textContent = slot.dataset.action;
+          slot.replaceWith(action);
+        });
+        summary.querySelectorAll('[data-art]').forEach(slot => {
+          const original = doc.getElementById(slot.dataset.art).closest('.comparison-card').querySelector('.comparison-art');
+          slot.replaceWith(original.cloneNode(true));
+        });
+        const returnButton = doc.createElement('button');
+        returnButton.className = 'mockup-return';
+        returnButton.textContent = '↑ Back to comparison';
+        returnButton.hidden = true;
+        doc.body.append(returnButton);
+        this.frame.onload = () => {
+          this.recenter();
+          const current = this.frame.contentDocument;
+          const details = current.querySelector('.comparison-disclosure');
+          const back = current.querySelector('.mockup-return');
+          details.addEventListener('toggle', () => { back.hidden = !details.open; });
+          back.addEventListener('click', () => {
+            details.open = false;
+            this.recenter();
+            details.querySelector('summary').focus({ preventScroll: true });
+          });
+        };
+        this.frame.title = `Utterlane comparison mockup ${this.variant.toUpperCase()}: ${document.querySelector(`[data-variant="${this.variant}"] strong`).textContent}`;
+        this.frame.srcdoc = '<!doctype html>' + doc.documentElement.outerHTML;
+        this.select('[data-variant]', 'variant', this.variant);
+        document.querySelector('#design-note').textContent = this.notes[this.variant];
+      }
+    }
+    new ComparisonStudio().start().catch(error => {
+      const message = document.querySelector('#error');
+      message.hidden = false;
+      message.textContent = error.message;
+      console.error(error);
+    });
+  </script>
+</body>
+</html>

@@ -69,6 +69,11 @@
         <symbol id="comparison-paper" viewBox="0 0 60 80"><rect x="1" y="1" width="58" height="78" rx="9" fill="#fff" stroke="#c7d8f0" stroke-width="2"/><path d="M12 20h35m-35 12h27m-27 12h35m-35 12h20" stroke="#a0bde4" stroke-width="3" stroke-linecap="round"/></symbol>
         <symbol id="comparison-person" viewBox="0 0 40 62"><circle cx="20" cy="13" r="12" fill="currentColor"/><path d="M2 60V42a18 18 0 0 1 36 0v18" fill="currentColor"/></symbol>
         <symbol id="comparison-ground" viewBox="0 0 240 150"><ellipse cx="120" cy="136" rx="109" ry="10" fill="var(--comparison-ground, #e7eef9)"/></symbol>
+        <!-- The invitation and full cards share these scenes, so artwork stays
+             consistent without duplicated paths or JavaScript cloning. -->
+        <symbol id="comparison-speed-scene" viewBox="0 0 240 150"><use href="#comparison-ground"/><use href="#comparison-phone" x="14" y="22" width="66" height="110"/><path d="M28 83h38m-38 10h38m-38 10h38" stroke="#98acc9" stroke-width="6" stroke-dasharray="6 3"/><path d="M85 61h54m-8-7 8 7-8 7" class="comparison-route"/><use href="#comparison-phone" x="153" y="22" width="66" height="110"/><path d="M165 56h34m-34 10h29m-29 10h34m-34 10h22" stroke="#155ecc" stroke-width="3" stroke-linecap="round"/><path d="M101 87v12m9-20v28m9-36v44m9-33v22" class="comparison-wave"/></symbol>
+        <symbol id="comparison-privacy-scene" viewBox="0 0 240 150"><use href="#comparison-ground"/><use href="#comparison-cloud" x="4" y="20" width="88" height="60"/><path d="M39 101V75m-5 8 5-8 5 8" class="comparison-route"/><use href="#comparison-phone" x="149" y="15" width="70" height="117"/><path d="m185 51 18 7v17c0 13-18 22-18 22s-18-9-18-22V58Z" fill="#155ecc"/><path d="m176 73 6 6 12-14" stroke="#fff" stroke-width="3" fill="none"/><path d="M111 18v108" stroke="#d9e4f3"/></symbol>
+        <symbol id="comparison-meeting-scene" viewBox="0 0 240 150"><use href="#comparison-ground"/><use href="#comparison-person" x="13" y="53" width="35" height="65"/><use href="#comparison-person" x="58" y="30" width="35" height="65" style="color:#7750bc"/><use href="#comparison-person" x="102" y="63" width="35" height="65" style="color:#16829c"/><use href="#comparison-paper" x="164" y="15" width="65" height="117"/><path d="M176 49h39" stroke="#155ecc" stroke-width="6"/><path d="M176 73h34" stroke="#7750bc" stroke-width="6"/><path d="M176 96h39" stroke="#16829c" stroke-width="6"/></symbol>
         <radialGradient id="comparison-shield-glow"><stop stop-color="#3ded92" stop-opacity=".5"/><stop offset="1" stop-color="#3ded92" stop-opacity="0"/></radialGradient>
         <linearGradient id="comparison-shield-green" x1="0" x2="1" y2="1"><stop stop-color="#6bf5ad"/><stop offset=".45" stop-color="#13bd69"/><stop offset="1" stop-color="#087d46"/></linearGradient>
       </defs>
@@ -164,13 +169,23 @@
             <p class="comparison-source-note">The speech advantage comes from human conversation research, not a voice-typing test. Utterlane outputs completed segments; actual turnaround depends on your phone, model, and pauses. <a href="#comparison-sources">Sources &amp; how this comparison works ↓</a></p>
           </div>
           <details class="comparison-disclosure">
-          <summary>See how Utterlane compares to other solutions. <span class="disclosure" aria-hidden="true"></span></summary>
+          <summary>
+            <span class="comparison-invitation-copy"><span class="comparison-invitation-kicker">A closer look</span><span class="comparison-invitation-title">What makes Utterlane different?</span><span class="comparison-invitation-description">Compare phone keyboards, cloud transcription, offline tools, and Utterlane.</span></span>
+            <span class="comparison-invitation-topics">
+              <span class="comparison-invitation-topic"><svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-speed-scene"/></svg><span>Speed</span></span>
+              <span class="comparison-invitation-topic"><svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-privacy-scene"/></svg><span>Privacy</span></span>
+              <span class="comparison-invitation-topic"><svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-meeting-scene"/></svg><span>Meetings</span></span>
+            </span>
+            <!-- The whole summary is the native control. A span gives the action
+                 button styling without nesting another keyboard/click target. -->
+            <span class="comparison-invitation-bottom"><span class="comparison-invitation-count"><strong>8 illustrated comparisons</strong><small>These three topics, plus five more.</small></span><span class="comparison-invitation-action"><span class="comparison-invitation-closed">Expand the comparison</span><span class="comparison-invitation-open">Hide comparison</span><svg class="icon comparison-invitation-arrow" aria-hidden="true"><use href="#arrow-down"/></svg></span></span>
+          </summary>
           <div class="comparison-heading-row"><h3>Same thought.<br>A different experience.</h3><p>Four ways to get your words down on Android. “Other offline transcription” compares the legacy, older-model batch workflows illustrated here. Cloud features depend on the service and plan.</p></div>
           <div class="comparison-legend"><span><b class="comparison-badge comparison-good" aria-hidden="true">✓</b>Strength</span><span><b class="comparison-badge comparison-mixed" aria-hidden="true">−</b>Depends / limited</span><span><b class="comparison-badge comparison-limited" aria-hidden="true">×</b>Limitation</span></div>
 
           <article class="comparison-card" aria-labelledby="comparison-speed-title">
             <div class="comparison-card-top"><div><p class="comparison-number">01 / Writing speed</p><h3 id="comparison-speed-title">Keep the thought moving.</h3><p class="comparison-summary">Voice removes the tapping bottleneck. Utterlane starts processing while you speak, so the whole recording does not have to wait until the end.</p></div>
-              <svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-ground"/><use href="#comparison-phone" x="14" y="22" width="66" height="110"/><path d="M28 83h38m-38 10h38m-38 10h38" stroke="#98acc9" stroke-width="6" stroke-dasharray="6 3"/><path d="M85 61h54m-8-7 8 7-8 7" class="comparison-route"/><use href="#comparison-phone" x="153" y="22" width="66" height="110"/><path d="M165 56h34m-34 10h29m-29 10h34m-34 10h22" stroke="#155ecc" stroke-width="3" stroke-linecap="round"/><path d="M101 87v12m9-20v28m9-36v44m9-33v22" class="comparison-wave"/></svg>
+              <svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-speed-scene"/></svg>
             </div>
             <dl class="comparison-columns">
               <div class="comparison-cell"><dt>Phone keyboard</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-limited" aria-hidden="true">×</span><span><span class="sr-only">Limitation: </span>One tap at a time</span></strong><p>36.2 WPM average in the mobile typing study. Speed can be improved by training with sliding on optimized layouts (eg, <a href="https://futo.tech/blog/swipe-keyboard">KASROZ</a>) but retraining can be long and tedious.</p></dd></div>
@@ -183,7 +198,7 @@
 
           <article class="comparison-card" aria-labelledby="comparison-privacy-title">
             <div class="comparison-card-top"><div><p class="comparison-number">02 / Privacy</p><h3 id="comparison-privacy-title">Your thoughts stay yours.</h3><p class="comparison-summary">A private idea does not need a round trip to a speech-recognition server. The audio-to-text journey happens inside your phone.</p></div>
-              <svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-ground"/><use href="#comparison-cloud" x="4" y="20" width="88" height="60"/><path d="M39 101V75m-5 8 5-8 5 8" class="comparison-route"/><use href="#comparison-phone" x="149" y="15" width="70" height="117"/><path d="m185 51 18 7v17c0 13-18 22-18 22s-18-9-18-22V58Z" fill="#155ecc"/><path d="m176 73 6 6 12-14" stroke="#fff" stroke-width="3" fill="none"/><path d="M111 18v108" stroke="#d9e4f3"/></svg>
+              <svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-privacy-scene"/></svg>
             </div>
             <dl class="comparison-columns">
               <div class="comparison-cell"><dt>Phone keyboard</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-good" aria-hidden="true">✓</span><span><span class="sr-only">Strength: </span>No speech upload</span></strong><p>Keyboard and receiving-app privacy still apply.</p></dd></div>
@@ -246,7 +261,7 @@
 
           <article class="comparison-card" aria-labelledby="comparison-meeting-title">
             <div class="comparison-card-top"><div><p class="comparison-number">07 / Meetings</p><h3 id="comparison-meeting-title">Follow the people. Keep the conversation.</h3><p class="comparison-summary">Turn a meeting into a running transcript, with optional streaming speaker labelling to help follow who said what.</p></div>
-              <svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-ground"/><use href="#comparison-person" x="13" y="53" width="35" height="65"/><use href="#comparison-person" x="58" y="30" width="35" height="65" style="color:#7750bc"/><use href="#comparison-person" x="102" y="63" width="35" height="65" style="color:#16829c"/><use href="#comparison-paper" x="164" y="15" width="65" height="117"/><path d="M176 49h39" stroke="#155ecc" stroke-width="6"/><path d="M176 73h34" stroke="#7750bc" stroke-width="6"/><path d="M176 96h39" stroke="#16829c" stroke-width="6"/></svg>
+              <svg class="comparison-art" viewBox="0 0 240 150" aria-hidden="true"><use href="#comparison-meeting-scene"/></svg>
             </div>
             <dl class="comparison-columns">
               <div class="comparison-cell"><dt>Phone keyboard</dt><dd><strong class="comparison-result"><span class="comparison-badge comparison-limited" aria-hidden="true">×</span><span><span class="sr-only">Limitation: </span>Manual notes</span></strong><p>No automatic conversation capture or labels.</p></dd></div>

@@ -8,13 +8,19 @@ test('comparison and sources remain usable without JavaScript', async ({ browser
   const section = page.locator('#compare');
   const cards = section.locator('.comparison-card');
   await expect(cards).toHaveCount(8);
-  await section.locator('.comparison-disclosure > summary').click();
+  const summary = section.locator('.comparison-disclosure > summary');
+  await expect(cards.first()).toBeHidden();
+  await summary.getByText('Expand the comparison', { exact: true }).click();
+  await expect(summary.getByText('Hide comparison', { exact: true })).toBeVisible();
   for (const card of await cards.all()) {
     await expect(card.getByRole('term')).toHaveText([
       'Phone keyboard', 'Cloud transcription', 'Other offline transcription', 'Utterlane',
     ]);
     await expect(card.getByRole('definition')).toHaveCount(4);
   }
+  await summary.getByText('Hide comparison', { exact: true }).click();
+  await expect(cards.first()).toBeHidden();
+  await summary.getByText('Expand the comparison', { exact: true }).click();
   await expect(section.getByRole('link', { name: 'KASROZ' })).toHaveAttribute('href', 'https://futo.tech/blog/swipe-keyboard');
   await section.getByRole('link', { name: /Sources & how/ }).click();
   await page.locator('#comparison-sources summary').click();
@@ -33,7 +39,11 @@ for (const theme of ['light', 'dark']) {
     await page.getByRole('button', { name: 'Pause animations' }).click();
     const section = page.locator('#compare');
     await section.scrollIntoViewIfNeeded();
-    await section.locator('.comparison-disclosure > summary').click();
+    const summary = section.locator('.comparison-disclosure > summary');
+    const closedResults = await new AxeBuilder({ page }).include('.comparison-disclosure > summary')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+    expect(closedResults.violations).toEqual([]);
+    await summary.click();
     await page.locator('#comparison-sources summary').click();
     for (const width of [320, 390, 768, 1440]) {
       await page.setViewportSize({ width, height: 844 });
@@ -42,6 +52,10 @@ for (const theme of ['light', 'dark']) {
       // not merely inside the overall page's overflow boundary.
       expect(await section.locator('.comparison-cell').evaluateAll(cells =>
         cells.every(cell => cell.scrollWidth <= cell.clientWidth))).toBe(true);
+      // A fitting outer card must not hide overflowing invitation copy or CTA.
+      expect(await summary.evaluate(element =>
+        [element, ...element.querySelectorAll<HTMLElement>('span')].every(node =>
+          node.clientWidth === 0 || node.scrollWidth <= node.clientWidth))).toBe(true);
     }
     await expect(section.locator('.comparison-card').first()).toHaveCSS('background-color',
       theme === 'dark' ? 'rgb(24, 36, 56)' : 'rgb(255, 255, 255)');
@@ -55,16 +69,21 @@ test('comparison cards expand and collapse with the keyboard', async ({ page }) 
   await page.goto('./');
   const disclosure = page.locator('.comparison-disclosure');
   const summary = disclosure.locator(':scope > summary');
-  await expect(summary).toHaveText('See how Utterlane compares to other solutions.');
+  await expect(summary).toContainText('What makes Utterlane different?');
+  await expect(summary.getByText('Expand the comparison', { exact: true })).toBeVisible();
+  await expect(summary.getByText('Hide comparison', { exact: true })).toBeHidden();
   await expect(page.locator('.comparison-card').first()).toBeHidden();
   await expect(page.locator('.comparison-pace')).toBeVisible();
   await summary.focus();
   await page.keyboard.press('Enter');
   await expect(disclosure).toHaveAttribute('open', '');
+  await expect(summary.getByText('Hide comparison', { exact: true })).toBeVisible();
+  await expect(summary.getByText('Expand the comparison', { exact: true })).toBeHidden();
   await expect(disclosure.getByRole('heading', { name: 'Same thought. A different experience.' })).toBeVisible();
   await expect(page.locator('.comparison-card').last()).toBeVisible();
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Space');
   await expect(page.locator('.comparison-card').first()).toBeHidden();
+  await expect(summary.getByText('Expand the comparison', { exact: true })).toBeVisible();
   await expect(summary).toBeFocused();
 });
 
