@@ -6,10 +6,11 @@
 #include "jni_text.h"
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_io_github_lrq3000_utterlane_asr_CrispParakeetBackend_openNative(JNIEnv* env, jobject, jstring path) {
+Java_io_github_lrq3000_utterlane_asr_CrispParakeetBackend_openNative(JNIEnv* env, jobject, jstring path, jint threads) {
+    if (threads < 1 || threads > 32) { error(env, "Invalid ASR thread count"); return 0; }
     const char* filename = env->GetStringUTFChars(path, nullptr);
     auto params = parakeet_context_default_params();
-    params.n_threads = 4; params.use_gpu = false; params.verbosity = 0;
+    params.n_threads = threads; params.use_gpu = false; params.verbosity = 0;
     parakeet_context* context = nullptr;
     try { context = parakeet_init_from_file(filename, params); }
     catch (const std::exception& e) { error(env, e.what()); }
@@ -31,18 +32,23 @@ Java_io_github_lrq3000_utterlane_asr_CrispParakeetBackend_decodeNative(JNIEnv* e
         if (!result) { error(env, "GGUF transcription failed"); return nullptr; }
         auto pieces = env->NewObjectArray(result->n_tokens, env->FindClass("java/lang/String"), nullptr);
         auto times = env->NewFloatArray(result->n_tokens);
+        auto ends = env->NewFloatArray(result->n_tokens);
         std::vector<jfloat> timestamps(static_cast<size_t>(result->n_tokens));
+        std::vector<jfloat> end_times(static_cast<size_t>(result->n_tokens));
         for (int i = 0; i < result->n_tokens; ++i) {
             auto piece = utf8(env, result->tokens[i].text);
             env->SetObjectArrayElement(pieces, i, piece);
             env->DeleteLocalRef(piece);
             // CrispASR's C API uses centiseconds. The shared Kotlin pipeline uses seconds.
             timestamps[static_cast<size_t>(i)] = static_cast<float>(result->tokens[i].t0) / 100.0f;
+            end_times[static_cast<size_t>(i)] = static_cast<float>(result->tokens[i].t1) / 100.0f;
         }
         env->SetFloatArrayRegion(times, 0, result->n_tokens, timestamps.data());
-        auto values = env->NewObjectArray(2, env->FindClass("java/lang/Object"), nullptr);
+        env->SetFloatArrayRegion(ends, 0, result->n_tokens, end_times.data());
+        auto values = env->NewObjectArray(3, env->FindClass("java/lang/Object"), nullptr);
         env->SetObjectArrayElement(values, 0, pieces); env->SetObjectArrayElement(values, 1, times);
-        env->DeleteLocalRef(pieces); env->DeleteLocalRef(times);
+        env->SetObjectArrayElement(values, 2, ends);
+        env->DeleteLocalRef(pieces); env->DeleteLocalRef(times); env->DeleteLocalRef(ends);
         return values;
     } catch (const std::exception& e) { error(env, e.what()); return nullptr; }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
+import io.github.lrq3000.utterlane.settings.RuntimeOptions
 import io.github.lrq3000.utterlane.settings.SettingsRepository
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -12,6 +13,7 @@ import kotlinx.coroutines.sync.withLock
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
@@ -21,7 +23,53 @@ import java.util.concurrent.TimeUnit
 
 /** Catalog-based private storage. Only verified, fully published artifacts are loadable. */
 class ModelManager(private val context: Context, private val client: OkHttpClient? = null, private val fixedModel: ModelDefinition? = null) {
-    companion object { private const val TAG = "ModelManager" }
+    companion object {
+        private const val TAG = "ModelManager"
+
+        internal fun clientForDownload(client: OkHttpClient, options: RuntimeOptions): OkHttpClient {
+            options.requireValid()
+            // Clone configuration, not infrastructure: keep injected interceptors,
+            // dispatcher, connection pool and cancellation behavior for all artifacts.
+            return client.newBuilder()
+                .connectTimeout(options.downloadConnectSeconds, TimeUnit.SECONDS)
+                .readTimeout(options.downloadReadSeconds, TimeUnit.SECONDS)
+                .build()
+        }
+
+        @OptIn(InternalCoroutinesApi::class)
+        internal suspend fun openDownload(call: Call, publish: (Call) -> Unit): InputStream {
+            val owner = currentCoroutineContext()
+            // A normal completion callback runs too late: the IO coroutine cannot
+            // complete until execute/read unblocks. Observe the *cancelling* phase,
+            // capturing this call before publication and handling already-cancelled
+            // owners immediately. Never resolve activeCall from the callback.
+            val cancellation = owner[Job]?.invokeOnCompletion(onCancelling = true, invokeImmediately = true) { cause ->
+                if (cause != null) call.cancel()
+            }
+            var response: Response? = null
+            try {
+                owner.ensureActive()
+                publish(call)
+                owner.ensureActive()
+                val opened = call.execute()
+                response = opened
+                owner.ensureActive()
+                check(opened.isSuccessful) { "Download failed: ${opened.code}" }
+                val body = opened.body ?: error("Empty model response")
+                return object : java.io.FilterInputStream(body.byteStream()) {
+                    override fun close() {
+                        // execute() returning only transfers ownership to the body;
+                        // keep cancellation armed through the final read and close.
+                        try { super.close() }
+                        finally { try { opened.close() } finally { cancellation?.dispose() } }
+                    }
+                }
+            } catch (failure: Throwable) {
+                try { response?.close() } finally { cancellation?.dispose() }
+                throw failure
+            }
+        }
+    }
     enum class ErrorType { NETWORK, CHECKSUM_MISMATCH, MISSING_FILE, FOLDER_ACCESS, STORAGE, UNKNOWN }
     sealed class DownloadState {
         data object NotStarted : DownloadState()
@@ -43,7 +91,7 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
     @Volatile private var transferJob: Job? = null
     @Volatile private var activeCall: Call? = null
     val isTransferring: Boolean get() = transferJob != null
-    private val httpClient by lazy { client ?: OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build() }
+    private val httpClient by lazy { client ?: OkHttpClient() }
     private val verified = mutableMapOf<String, List<Pair<Long, Long>>>()
 
     init { checkModelStatus() }
@@ -90,14 +138,14 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
         }
         return true
     }
-    suspend fun downloadModel(onProgress: (Int) -> Unit = {}) = transfer(false, onProgress) { artifact ->
-        val request = Request.Builder().url(artifact.url).build()
-        val call = httpClient.newCall(request)
-        activeCall = call
-        val response = call.execute()
-        if (!response.isSuccessful) { response.close(); error("Download failed: ${response.code}") }
-        val body = response.body ?: run { response.close(); error("Empty model response") }
-        object : java.io.FilterInputStream(body.byteStream()) { override fun close() { try { super.close() } finally { response.close() } } }
+    suspend fun downloadModel(onProgress: (Int) -> Unit = {}) {
+        // Read once per download, not once per artifact: a settings edit during a
+        // multi-file transfer cannot silently change its timeout policy halfway through.
+        val downloadClient = clientForDownload(httpClient, settings.runtimeOptions.first())
+        transfer(false, onProgress) { artifact ->
+            val request = Request.Builder().url(artifact.url).build()
+            openDownload(downloadClient.newCall(request)) { activeCall = it }
+        }
     }
     /** Imports accept the catalog's remote or local filename; unknown checkpoints are not silently substituted. */
     suspend fun importFromFolder(uri: Uri) {
@@ -153,7 +201,7 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
             staging.deleteRecursively(); transferJob = null; checkModelStatus(); operation.unlock()
         }
     }
-    private suspend fun transfer(importing: Boolean, onProgress: (Int) -> Unit = {}, open: (ModelArtifact) -> InputStream) = withContext(Dispatchers.IO) {
+    private suspend fun transfer(importing: Boolean, onProgress: (Int) -> Unit = {}, open: suspend (ModelArtifact) -> InputStream) = withContext(Dispatchers.IO) {
         initializeSelection()
         check(operation.tryLock()) { "A model transfer is already running" }
         val model = selected.value
@@ -216,8 +264,13 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
         } finally {
             // OkHttp cancellation commonly arrives as IOException; ensureActive()
             // can then throw from the generic catch rather than the cancellation catch.
-            if (!currentCoroutineContext().isActive) checkModelStatus()
-            staging?.deleteRecursively(); activeCall = null; transferJob = null; operation.unlock()
+            try {
+                try { if (!currentCoroutineContext().isActive) checkModelStatus() }
+                finally { staging?.deleteRecursively() }
+            } finally {
+                // Even a storage/status cleanup exception must release transfer ownership.
+                activeCall = null; transferJob = null; operation.unlock()
+            }
         }
     }
     fun cancelTransfer() { activeCall?.cancel(); transferJob?.cancel() }

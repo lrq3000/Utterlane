@@ -6,6 +6,7 @@ import kotlinx.coroutines.channels.toList
 import org.junit.Assert.*
 import org.junit.Test
 import android.speech.SpeechRecognizer
+import io.github.lrq3000.utterlane.settings.RuntimeOptions
 
 class AudioPipelineTest {
     @Test fun interruptedFinalWindowCanBeFinishedWithoutLosingOrDuplicatingTail() = runBlocking {
@@ -28,6 +29,49 @@ class AudioPipelineTest {
         val first = WindowText.select(arrayOf(" Hel", "lo", " world"), floatArrayOf(0.9f, 1.1f, 1.3f), AudioWindow(ShortArray(200), 0, 0, 100), 100)
         val second = WindowText.select(arrayOf(" Hello", " world"), floatArrayOf(0.9f, 1.3f), AudioWindow(ShortArray(200), 0, 100, 200), 100)
         assertEquals("Hello world", "$first $second")
+    }
+
+    @Test fun standaloneWhitespaceBpeStartsOwnedNumericWordsAfterLeftOverlap() {
+        val window = AudioWindow(ShortArray(64000), 205790, 221790, 269790)
+        val times = floatArrayOf(.88f, 1.36f, 1.52f, 1.68f, 1.84f, 2f, 2.16f, 2.32f, 2.48f)
+        for ((number, unit, fraction) in listOf(Triple("1", "h", "30"), Triple("2", "m", "45"))) {
+            for (separator in listOf(" ", "\t", "\u00a0")) {
+                val tokens = arrayOf(" context", separator, number, unit, ",", separator, number, unit, fraction)
+                assertEquals("$number$unit,$separator$number$unit$fraction", WindowText.select(tokens, times, window))
+            }
+        }
+    }
+
+    @Test fun punctuationOwnershipStillUsesItsOriginalWhitespaceBoundary() {
+        val window = AudioWindow(ShortArray(32000), 0, 16000, 32000)
+        val times = floatArrayOf(.8f, 1.1f, 1.4f)
+        assertEquals("! next", WindowText.select(arrayOf(" context", " !", " next"), times, window))
+        assertEquals("next", WindowText.select(arrayOf(" context", "!", " next"), times, window))
+    }
+
+    @Test fun numericOwnershipRetainsTheStandaloneWhitespaceTimestamp() {
+        val window = AudioWindow(ShortArray(32000), 0, 16000, 32000)
+        // The numeric word starts with its whitespace BPE token, just as in
+        // the original Off path, even when later digit pieces cross the cut.
+        assertEquals("next", WindowText.select(arrayOf(" context", " ", "4", "2", " next"),
+            floatArrayOf(.8f, .96f, 1.04f, 1.12f, 1.5f), window))
+    }
+
+    @Test fun configuredFallbackOnlyChangesEndsAndClipsToNextWordAndAudioWindow() {
+        val window = AudioWindow(ShortArray(16000), 1000, 1000, 17000)
+        val tokens = arrayOf(" first", " second")
+        val times = floatArrayOf(.1f, .6f)
+        val small = WindowText.ownedWords(tokens, times, window, options = RuntimeOptions(wordFallbackMs = 10))
+        val large = WindowText.ownedWords(tokens, times, window, options = RuntimeOptions(wordFallbackMs = 2000))
+        assertEquals(listOf(2760L, 10760L), small.map { it.end })
+        assertEquals(listOf(10600L, 17000L), large.map { it.end })
+        assertEquals(small.map { it.start }, large.map { it.start })
+        for (words in listOf(small, large)) {
+            assertEquals(WindowText.select(tokens, times, window), words.joinToString("") { it.text }.trim())
+        }
+        val native = WindowText.ownedWords(tokens, times, window, floatArrayOf(.8f, .9f),
+            options = RuntimeOptions(wordFallbackMs = 10))
+        assertEquals(listOf(13800L, 15400L), native.map { it.end })
     }
 
     @Test fun unicodePagesExcludePartialUtf8Characters() {

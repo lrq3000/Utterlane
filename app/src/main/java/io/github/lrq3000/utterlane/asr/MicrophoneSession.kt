@@ -9,6 +9,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicReference
 
@@ -48,13 +49,27 @@ class MicrophoneSession(
             var failure: SessionFailure? = null
             var phase = SessionFailure.Kind.MODEL
             var finalizationWarning: String? = null
+            var activityObserver: Job? = null
+            var diagnosticObserver: Job? = null
+            var captureDiagnostics: io.github.lrq3000.utterlane.diagnostics.CaptureDiagnosticSession? = null
             val captureFailure = java.util.concurrent.atomic.AtomicReference<SessionFailure?>(null)
             val historyWriteFailed = java.util.concurrent.atomic.AtomicBoolean(false)
             try {
                 power = TranscriptionPower(context) { recorder.resumeAfterSleep() }
                 val app = UtterlaneApp.instance
+                activityObserver = launch {
+                    app.recognizerManager.activity.collect {
+                        // Ignore a previous operation's resting status at subscription time.
+                        if (it.active || metrics.state.value.recognition.active) metrics.recognition(it)
+                    }
+                }
+                // Capture, queue and every wake reopen retain one immutable snapshot.
+                // Preferences changed during recording take effect only next session.
+                val captureOptions = app.settingsRepository.runtimeOptions.first()
+                captureDiagnostics = app.recognitionDiagnostics.capture(captureOptions)
+                diagnosticObserver = launch { metrics.state.collect { captureDiagnostics.record(it) } }
                 metrics.model(app.modelManager.selected.value.name)
-                session = app.recognizerManager.createSession(onProcessed = { end, ms -> metrics.processed(end, ms) }) { delta ->
+                session = app.recognizerManager.createSession(captureOptions, onProcessed = { end, ms -> metrics.processed(end, ms) }) { delta ->
                     if (!cancelled) withContext(Dispatchers.Main) { onText(delta, session!!.store) }
                 }
                 phase = SessionFailure.Kind.INFERENCE
@@ -68,7 +83,7 @@ class MicrophoneSession(
                     Log.e("MicrophoneSession", warning, e)
                     withContext(Dispatchers.Main) { onWarning(warning) }
                 }
-                val queue = BoundedAudioQueue()
+                val queue = BoundedAudioQueue(captureOptions)
                 coroutineScope {
                     val ticker = launch { while (isActive) { metrics.tick(); delay(200) } }
                     val capture = launch(Dispatchers.IO) {
@@ -79,7 +94,7 @@ class MicrophoneSession(
                                 override fun onStarted() { metrics.started() }
                                 override fun onSilenced(silenced: Boolean) { metrics.silenced(silenced) }
                             })
-                            recorder.startRecording({ samples ->
+                            recorder.startRecording(captureOptions, { samples ->
                                 val accepted = queue.offer(samples)
                                 metrics.samples(samples, accepted)
                                 if (!accepted) {
@@ -159,6 +174,8 @@ class MicrophoneSession(
                 Log.e("MicrophoneSession", "Transcription failed", e)
                 failure = SessionFailure(phase, e.message ?: context.getString(R.string.transcribe_error_failed))
             } finally {
+                activityObserver?.cancel()
+                diagnosticObserver?.cancel()
                 try {
                     recorder.stop()
                     withContext(NonCancellable + Dispatchers.IO) {
@@ -174,6 +191,7 @@ class MicrophoneSession(
                     }
                     withContext(NonCancellable + Dispatchers.Main) {
                         if (cancelled) metrics.cancelled() else metrics.completed(failure?.message)
+                        captureDiagnostics?.record(metrics.state.value)
                         if (!cancelled) finalizationWarning?.let { onWarning(it) }
                         if (resetRequested) onComplete(session?.store, SessionFailure(SessionFailure.Kind.MODEL, context.getString(R.string.model_reset_done)))
                         else if (!cancelled) onComplete(session?.store, failure)

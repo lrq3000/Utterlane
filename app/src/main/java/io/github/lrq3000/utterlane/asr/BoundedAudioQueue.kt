@@ -1,5 +1,6 @@
 package io.github.lrq3000.utterlane.asr
 
+import io.github.lrq3000.utterlane.settings.RuntimeOptions
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ChannelIterator
 import kotlinx.coroutines.channels.ReceiveChannel
@@ -7,6 +8,9 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /** Both block count and sample budget are bounded, independent of capture cadence. */
 class BoundedAudioQueue(capacity: Int = 1000, private val maximumSamples: Int = 320000) {
+    constructor(options: RuntimeOptions) : this(CaptureBufferPolicy(options))
+    private constructor(buffers: CaptureBufferPolicy) : this(buffers.queueCapacity, buffers.maximumSamples)
+
     private val channel = Channel<ShortArray>(capacity)
     private val samples = AtomicInteger(0)
     val blocks: ReceiveChannel<ShortArray> = object : ReceiveChannel<ShortArray> by channel {

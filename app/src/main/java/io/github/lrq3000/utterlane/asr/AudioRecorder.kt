@@ -7,6 +7,7 @@ import android.media.MediaRecorder
 import android.util.Log
 import android.os.PowerManager
 import io.github.lrq3000.utterlane.UtterlaneApp
+import io.github.lrq3000.utterlane.settings.RuntimeOptions
 import java.util.concurrent.atomic.AtomicBoolean
 
 class AudioRecorder : AudioCapture {
@@ -21,30 +22,31 @@ class AudioRecorder : AudioCapture {
     private var audioRecord: AudioRecord? = null
     private val isRecording = AtomicBoolean(false)
     private val stopRequested = AtomicBoolean(false)
-    private val readLoop = CaptureReadLoop()
+    @Volatile private var readLoop: CaptureReadLoop? = null
     private val power by lazy { UtterlaneApp.instance.getSystemService(PowerManager::class.java) }
     private var observer: CaptureObserver? = null
     private var platformCallback: android.media.AudioManager.AudioRecordingCallback? = null
     override fun setObserver(observer: CaptureObserver) { this.observer = observer }
 
-    private val bufferSize = AudioRecord.getMinBufferSize(
-        SAMPLE_RATE,
-        CHANNEL_CONFIG,
-        AUDIO_FORMAT
-    ).coerceAtLeast(SAMPLE_RATE * 2) // At least 1 second buffer
+    override fun startRecording(onSamples: (ShortArray) -> Unit, shouldContinue: () -> Boolean) =
+        startRecording(RuntimeOptions(), onSamples, shouldContinue)
 
-    override fun startRecording(onSamples: (ShortArray) -> Unit, shouldContinue: () -> Boolean) {
+    override fun startRecording(options: RuntimeOptions, onSamples: (ShortArray) -> Unit, shouldContinue: () -> Boolean) {
+        val buffers = CaptureBufferPolicy(options)
         if (stopRequested.get()) return
         if (!isRecording.compareAndSet(false, true)) return
 
         try {
-            openRecorder()
+            val loop = CaptureReadLoop(options = options)
+            readLoop = loop
+            val bufferSize = buffers.recorderBufferBytes(AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT))
+            openRecorder(bufferSize)
             observer?.onStarted()
             // Nonblocking is supported since API 23 (minSdk is 26). Only this
             // capture worker opens/releases the recorder, including wake recovery.
-            readLoop.run(
+            loop.run(
                 read = { audioRecord!!.read(it, 0, it.size, AudioRecord.READ_NON_BLOCKING) },
-                reopen = { Log.i(TAG, "Reopening microphone after capture interruption"); closeRecorder(); openRecorder() },
+                reopen = { Log.i(TAG, "Reopening microphone after capture interruption"); closeRecorder(); openRecorder(bufferSize) },
                 onSamples = onSamples,
                 shouldContinue = { isRecording.get() && shouldContinue() },
                 canRecover = { power.isInteractive && !power.isDeviceIdleMode }
@@ -60,12 +62,13 @@ class AudioRecorder : AudioCapture {
             throw e
         } finally {
             isRecording.set(false)
+            readLoop = null
             closeRecorder()
         }
     }
 
     @SuppressLint("MissingPermission")
-    private fun openRecorder() {
+    private fun openRecorder(bufferSize: Int) {
         audioRecord = AudioRecord(
             MediaRecorder.AudioSource.MIC,
             SAMPLE_RATE,
@@ -104,7 +107,7 @@ class AudioRecorder : AudioCapture {
         audioRecord = null
     }
 
-    override fun resumeAfterSleep() = readLoop.resumeAfterSleep()
+    override fun resumeAfterSleep() { readLoop?.resumeAfterSleep() }
 
     override fun stop() {
         stopRequested.set(true)

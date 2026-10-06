@@ -119,6 +119,53 @@ appear as **Unknown speaker**. Selecting a count does not create speakers who
 are not present. Settings changes take effect on the next recording.
 
 Speaker labeling adds processing work, so performance depends on your device.
+One-speaker mode labels the recognized text directly without loading the separate
+speaker model. Auto is still available for detecting an unknown number of voices.
+The recognizer runs once per audio window; speaker decisions annotate its words
+instead of cutting speech into tiny pieces for additional recognition passes.
+
+## Advanced recognition options
+
+Expand **Advanced recognition → Runtime options** to edit grouped settings.
+The section starts collapsed. Each group has contextual help, saved/default
+values, a validated draft, and reset controls. Related values are applied
+together; active operations retain their starting snapshot.
+
+- **Recovery:** worker connection timeout (30 s), model preparation and inference
+  without-progress limits (300 s each), and an optional absolute operation limit
+  (disabled). Enter **0** to disable a limit. These are awake/interactive-time
+  budgets, paused during sleep/screen-off; they are not recording-length limits.
+  Actual completed native work renews the stall budget. A backend with no internal
+  progress remains subject to the configured opaque-call fallback, so unusually
+  slow models can require a larger limit or disabling it.
+- **CPU:** separate ASR and speaker-model thread counts. Defaults remain four;
+  Auto uses up to four available processors. More threads are not always faster.
+- **Diarization:** streaming preset, buffered-step batching (default 8, strict
+  schedule 1), probability/margin thresholds, ordinary and strong confirmation,
+  same-speaker gap bridging (default 1 s), label lookahead, timestamp tolerance,
+  and fallback word intervals when native ends are unavailable. These trade
+  certainty/context against latency; changing them does not resize ASR windows.
+- **Audio/capture:** ASR window and context, silence cuts, queued-audio budget,
+  microphone buffer/read sizing, and wake-recovery delays. Window plus context
+  must fit the fixed 12-second transport limit.
+- **Downloads:** connection and read timeouts, including disabling a timeout;
+  cancellation still interrupts blocked network I/O.
+- **Experimental:** bounded speaker cache, FIFO and update cadence, plus local
+  diagnostics. Cache reductions can hurt returning-speaker accuracy.
+
+Under **Appearance**, **Show transcription stream statistics** is off by default.
+Enable it to show the latest processing stage, awake elapsed time, time since
+completed progress, and audio backlog in recording/file views. The waveform,
+normal progress and controls remain available when statistics are hidden. This
+display preference is independent of diagnostic logging. A long-running
+operation is not terminated merely because 90 seconds passed. **Force unload /
+reset recognition** remains available to recover from genuinely stuck native work.
+Model **idle unloading** is a separate setting and does not interrupt active
+sessions.
+
+Optional diagnostics are local and off by default. Enable them for a new run,
+then use **Share diagnostics** to export a content-free snapshot, or clear the
+stored logs. See the [privacy policy](../PRIVACY_POLICY.md#optional-local-diagnostics).
 
 ## Recording and history
 

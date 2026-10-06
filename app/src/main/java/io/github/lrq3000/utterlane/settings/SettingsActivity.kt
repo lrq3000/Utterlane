@@ -341,6 +341,7 @@ fun SettingsScreen(
 
     val serviceEnabled by settingsRepository.serviceEnabled.collectAsStateWithLifecycle(initialValue = false)
     val themeMode by settingsRepository.themeMode.collectAsStateWithLifecycle(initialValue = SettingsRepository.THEME_SYSTEM)
+    val showStreamStatistics by settingsRepository.showTranscriptionStreamStatistics.collectAsStateWithLifecycle(initialValue = false)
     val autoLoadModel by settingsRepository.autoLoadModel.collectAsStateWithLifecycle(initialValue = false)
     val modelIdleTimeout by settingsRepository.modelIdleTimeout.collectAsStateWithLifecycle(initialValue = ModelIdleTimeout.TWENTY_MINUTES)
     val downloadState by modelManager.downloadState.collectAsStateWithLifecycle()
@@ -815,6 +816,8 @@ fun SettingsScreen(
 
             DiarizationSettings(onPickModelFolder)
 
+            AdvancedRecognitionSettings(settingsRepository)
+
             // Appearance Section
             SettingsSection(title = stringResource(R.string.section_appearance)) {
                 AppLanguageSetting()
@@ -824,6 +827,15 @@ fun SettingsScreen(
                         scope.launch {
                             settingsRepository.setThemeMode(theme)
                         }
+                    }
+                )
+                SwitchSettingItem(
+                    title = stringResource(R.string.show_transcription_stream_statistics),
+                    subtitle = stringResource(R.string.show_transcription_stream_statistics_description),
+                    icon = Icons.Default.QueryStats,
+                    checked = showStreamStatistics,
+                    onCheckedChange = { show ->
+                        scope.launch { settingsRepository.setShowTranscriptionStreamStatistics(show) }
                     }
                 )
             }

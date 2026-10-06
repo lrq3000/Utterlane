@@ -17,8 +17,15 @@ data class CaptureSnapshot(
     val percent: Int? = null,
     val remainingSeconds: Double? = null,
     val modelName: String = "",
-    val error: String? = null
-)
+    val error: String? = null,
+    val recognition: RecognitionStatus = RecognitionStatus.from(RecognitionActivity())
+) {
+    val capturedSeconds: Double get() = capturedSamples.coerceAtLeast(0) / 16000.0
+    val processedSeconds: Double get() = processedSamples.coerceIn(0, capturedSamples.coerceAtLeast(0)) / 16000.0
+    // Ownership counts exclude overlapping ASR context and include disk-backed backlog.
+    // This is outstanding accepted audio, not a claim about native queue occupancy.
+    val backlogSeconds: Double get() = (capturedSeconds - processedSeconds).coerceAtLeast(0.0)
+}
 
 /**
  * PCM-derived, in-memory feedback for the recording UI; no persistence or network reporting.
@@ -33,8 +40,23 @@ class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 10000
     private var lastAudible = 0L
     private var blocked = false
     private var processingRate: Double? = null
+    private var processedEndSample = 0L
 
     @Synchronized fun model(name: String) { mutable.value = mutable.value.copy(modelName = name) }
+    @Synchronized fun recognition(activity: RecognitionActivity) {
+        if (mutable.value.phase in setOf(CapturePhase.COMPLETE, CapturePhase.FAILED, CapturePhase.CANCELLED)) return
+        mutable.value = mutable.value.copy(recognition = RecognitionStatus.from(activity))
+    }
+    /** File decoding can count accepted PCM without computing or retaining a waveform. */
+    @Synchronized fun captured(samples: Int) {
+        require(samples >= 0)
+        if (mutable.value.phase == CapturePhase.LOADING) started()
+        mutable.value = counted(mutable.value, samples)
+    }
+    private fun counted(snapshot: CaptureSnapshot, samples: Int): CaptureSnapshot {
+        val total = snapshot.capturedSamples + samples
+        return snapshot.copy(capturedSamples = total, processedSamples = minOf(processedEndSample, total))
+    }
     @Synchronized fun started() {
         if (mutable.value.phase != CapturePhase.LOADING) return
         lastFrames = clock(); lastAudible = lastFrames
@@ -52,8 +74,7 @@ class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 10000
         val level = if (rms == 0.0) 0f else ((db + 60) / 60).coerceIn(0.0, 1.0).toFloat()
         history[cursor] = level; cursor = (cursor + 1) % history.size
         val visual = FloatArray(history.size) { history[(cursor + it) % history.size] }
-        mutable.value = mutable.value.copy(level = level, waveform = visual,
-            capturedSamples = mutable.value.capturedSamples + if (accepted) pcm.size else 0)
+        mutable.value = counted(mutable.value.copy(level = level, waveform = visual), if (accepted) pcm.size else 0)
         tick()
     }
     @Synchronized fun tick() {
@@ -72,12 +93,17 @@ class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 10000
     @Synchronized fun stopping() { mutable.value = mutable.value.copy(phase = CapturePhase.STOPPING) }
     @Synchronized fun captureEnded() { mutable.value = mutable.value.copy(phase = CapturePhase.PROCESSING); progress() }
     @Synchronized fun processed(endSample: Long, milliseconds: Long) {
-        val delta = endSample - mutable.value.processedSamples
+        // queue.offer can wake a fast consumer before samples() publishes capture counts.
+        // Keep the real ownership watermark, but expose only already-counted input. The
+        // next capture publication reconciles that race without losing completed work.
+        val end = maxOf(endSample, processedEndSample)
+        val delta = end - processedEndSample
         if (delta > 0 && milliseconds > 0) {
             val rate = milliseconds / 1000.0 / delta
             processingRate = processingRate?.let { it * 0.8 + rate * 0.2 } ?: rate
         }
-        mutable.value = mutable.value.copy(processedSamples = endSample.coerceAtMost(mutable.value.capturedSamples))
+        processedEndSample = end
+        mutable.value = mutable.value.copy(processedSamples = minOf(end, mutable.value.capturedSamples))
         progress()
     }
     private fun progress() {
@@ -87,6 +113,14 @@ class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 10000
         mutable.value = snapshot.copy(percent = percent,
             remainingSeconds = processingRate?.times((snapshot.capturedSamples - snapshot.processedSamples).coerceAtLeast(0)))
     }
-    @Synchronized fun completed(error: String?) { mutable.value = mutable.value.copy(phase = if (error == null) CapturePhase.COMPLETE else CapturePhase.FAILED, percent = if (error == null) 100 else mutable.value.percent, error = error) }
-    @Synchronized fun cancelled() { mutable.value = mutable.value.copy(phase = CapturePhase.CANCELLED) }
+    @Synchronized fun completed(error: String?) {
+        mutable.value = mutable.value.copy(phase = if (error == null) CapturePhase.COMPLETE else CapturePhase.FAILED,
+            percent = if (error == null) 100 else mutable.value.percent?.coerceAtMost(99), error = error,
+            recognition = mutable.value.recognition.copy(active = false, opaque = false,
+                stage = if (error == null) RecognitionStage.FINISHED else RecognitionStage.ERROR))
+    }
+    @Synchronized fun cancelled() {
+        mutable.value = mutable.value.copy(phase = CapturePhase.CANCELLED,
+            recognition = mutable.value.recognition.copy(active = false, opaque = false))
+    }
 }

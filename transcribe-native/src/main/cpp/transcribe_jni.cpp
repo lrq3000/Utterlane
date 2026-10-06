@@ -68,7 +68,8 @@ std::array<jlong, 3> layout(const transcribe_session* session) {
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_io_github_lrq3000_utterlane_asr_TranscribeCppBackend_openNative(JNIEnv* env, jobject, jstring path) {
+Java_io_github_lrq3000_utterlane_asr_TranscribeCppBackend_openNative(JNIEnv* env, jobject, jstring path, jint threads) {
+    if (threads < 1 || threads > 32) { fail(env, "Invalid ASR thread count"); return 0; }
     const char* chars = env->GetStringUTFChars(path, nullptr);
     if (!chars) return 0;
     std::string filename;
@@ -90,7 +91,7 @@ Java_io_github_lrq3000_utterlane_asr_TranscribeCppBackend_openNative(JNIEnv* env
         load.backend = TRANSCRIBE_BACKEND_CPU;
         transcribe_session_params parameters;
         transcribe_session_params_init(&parameters);
-        parameters.n_threads = 4;
+        parameters.n_threads = threads;
         transcribe_session* pointer = nullptr;
         const auto status = transcribe_open(filename.c_str(), &load, &parameters, &pointer);
         Session session(pointer, transcribe_session_free);
@@ -127,8 +128,10 @@ Java_io_github_lrq3000_utterlane_asr_TranscribeCppBackend_decodeNative(JNIEnv* e
         if (tokens < 0 || tokens > 8192) throw std::runtime_error("Invalid token count");
         auto pieces = env->NewObjectArray(tokens, env->FindClass("java/lang/String"), nullptr);
         auto times = env->NewFloatArray(tokens);
-        if (!pieces || !times) return nullptr;
+        auto ends = env->NewFloatArray(tokens);
+        if (!pieces || !times || !ends) return nullptr;
         std::vector<jfloat> timestamps(static_cast<size_t>(tokens));
+        std::vector<jfloat> end_times(static_cast<size_t>(tokens));
         for (int i = 0; i < tokens; ++i) {
             transcribe_token token;
             transcribe_token_init(&token);
@@ -139,12 +142,15 @@ Java_io_github_lrq3000_utterlane_asr_TranscribeCppBackend_decodeNative(JNIEnv* e
             env->SetObjectArrayElement(pieces, i, piece);
             env->DeleteLocalRef(piece);
             timestamps[static_cast<size_t>(i)] = static_cast<float>(token.t0_ms) / 1000.0f;
+            end_times[static_cast<size_t>(i)] = static_cast<float>(token.t1_ms) / 1000.0f;
         }
         env->SetFloatArrayRegion(times, 0, tokens, timestamps.data());
-        auto result = env->NewObjectArray(2, env->FindClass("java/lang/Object"), nullptr);
+        env->SetFloatArrayRegion(ends, 0, tokens, end_times.data());
+        auto result = env->NewObjectArray(3, env->FindClass("java/lang/Object"), nullptr);
         if (!result) return nullptr;
         env->SetObjectArrayElement(result, 0, pieces); env->SetObjectArrayElement(result, 1, times);
-        env->DeleteLocalRef(pieces); env->DeleteLocalRef(times);
+        env->SetObjectArrayElement(result, 2, ends);
+        env->DeleteLocalRef(pieces); env->DeleteLocalRef(times); env->DeleteLocalRef(ends);
         return result;
     } catch (const std::exception& error) { fail(env, error.what()); }
     catch (...) { fail(env, "Unknown transcribe.cpp inference failure"); }

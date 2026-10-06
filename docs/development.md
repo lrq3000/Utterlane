@@ -148,16 +148,28 @@ Speaker labels use the separate NVIDIA Nemotron-3-Diarization model (107 MB).
 Diarization works alongside the original ONNX Parakeet v3; no migration or
 replacement download of that speech model is needed.
 
-A specified speaker count constrains native arrival-order tracks; it does not
-force nonexistent speakers or perform an offline global re-clustering pass.
+A specified speaker count constrains persistent output identities using all
+native-channel evidence; it does not force nonexistent speakers or perform an
+offline global re-clustering pass. Fixed-one mode bypasses native diarization.
 Speaker IDs belong to one recording, and uncertain speech can be labeled
 **Unknown speaker**. Settings changes take effect on the next recording.
 
 Streaming labels are emitted at the existing audio segment boundaries, with
 lookahead and additional inference work. Device throughput determines whether
 processing keeps up with recording. Custom models without exposed word timings
-are transcribed by speaker-turn audio slices when diarization is enabled.
+retain their ordinary disjoint ASR windows when diarization is enabled. The
+generic JNI bridge preserves available word timings; models without usable
+timings receive explicitly coarse/unknown attribution rather than another ASR
+pass on tiny speaker slices.
 See [speaker-label settings](user-guide.md#speaker-labels).
+
+Runtime tuning is centralized in `settings/RuntimeOptions.kt`, validated on
+persistence and IPC boundaries, and snapshotted per operation. Native diarization
+uses a bounded persistent stream; catch-up merges already-buffered steps. The
+checked source adaptation in `tools/native_stream_options.py` adds context
+controls, genuine completed-work callbacks, and an explicit failure status.
+Opaque native operations retain configurable fallback budgets. See
+[recovery QA](qa/diarization-recovery.md) for acoustic evidence and limitations.
 
 ## Distribution and project identity
 

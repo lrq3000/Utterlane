@@ -312,7 +312,7 @@
     <string name="diarization_description">Label speakers as microphone or imported audio is transcribed. Adds processing time. Changes apply to the next recording.</string>
     <string name="diarization_count">Number of speakers</string>
     <string name="diarization_auto">Auto (up to 8)</string>
-    <string name="diarization_count_help">Auto detects active speaker tracks. A number constrains the streaming decoder to that many arrival-order tracks; it does not create speakers who have not spoken. Labels are estimates and remain fixed once inserted.</string>
+    <string name="diarization_count_help">Auto detects up to 8 speakers. One speaker labels the text directly without running the diarization model. Other counts limit persistent speaker identities; they do not create speakers who have not spoken. Changes apply to the next recording.</string>
     <string name="diarization_model_info">NVIDIA Nemotron-3-Diarization · Q8_0 · 107 MB · OpenMDW-1.1. Download once, or import a folder containing Nemotron-3-Diarization.q8_0.gguf. Processing is offline.</string>
     <string name="diarization_install_first">Download or import the speaker diarization model in Settings, or turn off speaker labels.</string>
     <string name="diarization_model_ready">Diarization model installed. Used automatically when speaker labels are enabled.</string>
