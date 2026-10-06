@@ -143,6 +143,7 @@ fun TranscribeScreen(
     var preserveResult by remember { mutableStateOf(false) }
     val captureMetrics = remember { io.github.lrq3000.utterlane.asr.CaptureMetrics() }
     val capture by captureMetrics.state.collectAsState()
+    val showStreamStatistics by UtterlaneApp.instance.settingsRepository.showTranscriptionStreamStatistics.collectAsStateWithLifecycle(initialValue = false)
     val manager = remember { UtterlaneApp.instance.recognizerManager }
     LaunchedEffect(manager, running) {
         if (running && transcriptPath == null) manager.activity.collect {
@@ -280,7 +281,7 @@ fun TranscribeScreen(
                         else LinearProgressIndicator(progress = { progress!! / 100f }, modifier = Modifier.fillMaxWidth())
                         TextButton(onClick = { processingJob?.cancel() }) { Text(stringResource(R.string.overlay_cancel)) }
                     }
-                    if (transcriptPath == null) {
+                    if (showStreamStatistics && transcriptPath == null) {
                         Text(io.github.lrq3000.utterlane.ui.RecognitionStatusText.activity(context, capture.recognition), style = MaterialTheme.typography.bodySmall)
                         Text(io.github.lrq3000.utterlane.ui.RecognitionStatusText.backlog(context, capture), style = MaterialTheme.typography.bodySmall)
                     }

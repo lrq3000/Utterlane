@@ -25,6 +25,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** One bottom-panel presentation for IME and system/accessibility overlays. */
 class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit) : LinearLayout(context) {
@@ -74,7 +76,13 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
     }
     fun bind(scope: CoroutineScope, state: StateFlow<CaptureSnapshot>) {
         observer?.cancel()
-        observer = scope.launch { state.collect { render(it) } }
+        observer = scope.launch {
+            // Redraw even if only the display preference changes (no new audio/progress).
+            // The existing observer owns both subscriptions, so release cancels both.
+            state.combine(UtterlaneApp.instance.settingsRepository.showTranscriptionStreamStatistics.distinctUntilChanged()) {
+                snapshot, showStatistics -> snapshot to showStatistics
+            }.collect { (snapshot, showStatistics) -> render(snapshot, showStatistics) }
+        }
         // Native IME/accessibility contexts do not inherit Compose's explicit
         // light/dark preference. Observe it without blocking the main thread.
         themeObserver?.cancel()
@@ -110,7 +118,7 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         waveform.applyPalette(palette)
     }
 
-    private fun render(snapshot: CaptureSnapshot) {
+    private fun render(snapshot: CaptureSnapshot, showStatistics: Boolean = false) {
         keepScreenOn = snapshot.phase !in listOf(CapturePhase.COMPLETE, CapturePhase.FAILED, CapturePhase.CANCELLED)
         val capturing = snapshot.phase == CapturePhase.CAPTURING
         waveform.visibility = if (capturing) View.VISIBLE else View.GONE
@@ -126,8 +134,8 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
             CapturePhase.FAILED -> R.string.capture_failed
             CapturePhase.CANCELLED -> R.string.stream_cancelled
         })
-        details.text = snapshot.modelName + "\n" + RecognitionStatusText.backlog(context, snapshot)
-        recognition.text = RecognitionStatusText.activity(context, snapshot.recognition)
+        details.text = if (showStatistics) snapshot.modelName + "\n" + RecognitionStatusText.backlog(context, snapshot) else snapshot.modelName
+        recognition.text = if (showStatistics) RecognitionStatusText.activity(context, snapshot.recognition) else ""
         recognition.visibility = if (recognition.text.isEmpty()) View.GONE else View.VISIBLE
         signal.visibility = if (capturing && snapshot.signal in listOf(CaptureSignal.LOW, CaptureSignal.NO_FRAMES, CaptureSignal.BLOCKED)) View.VISIBLE else View.GONE
         signal.text = context.getString(when (snapshot.signal) {

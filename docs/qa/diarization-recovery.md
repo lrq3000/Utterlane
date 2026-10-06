@@ -33,9 +33,10 @@ the origin/main source and the maintainer's original untracked test material.
    from successful buffering and terminate the affected stream safely.
 8. Capture buffers, queue limits, wake recovery and download timeouts use operation
    snapshots. Cancelling a download interrupts blocking I/O even with timeout 0.
-9. Stage, awake elapsed, progress-age and backlog UI accompany optional local
-   content-free diagnostics. Logging consent is captured at operation entry,
-   including time spent waiting for the inference mutex. Queue/disk/export bounds
+9. Stage, awake elapsed, progress-age and backlog UI are available through
+   **Appearance → Show transcription stream statistics**, off by default and
+   independent of optional local content-free diagnostics. Logging consent is
+   captured at operation entry, including time spent waiting for the inference mutex. Queue/disk/export bounds
    are tested; no automatic upload is implemented.
 
 ## Input evidence
@@ -150,10 +151,21 @@ Both remain user-selectable; batching provides the much larger observed gain.
   The chooser was dismissed without selecting a receiving app. Screenshots:
   `qa-artifacts/advanced-expanded.png`, `recovery-options.png`,
   `recovery-saved.png`, `diagnostics-share.png`.
+- Statistics-display follow-up: the default-hidden native panel test first failed
+  against the always-visible implementation, then all **3 panel Android tests**
+  passed. They cover opt-in/out without another audio update, waveform visibility,
+  signal feedback, Stop, processing progress and screen-awake lifecycle. Repository
+  coverage checks upgrade defaults, persistence and independence from logging/reset.
+  UI-tree interaction verified the Appearance switch and file-screen statistics
+  off/on/off across process restarts. The file-screen smoke used the missing-audio
+  error state to exercise presentation without another neural inference run.
+  Screenshots: `qa-artifacts/stream-statistics-default.png`,
+  `file-statistics-off.png`, `file-statistics-on-after-restart.png`,
+  `file-statistics-off-after-restart.png`.
 
 ## Automated verification and review
 
-- Full JVM suite: **237 tests, zero failures** at the final integration checkpoint.
+- Full JVM suite: **238 tests, zero failures** after the statistics-display follow-up.
 - Python scorer/adaptation/trace tests: **50 passed**.
 - ARM64 app/test APK builds passed. A transient Windows Kotlin-daemon backup
   cleanup error fell back successfully; subsequent commands use

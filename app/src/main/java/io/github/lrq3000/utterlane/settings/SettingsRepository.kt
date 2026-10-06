@@ -24,6 +24,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     companion object {
         private val SERVICE_ENABLED_KEY = booleanPreferencesKey("service_enabled")
         private val THEME_KEY = stringPreferencesKey("theme_mode")
+        private val SHOW_TRANSCRIPTION_STREAM_STATISTICS_KEY = booleanPreferencesKey("show_transcription_stream_statistics")
         private val BUTTON_X_KEY = intPreferencesKey("button_x")
         private val BUTTON_Y_KEY = intPreferencesKey("button_y")
         private val AUTO_LOAD_MODEL_KEY = booleanPreferencesKey("auto_load_model")
@@ -108,6 +109,16 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     val themeMode: Flow<String> = dataStore.data.map { preferences ->
         preferences[THEME_KEY] ?: THEME_SYSTEM
+    }
+
+    // Presentation is independent of operation snapshots and diagnostic logging consent.
+    // A missing key also keeps upgraded installations on the simpler recording UI.
+    val showTranscriptionStreamStatistics: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[SHOW_TRANSCRIPTION_STREAM_STATISTICS_KEY] ?: false
+    }
+
+    suspend fun setShowTranscriptionStreamStatistics(show: Boolean) {
+        dataStore.edit { it[SHOW_TRANSCRIPTION_STREAM_STATISTICS_KEY] = show }
     }
 
     val buttonPosition: Flow<Pair<Int, Int>> = dataStore.data.map { preferences ->

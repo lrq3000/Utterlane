@@ -153,8 +153,11 @@ together; active operations retain their starting snapshot.
 - **Experimental:** bounded speaker cache, FIFO and update cadence, plus local
   diagnostics. Cache reductions can hurt returning-speaker accuracy.
 
-The recording/file UI reports the latest processing stage, awake elapsed time,
-time since completed progress, and audio backlog where available. A long-running
+Under **Appearance**, **Show transcription stream statistics** is off by default.
+Enable it to show the latest processing stage, awake elapsed time, time since
+completed progress, and audio backlog in recording/file views. The waveform,
+normal progress and controls remain available when statistics are hidden. This
+display preference is independent of diagnostic logging. A long-running
 operation is not terminated merely because 90 seconds passed. **Force unload /
 reset recognition** remains available to recover from genuinely stuck native work.
 Model **idle unloading** is a separate setting and does not interrupt active

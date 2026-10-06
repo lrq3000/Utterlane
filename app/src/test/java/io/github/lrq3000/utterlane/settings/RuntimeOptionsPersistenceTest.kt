@@ -104,4 +104,21 @@ class RuntimeOptionsPersistenceTest {
         } catch (_: IllegalArgumentException) { }
         assertEquals(before, store.data.value.asMap())
     }
+
+    @Test fun streamStatisticsDefaultOffAndRemainIndependentOfDiagnostics() = runBlocking {
+        val store = MemoryStore()
+        val repository = SettingsRepository(store)
+        // Existing installations can already have logging enabled when this UI option arrives.
+        repository.setRuntimeOptions(RuntimeOptions(diagnostics = true))
+        assertFalse(repository.showTranscriptionStreamStatistics.first())
+        repository.setShowTranscriptionStreamStatistics(true)
+        assertTrue(SettingsRepository(store).showTranscriptionStreamStatistics.first())
+        repository.resetRuntimeOptions()
+        assertTrue(repository.showTranscriptionStreamStatistics.first())
+        assertFalse(repository.runtimeOptions.first().diagnostics)
+        repository.setRuntimeOptions(RuntimeOptions(diagnostics = true))
+        repository.setShowTranscriptionStreamStatistics(false)
+        assertFalse(SettingsRepository(store).showTranscriptionStreamStatistics.first())
+        assertTrue(repository.runtimeOptions.first().diagnostics)
+    }
 }

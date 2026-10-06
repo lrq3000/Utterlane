@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="show_transcription_stream_statistics">Show transcription stream statistics</string>
+    <string name="show_transcription_stream_statistics_description">Show detailed processing stages, timing and audio backlog while transcribing.</string>
     <string name="recognition_idle">Idle</string>
     <string name="recognition_queued">Queued</string>
     <string name="recognition_connecting">Connecting to recognition worker</string>
