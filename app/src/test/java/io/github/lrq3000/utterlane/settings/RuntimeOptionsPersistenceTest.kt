@@ -54,6 +54,19 @@ class RuntimeOptionsPersistenceTest {
             assertEquals(RuntimeOptions(), repository.runtimeOptions.first())
     }
 
+    @Test fun onboardingDetectsExistingAdvancedSettingsWithoutChangingThem() = runBlocking {
+        val store = MemoryStore()
+        val repository = SettingsRepository(store)
+        assertFalse(repository.hasSavedSettings.first())
+        val options = RuntimeOptions(asrThreads = 8, diagnostics = true)
+        repository.setRuntimeOptions(options)
+        assertTrue(SettingsRepository(store).hasSavedSettings.first())
+        repository.setThemeMode(SettingsRepository.THEME_DARK)
+        repository.setDiarizationEnabled(true)
+        assertEquals(options, repository.runtimeOptions.first())
+        assertFalse(repository.showTranscriptionStreamStatistics.first())
+    }
+
     @Test fun overlappingIndependentGroupsMergeInsideTheTransaction() = runBlocking {
         val store = MemoryStore()
         val repository = SettingsRepository(store)

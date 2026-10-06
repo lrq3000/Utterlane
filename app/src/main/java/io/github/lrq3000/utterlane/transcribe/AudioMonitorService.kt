@@ -176,10 +176,13 @@ class AudioMonitorService : Service() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun createFileObserver(directory: File) {
         Log.i(TAG, "Creating FileObserver for: ${directory.absolutePath}")
         val canonicalDir = directory.canonicalPath
-        val observer = object : FileObserver(directory, CLOSE_WRITE or MOVED_TO) {
+        // The File overload was added in API 29. This single-path constructor
+        // also works on the app's supported Android 8/9 devices (API 26–28).
+        val observer = object : FileObserver(directory.absolutePath, CLOSE_WRITE or MOVED_TO) {
             override fun onEvent(event: Int, path: String?) {
                 Log.d(TAG, "FileObserver event: $event, path: $path")
                 if (path == null) return

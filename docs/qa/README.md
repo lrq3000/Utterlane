@@ -40,3 +40,7 @@ to inspect distribution artifacts too.
 
 See [updated-main replay verification](utterlane-main-replay.md) for preservation
 of the model-deletion confirmation UI and newer APK workflow.
+
+See [native onboarding verification](onboarding.md) for setup/replay, model
+recommendations, permissions, real inference, sample sharing, folder monitoring,
+and the isolated QA application identity.

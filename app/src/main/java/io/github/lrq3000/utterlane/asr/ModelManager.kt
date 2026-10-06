@@ -11,15 +11,18 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import java.io.File
 import java.io.InputStream
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resumeWithException
 
 /** Catalog-based private storage. Only verified, fully published artifacts are loadable. */
 class ModelManager(private val context: Context, private val client: OkHttpClient? = null, private val fixedModel: ModelDefinition? = null) {
@@ -40,7 +43,7 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
         internal suspend fun openDownload(call: Call, publish: (Call) -> Unit): InputStream {
             val owner = currentCoroutineContext()
             // A normal completion callback runs too late: the IO coroutine cannot
-            // complete until execute/read unblocks. Observe the *cancelling* phase,
+            // complete until a body read unblocks. Observe the *cancelling* phase,
             // capturing this call before publication and handling already-cancelled
             // owners immediately. Never resolve activeCall from the callback.
             val cancellation = owner[Job]?.invokeOnCompletion(onCancelling = true, invokeImmediately = true) { cause ->
@@ -51,14 +54,14 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
                 owner.ensureActive()
                 publish(call)
                 owner.ensureActive()
-                val opened = call.execute()
+                val opened = awaitHeaders(call)
                 response = opened
                 owner.ensureActive()
                 check(opened.isSuccessful) { "Download failed: ${opened.code}" }
                 val body = opened.body ?: error("Empty model response")
                 return object : java.io.FilterInputStream(body.byteStream()) {
                     override fun close() {
-                        // execute() returning only transfers ownership to the body;
+                        // Receiving headers only transfers ownership to the body;
                         // keep cancellation armed through the final read and close.
                         try { super.close() }
                         finally { try { opened.close() } finally { cancellation?.dispose() } }
@@ -68,6 +71,21 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
                 try { response?.close() } finally { cancellation?.dispose() }
                 throw failure
             }
+        }
+
+        @OptIn(ExperimentalCoroutinesApi::class)
+        private suspend fun awaitHeaders(call: Call): Response = suspendCancellableCoroutine { continuation ->
+            // Call.cancel interrupts sockets, not arbitrary OS DNS resolvers.
+            // Suspend the owner while OkHttp resolves; retain openDownload's
+            // owner hook after delivery to protect subsequent blocking body reads.
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, error: IOException) = continuation.resumeWithException(error)
+                override fun onResponse(call: Call, response: Response) {
+                    // A cancelled owner may never receive the successful callback.
+                    continuation.resume(response, onCancellation = { response.close() })
+                }
+            })
         }
     }
     enum class ErrorType { NETWORK, CHECKSUM_MISMATCH, MISSING_FILE, FOLDER_ACCESS, STORAGE, UNKNOWN }
