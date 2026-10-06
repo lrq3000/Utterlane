@@ -17,6 +17,41 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class DownloadCancellationTest {
+    @Test fun parentCancellationReleasesOwnerWhileDnsRemainsBlocked() = runBlocking {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val client = OkHttpClient.Builder().dns(object : okhttp3.Dns {
+            override fun lookup(hostname: String): List<InetAddress> {
+                entered.countDown()
+                check(release.await(10, TimeUnit.SECONDS))
+                return listOf(InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)))
+            }
+        }).build()
+        val call = client.newCall(Request.Builder().url("https://blocked-dns.invalid/model").build())
+        val owner = Job()
+        val worker = CoroutineScope(owner + Dispatchers.IO).launch {
+            try { ModelManager.openDownload(call) {}.use { it.read() } }
+            catch (_: java.io.IOException) { currentCoroutineContext().ensureActive() }
+            finally { finished.countDown() }
+        }
+        try {
+            assertTrue(entered.await(3, TimeUnit.SECONDS))
+            owner.cancel()
+            assertTrue(call.isCanceled())
+            // Call.cancel cannot interrupt arbitrary platform DNS. The transfer
+            // owner must nevertheless finish, releasing its mutex/staging files.
+            assertTrue("Owner must unwind before DNS is released", finished.await(1500, TimeUnit.MILLISECONDS))
+        } finally {
+            release.countDown()
+            owner.cancel()
+            withTimeout(3000) { worker.join() }
+            client.dispatcher.executorService.shutdown()
+            assertTrue(client.dispatcher.executorService.awaitTermination(3, TimeUnit.SECONDS))
+            client.connectionPool.evictAll()
+        }
+    }
+
     @Test fun parentCancellationInterruptsExecuteWithNoReadTimeout() = checkBlockingCancellation(sendHeaders = false)
 
     @Test fun parentCancellationInterruptsBodyAfterExecuteHasReturned() = checkBlockingCancellation(sendHeaders = true)
