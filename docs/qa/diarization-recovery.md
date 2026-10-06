@@ -41,10 +41,13 @@ the origin/main source and the maintainer's original untracked test material.
 
 ## Input evidence
 
-The operator supplied two private 44.1 kHz stereo AAC files and three text files
-per recording under `test_material/streaming_diarization_accuracy/`. Original
-assets remain local and unchanged; test code/scorers, not private recordings,
-are committed.
+The operator originally supplied two private 44.1 kHz stereo AAC files and three
+text files per recording under `test_material/streaming_diarization_accuracy/`.
+On 2026-10-06 the maintainer authorized publication of the one-speaker recording
+and its three supplied reference/baseline texts. The byte-preserved
+[fixture](../../test_material/streaming_diarization_accuracy/README.md) includes
+reproduction instructions using the existing test source code. Generated run
+outputs and the two-speaker recording remain local and uncommitted.
 
 | Recording | Length | Supplied current output | Expected |
 | --- | --- | --- | --- |

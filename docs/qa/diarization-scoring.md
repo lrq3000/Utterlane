@@ -4,6 +4,11 @@ Run from the repository/worktree root with Python 3.11+; only the standard
 library is needed. The scorer reads UTF-8 text. It does not open audio files,
 modify fixtures, require Android tools, or upload data.
 
+A maintainer-approved [single-speaker fixture](../../test_material/streaming_diarization_accuracy/README.md)
+includes the original audio and supplied reference/baseline transcripts. Its
+`current-diarization` transcript is deliberately the old failing baseline.
+Generated run outputs and the two-speaker fixture are not included.
+
 ```console
 python -m unittest tools.qa.test_diarization_regression
 python tools/qa/diarization_regression.py /path/to/fixtures
