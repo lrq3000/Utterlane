@@ -43,6 +43,10 @@
             </intent-filter>
         </activity>
 
+        <!-- Native first-launch guide; external audio intents keep their own entry point. -->
+        <activity android:name=".onboarding.OnboardingActivity"
+            android:exported="false" android:theme="@style/Theme.Utterlane" />
+
         <!-- Floating Mic Service -->
         <service
             android:name=".service.FloatingMicService"

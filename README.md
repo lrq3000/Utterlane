@@ -72,8 +72,10 @@ options and advice on switching between distribution channels.
 
 ### Your first dictation
 
-1. Open **Utterlane**, select a speech model, and **download** it (or **Import from
-   folder**). After setup, recognition works offline.
+1. Open **Utterlane** and follow the **setup guide**. Choose a recommended speech
+   model and download it, or import existing model files. After setup, recognition
+   works offline. The guide includes optional in-app dictation and audio-sharing
+   tests and can be reopened from Settings.
 2. Grant **Microphone** access.
 3. Choose an input method:
    - **Keyboard mic:** open **Keyboard Integration → Voice Input Method**, enable

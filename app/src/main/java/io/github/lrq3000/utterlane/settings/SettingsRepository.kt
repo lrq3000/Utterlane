@@ -92,6 +92,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         preferences[SERVICE_ENABLED_KEY] ?: false
     }
 
+    // Classify an installation only before onboarding initializes its own store.
+    // Retain the injected DataStore so this also observes advanced-option edits.
+    val hasSavedSettings: Flow<Boolean> = dataStore.data.map { it.asMap().isNotEmpty() }
+
     val historyRetention: Flow<HistoryRetention> = dataStore.data.map { preferences ->
         HistoryRetention.fromKey(preferences[HISTORY_RETENTION_KEY])
     }

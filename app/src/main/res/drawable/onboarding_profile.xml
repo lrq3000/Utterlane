@@ -1,0 +1,5 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="96dp" android:height="84dp" android:viewportWidth="96" android:viewportHeight="84">
+    <!-- Approved revision-03 single-line profile; tint is supplied by Compose. -->
+    <path android:fillColor="@android:color/transparent" android:strokeColor="#FF000000" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M22,7 C21,14 22,19 26,24 C28,27 32,30 34,31 C35.5,32 34,34 32,34.5 C30.5,35 29,34.7 28.5,35 C28,36.5 28.8,37.8 30,38.6 C31.7,39.1 33,40.3 33.5,41.4 C32.5,42.1 31.3,42.4 30.5,42.8 C31.4,43.5 32.9,44.2 33,45.4 C32.8,46.7 30.9,47.2 29.6,48 C28.7,49.4 30.4,51.3 30.8,53.4 C31.5,58 28.2,61.4 23,62.9 C20,63.9 18.1,66.8 17,70.8 L15.5,77" />
+</vector>
