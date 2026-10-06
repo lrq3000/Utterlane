@@ -1,6 +1,6 @@
 # Privacy Policy for Utterlane
 
-**Last updated:** October 5, 2026
+**Last updated:** October 6, 2026
 
 ## Overview
 
@@ -21,9 +21,27 @@ Utterlane is a voice-to-text application maintained by Stephen Karl Larroque tha
 
 The recording interface computes microphone levels, a bounded waveform, signal
 status, and transcription progress and time estimates on your device. These
-capture metrics exist only in memory to provide recording feedback; they are
-not saved to a metrics log or sent to a server. The metrics component does not
-retain raw recordings. Optional recording history is separate and described below.
+capture metrics normally exist only in memory to provide recording feedback and
+are not sent to a server. The metrics component does not retain raw recordings.
+Optional recording history is separate and described below.
+
+### Optional local diagnostics
+
+Advanced recognition settings include a diagnostic log that is **off by default**.
+When you enable it, new operations can record content-free processing stages,
+elapsed/progress times, audio sample counts and backlog, runtime configuration,
+and app/Android/device-model and native-build information in the app cache.
+These production logs exclude audio, transcripts, word probabilities, model paths,
+and exception messages. There is no automatic network reporting.
+
+The log queue is bounded and files rotate within two 1 MiB files. You can clear
+them in Settings. Inactive log files expire after seven days when cleanup next runs;
+otherwise rotation limits their size.
+**Share diagnostics** creates a local ZIP snapshot and opens Android's chooser;
+only choosing a receiving app shares it. At most two export snapshots are kept,
+and they expire after one day; creating another export may remove the oldest.
+The receiving app controls any copy you share. An operation keeps its starting
+diagnostics preference, so a changed preference applies to subsequent operations.
 
 ## Permissions
 
