@@ -1,10 +1,13 @@
 <p align="center">
-  <img src="assets/utterlane-banner.png" alt="Utterlane — Fast. Offline. Transcription." width="900">
+  <a href="https://lrq3000.github.io/Utterlane/"><img src="assets/utterlane-banner.png" alt="Utterlane — Fast. Offline. Transcription." width="900"></a>
 </p>
 <p align="center">
   <strong>Utterlane - Blazingly fast accurate offline transcription for Android.</strong>
 </p>
 
+<p align="center">
+  <a href="https://lrq3000.github.io/Utterlane/"><img src="assets/visit-website.svg" alt="Visit the Utterlane website" width="360" height="56"></a>
+</p>
 
 <p align="center">
   <a href="https://github.com/lrq3000/Utterlane/actions/workflows/build_apk.yml"><img src="https://github.com/lrq3000/Utterlane/actions/workflows/build_apk.yml/badge.svg" alt="Build APK"></a>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="56" viewBox="0 0 360 56" role="img" aria-labelledby="title desc">
+  <title id="title">Visit the Utterlane website</title>
+  <desc id="desc">A rounded cyan-to-blue button with a globe and a right arrow.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#087FAD"/>
+      <stop offset="1" stop-color="#3154D9"/>
+    </linearGradient>
+  </defs>
+  <!-- Keep the artwork self-contained so GitHub can render it as an image. -->
+  <rect x="4" y="8" width="352" height="44" rx="14" fill="#18283B" opacity="0.16"/>
+  <rect x="4" y="4" width="352" height="44" rx="14" fill="url(#background)"/>
+  <rect x="5" y="5" width="350" height="42" rx="13" fill="none" stroke="#FFFFFF" stroke-opacity="0.22"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="39" cy="26" r="12"/>
+    <ellipse cx="39" cy="26" rx="5" ry="12"/>
+    <path d="M27 26h24"/>
+    <path d="M311 26h18m-7-7 7 7-7 7" stroke-width="2.5"/>
+  </g>
+  <text x="178" y="34" text-anchor="middle" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="22" font-weight="650" fill="#FFFFFF">Visit the website</text>
+</svg>
