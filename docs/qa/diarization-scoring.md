@@ -176,6 +176,115 @@ An undefined metric fails its check. JSON includes thresholds and individual
 failures with the actual value and comparison, even in report-only mode.
 Results are never averaged across recordings to hide a failed recording.
 
+## Fast acoustic-evidence replay (label changes only)
+
+`DiarizationEvidenceAndroidTest` replays a completed private capture from
+`DiarizationFixtureAndroidTest` through the **current** `DiarizedWindowProcessor`,
+`SpeakerText`, empty `StreamingCorrections`, and `TranscriptStore`. It reads
+recorded ASR tokens, starts, exact ends, window ownership, and eight-channel
+little-endian float probabilities. It does **no neural inference** and requires
+neither audio nor model weights. The installed app/test APKs must contain the
+postprocessing version being evaluated.
+
+Run only the replay method on the parent's device (adjust both package IDs for
+an installed QA application-ID suffix):
+
+```console
+adb shell am instrument -w -e class io.github.lrq3000.utterlane.DiarizationEvidenceAndroidTest#replay -e source_tag warmed -e output_tag relabel-warmed -e fixture test-2-speakers-french-3-turns io.github.lrq3000.utterlane.test/androidx.test.runner.AndroidJUnitRunner
+adb pull /sdcard/Android/data/io.github.lrq3000.utterlane/files/diarization-runs/relabel-warmed /path/to/relabel-warmed
+python tools/qa/diarization_regression.py /path/to/private-fixtures /path/to/relabel-warmed --recording test-2-speakers-french-3-turns --repeat-reference 2 --format json --check
+```
+
+Inputs remain in the app's private external directory,
+`diarization-runs/<source_tag>/<fixture>.{words.jsonl,probabilities.f32,summary.json}`.
+No private capture belongs in Git. `source_tag` defaults to `warmed` and
+`output_tag` to `relabel-warmed`; tags must differ and contain 1–64 ASCII letters,
+digits, underscores or hyphens. The only accepted fixture stems are
+`test-1-speaker-french` and `test-2-speakers-french-3-turns` (the default).
+The original repetition count is already present in the captured windows;
+`--repeat-reference 2` repeats only the scorer's reference for the warmed capture.
+
+### Options and faithful streaming availability
+
+Source ASR window, mode, batch, cache and other non-attribution settings are
+preserved from the summary. Target attribution settings start from the current
+`RuntimeOptions` defaults. Explicit instrumentation overrides are restricted to:
+
+- `option_speaker_threshold`, `option_speaker_margin`, `option_speaker_confirmation_ms`
+- `option_unknown_bridge_ms`, `option_label_lookahead_ms`, `option_alignment_tolerance_ms`
+- `option_strong_speaker_threshold`, `option_strong_speaker_margin`, `option_strong_confirmation_ms`
+- `option_word_fallback_ms`
+
+For example, append `-e option_unknown_bridge_ms 1000` to the instrumentation
+command. Unknown, invalid and acoustic/model-setting overrides fail. Changing
+model settings requires a new real capture: replay cannot retroactively compute
+different probabilities. To reproduce a historical labeling configuration,
+explicitly supply its attribution values; replay otherwise evaluates today's
+defaults, including fields absent from older summaries.
+
+The backend returns each captured `WindowResult` with dummy PCM of **exactly**
+its recorded sample length. Original overlap and disjoint ownership are replayed
+directly, with only the last window final; zero PCM is never re-segmented.
+The speaker stream reads only the probability delta available in that call,
+not the whole recording up front.
+
+Legacy availability is reconstructed from pinned CrispASR
+`966561aa596cfc653aa0e9885d44117fad9cca35`, `n3d_stream_drain`: modes
+very-low/low/ultra-low latency use `(c,r)=(6,2)/(9,4)/(3,1)`, `F=8`, hop 160,
+window 400 and FFT 512. The first complete batch needs
+`k*c*1280 + r*1280 + 40` total samples; subsequent batches need
+`scoredRows*160 + k*c*1280 + r*1280 + 144`. The largest complete
+`k <= source.diarizationBatch` is drained repeatedly until no base chunk fits,
+advancing `scoredRows` by `k*c*8`. At EOF, rows become
+`max(scoredRows, floor((totalSamples-96)/160))` if started, otherwise
+`floor(totalSamples/160)`. This is a pinned schedule assumption, not a claim
+that the old dumps recorded availability directly.
+
+New captures may instead include one JSONL object per speaker call:
+
+```json
+{"native_window":0,"returned_frames":432,"samples":77790,"final":false}
+```
+
+`native_window` is the zero-based ASR window index and `returned_frames` the
+**delta count of eight-float rows**, including an EOF tail on the final call.
+Optional `samples` is fresh, non-overlapping input; optional `final` is checked.
+These records take precedence over reconstruction and must cover every window
+exactly once. Partial/duplicate observed schedules are rejected.
+
+### Bounds, outputs and interpretation
+
+The explicit test limits are 10 minutes of 16 kHz audio, 2,000 windows,
+20,000 captured tokens (including overlap), 8,192 tokens per window,
+192,000 samples per window, 8 MiB word metadata and 64 KiB summary metadata.
+Arrays, finite monotonic timings, bounds, contiguous ownership, sample totals,
+probability range, complete frame consumption and one ASR/speaker call per window
+are checked. Native word ends pass through unchanged; the recorded PCM hash is
+syntax-checked, **not** recomputed from dummy PCM.
+
+Output is `diarization-runs/<output_tag>/<fixture>_transcript_<output_tag>.txt`
+and `<fixture>.summary.json` (a successful rerun replaces these files). The
+summary records `evidence_replay=true`, `nativeInference=false`, source/target
+options, `availability=reconstructed|recorded`, and matching source/replayed row,
+window and sample totals. Instrumentation success means **structural invariants
+passed**, not that attribution improved. Use the scoring CLI above to assess the
+13-to-12-block warmed regression; no desired block count is hard-coded into replay.
+An actual same-build Off transcript may also be supplied with `--plain-baseline`.
+The source `.performance.jsonl` measures original inference, not replay speed.
+
+Compile without a native build using JDK 21, an existing source-built sherpa AAR,
+and prepared native sources:
+
+```console
+python tools/prepare_native.py
+gradlew.bat :app:compileDebugAndroidTestKotlin --console=plain -q
+```
+
+The same instrumentation class also contains synthetic schedule boundary, EOF,
+draining, invalid-input, label-override and exact-word-evidence validation tests.
+They need no private fixture; select those methods individually when running
+without a capture. Compilation alone does not execute the Android replay.
+
 ## Optional performance JSONL
 
 Pass `--performance-jsonl /path/to/timing.jsonl` (repeatable) to include a
