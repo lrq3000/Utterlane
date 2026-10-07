@@ -43,3 +43,7 @@ qa-artifacts/
 # Python tooling caches
 __pycache__/
 *.pyc
+
+# Local history design-review mockups (kept outside the tracked application)
+/docs/design/history-proposals/
+/tools/generate_history_mockups.py
