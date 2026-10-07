@@ -261,15 +261,16 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         val task = operation
         app.applicationScope.launch {
             try {
-                // Finish an explicitly requested save before removing its source.
-                // This owner survives the activity and does not block the UI thread.
-                saving?.join()
+                // Persist dismissal before waiting on any long-running owner.
+                // Existing export/read leases defer physical deletion, but a
+                // process death must not resurrect explicitly discarded input.
                 withContext(Dispatchers.IO) {
                     if (input.transcriptOrigin) {
                         if (delete) mutable.value.transcriptId?.let(app.transcriptHistory::delete)
                     } else ownedAudioId?.let { if (delete) app.recordingHistory.delete(it) else app.recordingHistory.dismiss(it) }
                 }
                 task?.cancelAndJoin()
+                saving?.join()
                 withContext(Dispatchers.IO) {
                     // Import completion can race dismissal; ownership was published
                     // on IO before returning so this second pass cannot orphan it.

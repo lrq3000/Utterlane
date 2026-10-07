@@ -116,6 +116,9 @@ the initial recovery-lifetime discussion in `recording-first-backpressure.md`.
   **24 distinct targeted Android tests** passed across the focused batches.
 - Import initialization no longer simultaneously reports that audio is unavailable
   or that recognition has already started; its progress label describes preparation.
+- Explicit dismissal writes its disposition before waiting for recognition/export
+  owners. Existing leases protect pending IO without leaving a crash window that
+  would reclassify a deliberate dismissal as unfinished recovery.
 
 ## Final reproduction
 
