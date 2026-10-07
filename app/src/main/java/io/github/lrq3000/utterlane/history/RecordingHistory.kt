@@ -27,6 +27,7 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
     private val active = mutableMapOf<String, Recording>()
     private val leases = mutableMapOf<String, Int>()
     private val deferred = mutableSetOf<String>()
+    private val recoveries = mutableSetOf<String>()
     private val expiry = RetentionIndex()
     private var initialized = false
     private val changes = kotlinx.coroutines.flow.MutableStateFlow(0L)
@@ -107,15 +108,32 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
     @Synchronized fun list(page: Int = 0, pageSize: Int = 30): List<HistoryEntry> =
         ordered.asSequence().filter { it.status != "active" && it.id !in deferred }.drop(page * pageSize).take(pageSize).toList()
 
-    @Synchronized fun recoveryCount(): Int = entries.values.count { it.needsRecovery && it.id !in active && it.id !in deferred }
+    @Synchronized fun recoveryCount(): Int = recoveries.size
 
     @Synchronized fun get(id: String): HistoryEntry = checkNotNull(entries[id]) { "Recording is unavailable" }
 
-    @Synchronized fun acquire(id: String): Closeable {
+    @Synchronized fun acquire(id: String): AudioLease {
         check(id in entries && id !in deferred) { "Recording expired or was deleted" }
+        return retain(id)
+    }
+
+    private fun retain(id: String): AudioLease {
         leases[id] = (leases[id] ?: 0) + 1
-        var closed = false
-        return Closeable { synchronized(this) { if (!closed) { closed = true; release(id) } } }
+        return AudioLease(id)
+    }
+
+    inner class AudioLease internal constructor(private val id: String) : Closeable {
+        private var closed = false
+        /** A reader derived from an existing lease remains valid if pruning became
+         * due during model preparation. New unrelated readers are still rejected. */
+        fun reader(offset: Long = 0): Reader = synchronized(this@RecordingHistory) {
+            check(!closed) { "Audio lease is closed" }
+            require(offset >= 0 && get(id).sourceName == null)
+            Reader(get(id), retain(id), offset)
+        }
+        override fun close() = synchronized(this@RecordingHistory) {
+            if (!closed) { closed = true; release(id) }
+        }
     }
 
     @Synchronized fun prune(retention: HistoryRetention) {
@@ -242,6 +260,7 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
     private fun put(entry: HistoryEntry) {
         entries.put(entry.id, entry)?.let { ordered.remove(it) }
         ordered.add(entry)
+        if (entry.needsRecovery && entry.status !in setOf("active", "importing", "discarded")) recoveries.add(entry.id) else recoveries.remove(entry.id)
         expiry.put(entry.id, entry.retention, eligible = !entry.temporary && entry.status != "active" && entry.status != "discarded")
         changes.value++
     }
@@ -254,6 +273,7 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
         // Keep the index/deferred marker if deletion fails, so the next prune retries.
         if (!entry.directory.deleteRecursively()) return
         entries.remove(id); ordered.remove(entry); deferred.remove(id)
+        recoveries.remove(id)
         expiry.remove(id)
         changes.value++
     }

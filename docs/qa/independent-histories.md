@@ -86,3 +86,27 @@ the initial recovery-lifetime discussion in `recording-first-backpressure.md`.
   is in the QA application's `files/onboarding-qa/` directory.
 - Device fixtures use four seconds of silence: these tests establish player and
   control behavior, not a subjective assessment of acoustic fidelity.
+
+## Integration and ownership review
+
+- A model-preparation owner can derive a sequential reader from its existing lease
+  even if normal retention became due meanwhile. New readers are still rejected.
+- Restored dialogs persist audio ownership independently of whether the latest
+  transcript attempt was saved. A transcript viewer cannot discard linked audio.
+  Working-text loading/publication remains on IO and source-model provenance survives.
+- Recovery notification cleanup uses indexed recovery counts. File export reports
+  failed child creation instead of treating a directory URI as an output file.
+- Full JVM suite: **288 tests passed**, zero failures/skips. App and test APKs built.
+- Final non-native device batch: **21 tests passed** (22.225 seconds), including real
+  AudioRecord capture during model failure, history launch grace, URI export,
+  restored ownership, settings, recording panels and playback including EOF/replay.
+- Two additional real-native tests passed separately. A cold ternary Parakeet model
+  loaded after capture began and processed the complete nine-second public-domain
+  sample while keeping text but deleting temporary audio. Two subsequent dialog
+  attempts created distinct saved transcripts; closing removed only their temporary
+  source audio. Tests took 14.760 and 23.249 seconds respectively, including setup;
+  these are not isolated inference timings or physical-phone benchmarks.
+- The native fixture/setup and recovery-test ideas were adapted from the parallel
+  implementation at `fdee5c6`, with the approved retention and separate-text semantics.
+- Screenshots wait for semantic assertions and a short compositor settling interval;
+  no behavioral assertion relies on that screenshot-only delay.

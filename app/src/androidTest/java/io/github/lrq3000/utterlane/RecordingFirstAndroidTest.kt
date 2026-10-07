@@ -17,6 +17,40 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** Dedicated .recordingfirst QA identity: intentionally needs no model or microphone. */
 @RunWith(AndroidJUnit4::class)
 class RecordingFirstAndroidTest {
+    @Test fun actualAudioRecordContinuesWhileTheModelIsUnavailable() = runBlocking {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val app = instrumentation.targetContext.applicationContext as UtterlaneApp
+        assertFalse(app.modelManager.isModelReady())
+        instrumentation.uiAutomation.grantRuntimePermission(app.packageName, "android.permission.RECORD_AUDIO")
+        val activity = instrumentation.startActivitySync(android.content.Intent(app, io.github.lrq3000.utterlane.settings.SettingsActivity::class.java)
+            .putExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_RECOVERY, true)
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        val previous = app.settingsRepository.audioHistoryEnabled.first()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        val completed = CompletableDeferred<SessionFailure?>()
+        val closed = CompletableDeferred<Unit>()
+        val microphone = MicrophoneSession(app, scope, onText = { _, _ -> },
+            onComplete = { _, failure -> completed.complete(failure) }, onSessionClosed = { closed.complete(Unit) })
+        var id: String? = null
+        try {
+            app.settingsRepository.setAudioHistoryEnabled(false)
+            microphone.start()
+            withTimeout(5000) { microphone.metrics.state.first { it.capturedSamples >= 16000 } }
+            assertFalse(completed.isCompleted)
+            microphone.stop()
+            val failure = withTimeout(5000) { completed.await() }
+            withTimeout(5000) { closed.await() }
+            id = failure?.recoveryId
+            assertEquals(SessionFailure.Kind.MODEL, failure?.kind)
+            assertEquals(microphone.metrics.state.value.capturedSamples, app.recordingHistory.get(checkNotNull(id)).samples)
+        } finally {
+            microphone.cancel(); scope.cancel()
+            id?.let { app.recordingHistory.delete(it); io.github.lrq3000.utterlane.history.RecordingRecovery.dismissNotification(app, it) }
+            instrumentation.runOnMainSync { activity.finish() }
+            app.settingsRepository.setAudioHistoryEnabled(previous)
+        }
+    }
+
     @Test fun explicitCancelDeletesTemporaryAudioRatherThanOfferingRecovery() = runBlocking {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as UtterlaneApp
         val previous = app.settingsRepository.audioHistoryEnabled.first()

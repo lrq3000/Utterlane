@@ -127,6 +127,11 @@ internal class OnboardingTestUi {
     }
 
     fun screenshot(name: String) {
+        // Assertions wait on semantics/state, but the compositor can still be
+        // finishing a dialog transition. This delay is only for stable evidence,
+        // never used to make a behavioral assertion pass.
+        instrumentation.waitForIdleSync()
+        Thread.sleep(250)
         val directory = File(app.getExternalFilesDir(null), "onboarding-qa").apply { mkdirs() }
         val image = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
         try { File(directory, "$name.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) } }

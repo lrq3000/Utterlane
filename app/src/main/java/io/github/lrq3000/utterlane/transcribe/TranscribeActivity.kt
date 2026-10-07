@@ -34,10 +34,12 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
         app.historyCleanup.userEntry(intent, savedInstanceState)
         setFinishOnTouchOutside(false)
         val audio = savedInstanceState?.getString("owned_audio") ?: intent.getStringExtra(EXTRA_AUDIO_ID) ?: intent.getStringExtra(EXTRA_RECOVERY_ID)
-        val textId = savedInstanceState?.getString("saved_text") ?: intent.getStringExtra(EXTRA_TRANSCRIPT_ID)
+        val textId = if (savedInstanceState?.containsKey("saved_text") == true) savedInstanceState.getString("saved_text") else intent.getStringExtra(EXTRA_TRANSCRIPT_ID)
         val request = DialogInput(extractAudioUri(intent), intent.getStringExtra(EXTRA_FILE_PATH), audio, textId,
             savedInstanceState?.getString("working_text") ?: intent.getStringExtra("transcript_path"),
-            automatic = savedInstanceState == null && audio == null && textId == null && !intent.hasExtra("transcript_path"))
+            automatic = savedInstanceState == null && audio == null && textId == null && !intent.hasExtra("transcript_path"),
+            transcriptOrigin = savedInstanceState?.getBoolean("text_origin") ?: intent.hasExtra(EXTRA_TRANSCRIPT_ID),
+            modelName = savedInstanceState?.getString("result_model").orEmpty(), modelId = savedInstanceState?.getString("result_model_id"))
         model = ViewModelProvider(this, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = TranscriptionDialogModel(app, request) as T
         })[TranscriptionDialogModel::class.java]
@@ -54,13 +56,7 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        if (::model.isInitialized) {
-            outState.putString("owned_audio", model.state.value.audio?.id)
-            outState.putString("working_text", model.state.value.store?.file?.absolutePath)
-            // Only a transcript-history viewer restores as that origin. Saving a
-            // transcript must not transfer ownership of the dialog's temporary audio.
-            if (model.input.transcriptId != null) outState.putString("saved_text", model.state.value.transcriptId)
-        }
+        if (::model.isInitialized) model.saveInstanceState(outState)
         super.onSaveInstanceState(outState)
     }
 

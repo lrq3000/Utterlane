@@ -17,6 +17,41 @@ class TranscriptionDialogAndroidTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val app get() = instrumentation.targetContext.applicationContext as UtterlaneApp
 
+    @Test fun restoredTranscriptOriginNeverDiscardsItsLinkedAudio() = runBlocking {
+        val recording = app.recordingHistory.begin(HistoryRetention.NONE)
+        recording.append(ShortArray(1600)); recording.finish(true)
+        val directory = File(app.cacheDir, "transcripts").apply { mkdirs() }
+        val text = File.createTempFile("restored-", ".txt", directory).apply { writeText("A restored result") }
+        val owners = ViewModelStore()
+        lateinit var model: TranscriptionDialogModel
+        instrumentation.runOnMainSync {
+            model = TranscriptionDialogModel(app, DialogInput(audioId = recording.entry.id,
+                transcriptPath = text.absolutePath, transcriptOrigin = true))
+            owners.put("dialog", model)
+        }
+        try {
+            withTimeout(5000) { model.state.first { !it.importing } }
+            val done = CompletableDeferred<Unit>()
+            instrumentation.runOnMainSync { model.dismiss { done.complete(Unit) } }
+            withTimeout(5000) { done.await() }
+            assertTrue(recording.entry.directory.exists())
+            assertFalse(text.exists())
+        } finally { instrumentation.runOnMainSync { owners.clear() }; app.recordingHistory.delete(recording.entry.id) }
+    }
+
+    @Test fun singleFileExportUsesTheDestinationUriAndDoesNotConsumeItsSource() = runBlocking {
+        val recording = app.recordingHistory.begin(HistoryRetention.NONE)
+        recording.append(ShortArray(1600) { 99 }); recording.finish(true)
+        val target = File.createTempFile("audio-export-", ".wav", app.cacheDir)
+        try {
+            val destination = androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", target)
+            DialogAudioActions(app).export(recording.entry.id, destination, directory = false)
+            assertArrayEquals(recording.entry.part(0).readBytes(), target.readBytes())
+            app.recordingHistory.dismiss(recording.entry.id)
+            assertTrue(target.isFile)
+        } finally { app.recordingHistory.delete(recording.entry.id); target.delete() }
+    }
+
     @Test fun manualAudioSavePinsAndDeduplicatesWhileClosingTemporaryAudioDiscards() = runBlocking {
         val recording = app.recordingHistory.begin(HistoryRetention.NONE)
         recording.append(ShortArray(1600) { 1000 }); recording.finish(true)

@@ -163,7 +163,10 @@ fun HistoryDialog(transcripts: Boolean = false, onDismiss: () -> Unit) {
                             TextButton(onClick = {
                                 if (!transcripts) app.audioPlayback.stopAudio(entry.id)
                                 action {
-                                if (transcripts) app.transcriptHistory.delete(entry.id) else app.recordingHistory.delete(entry.id)
+                                if (transcripts) app.transcriptHistory.delete(entry.id) else {
+                                    app.recordingHistory.delete(entry.id)
+                                    RecordingRecovery.dismissNotification(context, entry.id)
+                                }
                             } }) { Text(stringResource(if (transcripts) R.string.dialog_delete_text else if (entry.temporary) R.string.dialog_discard else R.string.history_delete)) }
                         }
                     }

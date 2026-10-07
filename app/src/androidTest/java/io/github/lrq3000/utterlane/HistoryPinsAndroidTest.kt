@@ -18,6 +18,29 @@ class HistoryPinsAndroidTest {
     private val app get() = instrumentation.targetContext.applicationContext as UtterlaneApp
     private val ui = OnboardingTestUi()
 
+    @Test fun onlyANewUserEntryReleasesImmediateUnpinGrace() = runBlocking {
+        val old = app.settingsRepository.audioHistoryRetention.first()
+        instrumentation.runOnMainSync { app.historyCleanup.userEntry(Intent(Intent.ACTION_MAIN), null) }
+        val audio = app.recordingHistory.begin(HistoryRetention.NONE)
+        audio.append(ShortArray(1600)); audio.finish(true)
+        try {
+            app.settingsRepository.setAudioHistoryRetention(HistoryRetention.NONE)
+            val launch = app.historyCleanup.launchToken
+            app.recordingHistory.setPinned(audio.entry.id, true, HistoryRetention.NONE, launch)
+            app.recordingHistory.setPinned(audio.entry.id, false, HistoryRetention.NONE, launch)
+            instrumentation.runOnMainSync {
+                app.historyCleanup.userEntry(Intent().putExtra(HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true), null)
+                app.historyCleanup.userEntry(Intent(Intent.ACTION_MAIN), android.os.Bundle())
+            }
+            app.historyCleanup.request(HistoryCleanupCoordinator.AUDIO)
+            assertEquals(launch, app.historyCleanup.launchToken)
+            assertTrue(audio.entry.directory.exists())
+            instrumentation.runOnMainSync { app.historyCleanup.userEntry(Intent(Intent.ACTION_MAIN), null) }
+            withTimeout(5000) { while (audio.entry.directory.exists()) delay(10) }
+            assertNotEquals(launch, app.historyCleanup.launchToken)
+        } finally { app.recordingHistory.delete(audio.entry.id); app.settingsRepository.setAudioHistoryRetention(old) }
+    }
+
     @Test fun audioPinChangesRetentionAndImmediateUnpinSurvivesBackgroundCleanup() = runBlocking {
         ui.prepare()
         val old = app.settingsRepository.audioHistoryRetention.first()
@@ -35,6 +58,7 @@ class HistoryPinsAndroidTest {
             app.historyCleanup.request(HistoryCleanupCoordinator.AUDIO)
             assertTrue(audio.entry.directory.exists())
             assertEquals(app.historyCleanup.launchToken, app.recordingHistory.get(audio.entry.id).holdForLaunch)
+            ui.textNode(app.getString(R.string.history_unpin_immediate)).recycle()
             ui.screenshot("history-audio-unpin-grace")
         } finally {
             instrumentation.runOnMainSync { activity.finish() }
@@ -57,6 +81,7 @@ class HistoryPinsAndroidTest {
             withTimeout(5000) { while (!app.transcriptHistory.get(text.id).retention.pinned) delay(10) }
             app.transcriptHistory.prune(HistoryRetention.NONE)
             assertTrue(text.file.exists())
+            ui.textNode(app.getString(R.string.history_pinned)).recycle()
             ui.screenshot("history-transcript-pinned")
         } finally {
             instrumentation.runOnMainSync { activity.finish() }

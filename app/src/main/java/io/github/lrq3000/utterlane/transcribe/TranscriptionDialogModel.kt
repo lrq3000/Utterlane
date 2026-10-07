@@ -13,7 +13,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
 data class DialogInput(val uri: Uri? = null, val path: String? = null, val audioId: String? = null,
-    val transcriptId: String? = null, val transcriptPath: String? = null, val automatic: Boolean = false)
+    val transcriptId: String? = null, val transcriptPath: String? = null, val automatic: Boolean = false,
+    val transcriptOrigin: Boolean = transcriptId != null, val modelName: String = "", val modelId: String? = null)
 
 data class TranscriptionDialogState(
     val audio: HistoryEntry? = null, val store: TranscriptStore? = null, val transcriptId: String? = null,
@@ -36,12 +37,12 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     private var saving: Job? = null
     @Volatile private var ownedAudioId = input.audioId
     private val temporaryResults = linkedSetOf<File>()
-    private var currentStore: TranscriptStore? = null
+    @Volatile private var currentStore: TranscriptStore? = null
     private var latestPreview = ""
     private var latestProgress: Int? = null
-    private var chosenModel = ""
-    private var resultModelId: String? = null
-    private var lastRequestedModelId: String? = null
+    private var chosenModel = input.modelName
+    private var resultModelId: String? = input.modelId
+    private var lastRequestedModelId: String? = input.modelId
     var metrics = CaptureMetrics()
         private set
 
@@ -52,27 +53,31 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         viewModelScope.launch(Dispatchers.IO) { app.recordingHistory.revision.collect { refreshAudio() } }
         operation = viewModelScope.launch {
             try {
-                if (input.transcriptId != null) {
-                    val entry = withContext(Dispatchers.IO) {
+                withContext(Dispatchers.IO) {
+                    val entry = input.transcriptId?.let { id ->
                         app.transcriptHistory.initialize()
-                        app.transcriptHistory.get(input.transcriptId)
+                        runCatching { app.transcriptHistory.get(id) }.getOrNull()
                     }
-                    ownedAudioId = entry.audioId
-                    val copy = withContext(Dispatchers.IO) {
+                    if (entry != null) {
+                        ownedAudioId = ownedAudioId ?: entry.audioId
+                        chosenModel = entry.model; resultModelId = entry.modelId; lastRequestedModelId = entry.modelId
+                        mutable.update { it.copy(transcriptId = entry.id, model = entry.model) }
+                    }
+                    val restored = input.transcriptPath?.let { File(it).canonicalFile }?.takeIf { file ->
+                        require(file.parentFile == File(app.cacheDir, "transcripts").canonicalFile) { "Transcript is unavailable" }
+                        file.isFile
+                    }
+                    if (restored != null) exposeStore(TranscriptStore(restored))
+                    else if (entry != null) {
                         app.transcriptHistory.acquire(entry.id).use {
                             val directory = File(app.cacheDir, "transcripts").apply { mkdirs() }
-                            File.createTempFile("view-", ".txt", directory).also { entry.file.copyTo(it, overwrite = true) }
+                            val copy = File.createTempFile("view-", ".txt", directory)
+                            entry.file.copyTo(copy, overwrite = true)
+                            // Publish the owner on IO before returning across the
+                            // cancellable Main-dispatch boundary; dismissal joins it.
+                            exposeStore(TranscriptStore(copy))
                         }
-                    }
-                    exposeStore(TranscriptStore(copy))
-                    chosenModel = entry.model
-                    resultModelId = entry.modelId
-                    lastRequestedModelId = entry.modelId
-                    mutable.update { it.copy(transcriptId = entry.id, model = entry.model) }
-                } else if (input.transcriptPath != null) {
-                    val file = File(input.transcriptPath).canonicalFile
-                    require(file.parentFile == File(app.cacheDir, "transcripts").canonicalFile && file.isFile) { "Transcript is unavailable" }
-                    exposeStore(withContext(Dispatchers.IO) { TranscriptStore(file) })
+                    } else if (input.transcriptId != null || input.transcriptPath != null) error("Transcript is unavailable")
                 }
                 if (ownedAudioId == null && (input.uri != null || input.path != null)) {
                     mutable.update { it.copy(importing = true) }
@@ -126,7 +131,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         try {
             TranscriptionPower(app).use {
                 withContext(Dispatchers.IO) {
-                    app.recordingHistory.acquire(audioId).use {
+                    app.recordingHistory.acquire(audioId).use { audioLease ->
+                        app.modelManager.initializeSelection()
                         val selected = lastRequestedModelId
                         if (!useCurrentModel && selected != null && app.modelManager.selected.value.id != selected) {
                             val definition = CustomModelManifest.load(app.filesDir, selected) ?: ModelCatalog.find(selected)
@@ -155,13 +161,14 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         val created = checkNotNull(session)
                         chosenModel = app.modelManager.selected.value.name
                         resultModelId = app.modelManager.selected.value.id
+                        lastRequestedModelId = resultModelId
                         withContext(Dispatchers.Main) {
                             exposeStore(created.store)
                             mutable.update { it.copy(transcriptId = null, model = chosenModel) }
                         }
                         val accept: suspend (ShortArray) -> Unit = { pcm -> metrics.captured(pcm.size); created.accept(pcm) }
                         if (source.sourceName != null) AudioDecoder(app).decode(source.part(0).absolutePath, accept) { latestProgress = it?.coerceIn(0, 99) }
-                        else app.recordingHistory.openReader(audioId).use { reader ->
+                        else audioLease.reader().use { reader ->
                             while (reader.offset < source.samples) {
                                 currentCoroutineContext().ensureActive()
                                 val pcm = reader.read()
@@ -258,7 +265,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                 // This owner survives the activity and does not block the UI thread.
                 saving?.join()
                 withContext(Dispatchers.IO) {
-                    if (input.transcriptId != null) {
+                    if (input.transcriptOrigin) {
                         if (delete) mutable.value.transcriptId?.let(app.transcriptHistory::delete)
                     } else ownedAudioId?.let { if (delete) app.recordingHistory.delete(it) else app.recordingHistory.dismiss(it) }
                 }
@@ -266,7 +273,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                 withContext(Dispatchers.IO) {
                     // Import completion can race dismissal; ownership was published
                     // on IO before returning so this second pass cannot orphan it.
-                    if (input.transcriptId == null) ownedAudioId?.let { if (delete) app.recordingHistory.delete(it) else app.recordingHistory.dismiss(it) }
+                    if (!input.transcriptOrigin) ownedAudioId?.let { if (delete) app.recordingHistory.delete(it) else app.recordingHistory.dismiss(it) }
+                    if (!input.transcriptOrigin) ownedAudioId?.let { RecordingRecovery.dismissNotification(app, it) }
                     currentStore?.dispose(); currentStore = null
                     synchronized(temporaryResults) { temporaryResults.toList() }.forEach(CacheArtifacts::deleteWhenReleased)
                 }
@@ -280,6 +288,14 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     private fun showError(error: Exception) {
         Log.e("TranscribeDialog", "Local transcription operation failed", error)
         mutable.update { it.copy(message = error.message ?: app.getString(R.string.transcribe_error_failed)) }
+    }
+    fun saveInstanceState(out: android.os.Bundle) {
+        out.putString("owned_audio", ownedAudioId)
+        out.putString("working_text", currentStore?.file?.absolutePath)
+        out.putString("saved_text", state.value.transcriptId)
+        out.putBoolean("text_origin", input.transcriptOrigin)
+        out.putString("result_model", chosenModel)
+        out.putString("result_model_id", resultModelId)
     }
     override fun onCleared() {
         // Unexpected owner destruction preserves disk-backed input and useful

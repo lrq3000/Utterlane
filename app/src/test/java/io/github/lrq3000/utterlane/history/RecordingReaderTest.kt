@@ -8,6 +8,19 @@ import org.junit.rules.TemporaryFolder
 class RecordingReaderTest {
     @get:Rule val temporary = TemporaryFolder()
 
+    @Test fun preparedOperationCanCreateItsReaderAfterRetentionBecomesDue() {
+        val history = RecordingHistory(temporary.root)
+        val recording = history.begin(HistoryRetention.HOUR)
+        recording.append(shortArrayOf(4, 5, 6)); recording.finish(false)
+        history.acquire(recording.entry.id).use { owner ->
+            history.prune(HistoryRetention.NONE)
+            assertThrows(IllegalStateException::class.java) { history.openReader(recording.entry.id) }
+            owner.reader().use { assertArrayEquals(shortArrayOf(4, 5, 6), it.read()) }
+            assertTrue(recording.entry.directory.exists())
+        }
+        assertFalse(recording.entry.directory.exists())
+    }
+
     @Test fun readerFollowsPublicationAndHoldsDeletionLease() {
         val history = RecordingHistory(temporary.root)
         val recording = history.begin(HistoryRetention.NONE)

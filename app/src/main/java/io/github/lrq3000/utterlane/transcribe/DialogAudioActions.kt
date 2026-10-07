@@ -62,7 +62,7 @@ class DialogAudioActions(private val app: UtterlaneApp) {
             val parent = if (directory) checkNotNull(DocumentFile.fromTreeUri(app, destination)) else null
             for (part in 0 until entry.parts) {
                 val source = entry.part(part)
-                val target = parent?.createFile(entry.mimeType, source.name)?.uri ?: destination
+                val target = if (parent != null) checkNotNull(parent.createFile(entry.mimeType, source.name)) { "Cannot create output file" }.uri else destination
                 check(directory || entry.parts == 1) { "Choose a folder for multipart recordings" }
                 try {
                     source.inputStream().use { input ->

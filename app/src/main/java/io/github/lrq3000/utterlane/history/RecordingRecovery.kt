@@ -43,4 +43,9 @@ object RecordingRecovery {
         try { context.startActivity(intent(context, id).putExtra(HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true)) }
         catch (e: Exception) { Log.w("RecordingRecovery", "Use the recording notification or Settings", e) }
     }
+    fun dismissNotification(context: Context, id: String) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.cancel(id, NOTIFICATION_ID)
+        if (UtterlaneApp.instance.recordingHistory.recoveryCount() == 0) manager.cancel(NOTIFICATION_ID)
+    }
 }

@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -34,6 +35,13 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
     val app = UtterlaneApp.instance
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val view = LocalView.current
+    val working = state.running || state.importing || state.saving
+    DisposableEffect(view, working) {
+        val previous = view.keepScreenOn
+        view.keepScreenOn = working
+        onDispose { view.keepScreenOn = previous }
+    }
     val stats by app.settingsRepository.showTranscriptionStreamStatistics.collectAsStateWithLifecycle(initialValue = false)
     var audioMenu by remember { mutableStateOf(false) }
     var modelMenu by remember { mutableStateOf(false) }
@@ -133,8 +141,8 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                     }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = onDelete, enabled = !state.closing) {
-                            Text(stringResource(if (model.input.transcriptId != null && state.transcriptId != null) R.string.dialog_delete_text
-                                else if (model.input.transcriptId == null && state.audio?.temporary == false) R.string.history_delete else R.string.dialog_discard))
+                            Text(stringResource(if (model.input.transcriptOrigin && state.transcriptId != null) R.string.dialog_delete_text
+                                else if (!model.input.transcriptOrigin && state.audio?.temporary == false) R.string.history_delete else R.string.dialog_discard))
                         }
                         TextButton(onClick = onClose, enabled = !state.closing) { Text(stringResource(R.string.transcribe_close)) }
                     }
