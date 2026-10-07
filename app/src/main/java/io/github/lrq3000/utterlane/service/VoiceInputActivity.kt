@@ -70,6 +70,6 @@ class VoiceInputActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
     }
     private fun stopRecording() { Log.i(TAG, "Stopping recording"); isRecording = false; microphoneSession?.stop(); recordingOverlay?.setStatus(getString(R.string.state_processing)) }
     private fun fail(message: String) { Toast.makeText(this, message, Toast.LENGTH_LONG).show(); setResult(RESULT_CANCELED); finish() }
-    private fun cleanup() { recordingOverlay?.hide(); recordingOverlay = null; microphoneSession?.cancel(); microphoneSession = null }
-    override fun onDestroy() { super.onDestroy(); cleanup(); activityScope.cancel() }
+    private fun cleanup(discard: Boolean = true) { recordingOverlay?.hide(); recordingOverlay = null; microphoneSession?.cancel(discard); microphoneSession = null }
+    override fun onDestroy() { super.onDestroy(); cleanup(discard = isFinishing); activityScope.cancel() }
 }

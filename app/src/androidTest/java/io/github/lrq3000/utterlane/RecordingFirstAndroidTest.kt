@@ -17,6 +17,27 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** Dedicated .recordingfirst QA identity: intentionally needs no model or microphone. */
 @RunWith(AndroidJUnit4::class)
 class RecordingFirstAndroidTest {
+    @Test fun explicitCancelDeletesTemporaryAudioRatherThanOfferingRecovery() = runBlocking {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as UtterlaneApp
+        val previous = app.settingsRepository.audioHistoryEnabled.first()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        val source = CountingCapture()
+        val closed = CompletableDeferred<Unit>()
+        val before = app.recordingHistory.list().map { it.id }.toSet()
+        val session = MicrophoneSession(app, scope, onText = { _, _ -> }, onComplete = { _, _ -> },
+            recorder = source, onSessionClosed = { closed.complete(Unit) })
+        try {
+            app.settingsRepository.setAudioHistoryEnabled(false)
+            session.start()
+            assertTrue(source.sent.await(5, TimeUnit.SECONDS))
+            session.cancel()
+            withTimeout(10000) { closed.await() }
+            assertEquals(before, app.recordingHistory.list().map { it.id }.toSet())
+        } finally {
+            session.cancel(); scope.cancel(); app.settingsRepository.setAudioHistoryEnabled(previous)
+        }
+    }
+
     @Test fun preparationAndFailureRemainVisibleWhileRecordingWithStatisticsOff() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp

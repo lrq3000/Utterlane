@@ -30,8 +30,10 @@ class RecordingPipeline(
         finish: suspend () -> Unit,
         onSamples: (ShortArray) -> Unit = {},
         onCaptureEnded: suspend () -> Unit = {},
-        onProcessingFailed: suspend (Exception) -> Unit = {}
+        onProcessingFailed: suspend (Exception) -> Unit = {},
+        closeConsumer: () -> Unit = {}
     ): Outcome = coroutineScope {
+        val owner = currentCoroutineContext()
         val queue = BoundedAudioQueue(options)
         val published = MutableStateFlow(Publication())
         val dispatched = CompletableDeferred<Unit>()
@@ -81,11 +83,18 @@ class RecordingPipeline(
                 source.stop()
             } finally { published.value = Publication(recording.writtenSamples, done = true) }
         }
-        try {
+        suspend fun processingFailed(error: Exception) {
+            if (processingError == null) {
+                processingError = error
+                try { onProcessingFailed(error) }
+                catch (callbackFailure: Exception) { error.addSuppressed(callbackFailure) }
+            }
+        }
+        val recognition = launch(Dispatchers.IO) {
+            try {
             // This runs concurrently with capture/writing, including native load
             // and warm-up. Failure deliberately does not cancel those children.
             dispatched.await()
-            try {
                 prepare()
                 history.openReader(recording.entry.id).use { reader ->
                     while (true) {
@@ -100,19 +109,28 @@ class RecordingPipeline(
                     }
                 }
                 finish()
-            } catch (e: CancellationException) { throw e
+            } catch (e: CancellationException) {
+                // A consumer may cancel its own work while the recording owner
+                // remains healthy. Only whole-operation cancellation stops capture.
+                if (!owner.isActive) throw e
+                withContext(NonCancellable) { processingFailed(e) }
             } catch (e: Exception) {
-                processingError = e
-                onProcessingFailed(e)
+                processingFailed(e)
+            } finally {
+                try { closeConsumer() }
+                catch (e: Exception) { withContext(NonCancellable) { processingFailed(e) } }
             }
+        }
+        try {
             capture.join()
             writer.join()
+            recognition.join()
             Outcome(captureError, storageError, processingError)
         } finally {
             // Cancelling inference must stop its producer before a noncancellable
             // writer drain waits for EOF; otherwise cancellation can deadlock.
             if (!currentCoroutineContext().isActive) source.stop()
-            withContext(NonCancellable) { capture.join(); writer.join() }
+            withContext(NonCancellable) { capture.join(); writer.join(); recognition.join() }
         }
     }
 }

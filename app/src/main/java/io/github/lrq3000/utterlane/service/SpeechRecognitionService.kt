@@ -19,7 +19,7 @@ class SpeechRecognitionService : RecognitionService() {
     private var microphoneSession: MicrophoneSession? = null
 
     override fun onCreate() { super.onCreate(); Log.i(TAG, "SpeechRecognitionService created") }
-    override fun onDestroy() { super.onDestroy(); Log.i(TAG, "SpeechRecognitionService destroyed"); cleanup(); serviceScope.cancel() }
+    override fun onDestroy() { super.onDestroy(); Log.i(TAG, "SpeechRecognitionService destroyed"); cleanup(discard = false); serviceScope.cancel() }
     override fun onStartListening(recognizerIntent: Intent?, listener: Callback?) {
         Log.i(TAG, "onStartListening called; language hint=${recognizerIntent?.getStringExtra(RecognizerIntent.EXTRA_LANGUAGE)}")
         if (listener == null) return
@@ -52,7 +52,7 @@ class SpeechRecognitionService : RecognitionService() {
     override fun onStopListening(listener: Callback?) { Log.i(TAG, "onStopListening called"); microphoneSession?.stop() }
     override fun onCancel(listener: Callback?) { Log.i(TAG, "onCancel called"); cleanup() }
     private fun results(text: String) = Bundle().apply { putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf(text)) }
-    private fun cleanup() { microphoneSession?.cancel(); microphoneSession = null }
+    private fun cleanup(discard: Boolean = true) { microphoneSession?.cancel(discard); microphoneSession = null }
     private fun deliver(action: () -> Unit): Boolean = try { action(); true }
         catch (e: android.os.RemoteException) { Log.w(TAG, "Voice-input client disconnected", e); false }
 }

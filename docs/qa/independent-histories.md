@@ -32,3 +32,15 @@ the initial recovery-lifetime discussion in `recording-first-backpressure.md`.
 - Removed bulk pruning from history rendering and microphone completion. Startup
   and background requests share serialized, coalesced metadata-based cleanup.
 - Focused scheduling, settings-transaction and recording-pipeline tests passed.
+
+## Capture ownership milestone
+
+- Reproduced recognition-only cancellation escaping the capture pipeline. It now
+  becomes a recognition failure while capture/writing continue; whole-operation
+  cancellation still stops capture and drains accepted writer blocks.
+- Consumer-close failures cannot bypass audio finalization. Explicit Cancel records
+  discard intent, while service destruction and model reset preserve recovery.
+- Successful live transcription saves an independent text entry when enabled;
+  Immediate text retention avoids creating a retained result.
+- Focused pipeline, history-lifetime and transcript-finalization tests passed.
+  An Android Cancel/discard regression is included for the integrated device run.

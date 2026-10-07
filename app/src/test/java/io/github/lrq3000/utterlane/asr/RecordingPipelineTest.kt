@@ -16,6 +16,33 @@ class RecordingPipelineTest {
     @get:Rule val temporary = TemporaryFolder()
     private val options = RuntimeOptions(queueSeconds = 1)
 
+    @Test fun consumerCleanupFailureDoesNotPreventAudioFinalization() = runBlocking {
+        val history = RecordingHistory(temporary.root)
+        val recording = history.begin(HistoryRetention.NONE)
+        val result = RecordingPipeline(FiniteCapture(5), history, recording, options).run(
+            prepare = {}, accept = {}, finish = {}, closeConsumer = { error("close failed") })
+        assertEquals("close failed", result.processingError?.message)
+        assertEquals(4000L, recording.writtenSamples)
+        recording.finish(true)
+        assertEquals(1, history.recoveryCount())
+    }
+
+    @Test fun recognitionOnlyCancellationIsAnOutcomeAndCaptureStillFinishes() = runBlocking {
+        val history = RecordingHistory(temporary.root)
+        val recording = history.begin(HistoryRetention.NONE)
+        val source = FiniteCapture(5)
+        try {
+            val result = runCatching {
+                RecordingPipeline(source, history, recording, options).run(
+                    prepare = { throw CancellationException("recognition owner cancelled") }, accept = {}, finish = {})
+            }
+            assertTrue("Recognition-only cancellation escaped the pipeline", result.isSuccess)
+            assertEquals("recognition owner cancelled", result.getOrThrow().processingError?.message)
+            assertFalse(source.stopped.get())
+            assertEquals(4000L, recording.writtenSamples)
+        } finally { recording.finish(true) }
+    }
+
     @Test fun fullWriterQueuePreservesTheOverflowTriggerInOrder() = runBlocking {
         val history = RecordingHistory(temporary.root)
         val recording = history.begin(HistoryRetention.NONE)

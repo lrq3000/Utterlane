@@ -26,12 +26,14 @@ class MicrophoneSession(
     companion object {
         private val active = AtomicReference<MicrophoneSession?>(null)
         fun isBusy(): Boolean = active.get() != null
-        fun resetActive() { active.get()?.let { it.resetRequested = true; it.cancel() } }
+        fun resetActive() { active.get()?.let { it.resetRequested = true; it.cancel(discard = false) } }
     }
     private var job: Job? = null
     val metrics = CaptureMetrics()
     @Volatile private var cancelled = false
     @Volatile private var resetRequested = false
+    @Volatile private var discardRequested = false
+    @Volatile private var recordingId: String? = null
 
     @OptIn(ExperimentalCoroutinesApi::class)
     fun start() {
@@ -72,12 +74,15 @@ class MicrophoneSession(
                 metrics.preparing(true)
                 val retention = app.settingsRepository.audioHistoryRetention.first()
                 val automaticHistory = app.settingsRepository.audioHistoryEnabled.first()
+                val saveTranscripts = app.settingsRepository.transcriptHistoryEnabled.first()
+                val textRetention = app.settingsRepository.transcriptHistoryRetention.first()
                 phase = SessionFailure.Kind.AUDIO
                 // This minimal private-storage setup precedes capture; model
                 // verification/loading/warm-up do not. The file is also the
                 // processing backlog when completed-recording history is off.
                 val saved = app.recordingHistory.begin(retention, automaticHistory)
                 recording = saved
+                recordingId = saved.entry.id
                 lease = app.recordingHistory.acquire(saved.entry.id)
                 recorder.setObserver(object : CaptureObserver {
                     override fun onStarted() {
@@ -98,7 +103,13 @@ class MicrophoneSession(
                         metrics.model(app.modelManager.selected.value.name)
                     },
                     accept = { checkNotNull(session).accept(it) },
-                    finish = { checkNotNull(session).finish() },
+                    finish = {
+                        val complete = checkNotNull(session)
+                        complete.finish()
+                        if (saveTranscripts && textRetention != io.github.lrq3000.utterlane.history.HistoryRetention.NONE && complete.store.segments > 0) {
+                            app.transcriptHistory.save(complete.store.file, metrics.state.value.modelName, saved.entry.id)
+                        }
+                    },
                     onSamples = { metrics.samples(it, true) },
                     onCaptureEnded = {
                         metrics.captureEnded()
@@ -107,8 +118,7 @@ class MicrophoneSession(
                     onProcessingFailed = { error ->
                         Log.e("MicrophoneSession", "Recognition failed; continuing audio capture", error)
                         metrics.recognitionFailed(error.message ?: context.getString(R.string.transcribe_error_failed))
-                        session?.close()
-                    })
+                    }, closeConsumer = { session?.close() })
                 failure = when {
                     result.storageError != null -> SessionFailure(SessionFailure.Kind.AUDIO,
                         context.getString(R.string.history_save_failed, result.storageError.message ?: "Storage error"))
@@ -133,7 +143,9 @@ class MicrophoneSession(
                 try {
                     recorder.stop()
                     withContext(NonCancellable + Dispatchers.IO) {
-                        session?.close()
+                        try { session?.close() } catch (e: Exception) { Log.e("MicrophoneSession", "Recognition cleanup failed", e) }
+                        try { if (discardRequested) recording?.let { UtterlaneApp.instance.recordingHistory.dismiss(it.entry.id) } }
+                        catch (e: Exception) { Log.e("MicrophoneSession", "Discard persistence failed; still finalizing audio", e) }
                         try { recording?.finish((failure != null && failure.kind != SessionFailure.Kind.NO_SPEECH) || cancelled) }
                         catch (e: Exception) { Log.e("MicrophoneSession", "History finalization failed", e); finalizationWarning = context.getString(R.string.history_save_failed, e.message ?: "Storage error") }
                         finally {
@@ -143,7 +155,7 @@ class MicrophoneSession(
                     }
                     withContext(NonCancellable + Dispatchers.Main) {
                         val originalFailure = failure
-                        recording?.takeIf { it.writtenSamples > 0 && (cancelled || (originalFailure != null && originalFailure.kind != SessionFailure.Kind.NO_SPEECH)) }?.let {
+                        recording?.takeIf { !discardRequested && it.writtenSamples > 0 && (cancelled || (originalFailure != null && originalFailure.kind != SessionFailure.Kind.NO_SPEECH)) }?.let {
                             io.github.lrq3000.utterlane.history.RecordingRecovery.show(context)
                             failure = originalFailure?.copy(message = originalFailure.message + "\n" + context.getString(R.string.recording_recovery_saved))
                         }
@@ -152,7 +164,10 @@ class MicrophoneSession(
                         if (!cancelled) finalizationWarning?.let { onWarning(it) }
                         if (resetRequested) onComplete(session?.store, SessionFailure(SessionFailure.Kind.MODEL, context.getString(R.string.model_reset_done)))
                         else if (!cancelled) onComplete(session?.store, failure)
-                        else session?.store?.let { io.github.lrq3000.utterlane.service.TranscriptRecovery.show(context, it) }
+                        else session?.store?.let {
+                            if (discardRequested) withContext(Dispatchers.IO) { it.dispose() }
+                            else io.github.lrq3000.utterlane.service.TranscriptRecovery.show(context, it)
+                        }
                     }
                 } finally {
                     try { withContext(NonCancellable + Dispatchers.Main) { onSessionClosed() } }
@@ -165,5 +180,17 @@ class MicrophoneSession(
     }
 
     fun stop() { metrics.stopping(); recorder.stop() }
-    fun cancel() { cancelled = true; metrics.cancelled(); recorder.stop(); job?.cancel() }
+    fun cancel(discard: Boolean = true) {
+        discardRequested = discardRequested || discard
+        cancelled = true; metrics.cancelled(); recorder.stop()
+        // Persist explicit intent before cancelling processing. The finalizer
+        // also checks this flag if its owner disappears during this handoff.
+        if (discard && recordingId != null && job?.isActive == true) {
+            UtterlaneApp.instance.applicationScope.launch(Dispatchers.IO) {
+                try { recordingId?.let { UtterlaneApp.instance.recordingHistory.dismiss(it) } }
+                catch (e: Exception) { Log.e("MicrophoneSession", "Could not persist discard intent", e) }
+                finally { job?.cancel() }
+            }
+        } else job?.cancel()
+    }
 }
