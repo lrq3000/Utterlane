@@ -59,3 +59,14 @@ the initial recovery-lifetime discussion in `recording-first-backpressure.md`.
   discard, imported-source ownership and idempotent pinned manual saving.
 - The capture-panel test now waits for its requested state before asserting button
   visibility; asserting against the legitimate initial loading frame was a race.
+
+## History UI milestone
+
+- Audio and transcript auto-save/duration controls have their own Settings section.
+  Both browsers share accessible outline/filled pin controls and bounded pagination.
+- Opening an entry uses the shared dialog; metadata and pin state are displayed
+  without reading whole transcripts. Duration decisions read persisted preferences.
+- Two real-window Android tests passed: audio pin/unpin with an Immediate background
+  cleanup check, and independent transcript pinning. Screenshots are recorded in
+  the QA application's `files/onboarding-qa/` directory.
+- Focused pin/settings JVM tests and debug app/test APK builds passed.

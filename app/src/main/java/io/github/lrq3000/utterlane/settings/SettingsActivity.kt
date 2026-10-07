@@ -581,6 +581,9 @@ fun SettingsScreen(
                     onClick = { if (hasMicPermission.value) onOpenAppSettings() else onRequestMicPermission() },
                     onRevokeClick = { onOpenAppSettings() }
                 )
+            }
+
+            SettingsSection(title = stringResource(R.string.histories_section)) {
                 io.github.lrq3000.utterlane.history.HistorySettings()
             }
 

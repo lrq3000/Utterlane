@@ -57,10 +57,10 @@ class RecordingSettingsAndroidTest {
             app.settingsRepository.setHistoryRetention(HistoryRetention.NONE)
             app.recordingHistory.prune(HistoryRetention.NONE)
             activity = open(RecordingRecovery.EXTRA_RECOVERY)
-            val pending = ui.textNode(app.getString(R.string.recording_recovery_pending))
+            val pending = ui.textNode(app.getString(R.string.history_temporary_recovery))
             @Suppress("DEPRECATION") pending.recycle()
-            val choose = ui.textNode(app.getString(R.string.recording_choose_model))
-            @Suppress("DEPRECATION") choose.recycle()
+            val open = ui.textNode(app.getString(R.string.history_open))
+            @Suppress("DEPRECATION") open.recycle()
             ui.screenshot("recording-unfinished-recovery")
             assertTrue(recording.entry.directory.exists())
         } finally {
@@ -74,6 +74,12 @@ class RecordingSettingsAndroidTest {
         val activity = instrumentation.startActivitySync(Intent(app, SettingsActivity::class.java)
             .putExtra(extra, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as SettingsActivity
         instrumentation.waitForIdleSync()
+        if (extra == RecordingRecovery.EXTRA_MODELS) {
+            val title = ui.textNode(app.getString(R.string.model_choose))
+            @Suppress("DEPRECATION") title.recycle()
+            instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+            instrumentation.waitForIdleSync()
+        }
         return activity
     }
 }

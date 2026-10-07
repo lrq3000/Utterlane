@@ -323,8 +323,8 @@
     <string name="recording_recovery_title">Unfinished recordings</string>
     <string name="recording_recovery_saved">Audio saved privately. Open Recordings to retry, export, or delete it.</string>
     <string name="recording_recovery_count">Recover unfinished recordings (%1$d)</string>
-    <string name="recording_recovery_explanation">Unfinished audio stays available until a successful retry or explicit deletion, even with history off.</string>
-    <string name="recording_recovery_pending">Awaiting recovery — excluded from automatic deletion</string>
+    <string name="recording_recovery_explanation">Crash leftovers can be recovered. Closing or discarding a temporary dialog deletes its working audio; use Save to keep it.</string>
+    <string name="recording_recovery_pending">Awaiting recovery</string>
     <string name="recording_choose_model">Choose transcription model</string>
     <string name="recording_model_loading">Model loading — audio is being saved</string>
     <string name="recording_recognition_unavailable">Recognition unavailable — recording continues; retry after stopping</string>
@@ -353,4 +353,19 @@
     <string name="dialog_discard">Discard</string>
     <string name="history_pinned">Pinned — kept until unpinned or deleted</string>
     <string name="dialog_model_failed">The transcription model failed to load. Your audio is saved; choose another model or retry.</string>
+    <string name="histories_section">Audio and transcript histories</string>
+    <string name="history_auto_audio">Automatically save microphone audio</string>
+    <string name="history_auto_text">Automatically save completed transcripts</string>
+    <string name="history_prune_after">Delete unpinned entries after</string>
+    <string name="history_immediate">Immediate</string>
+    <string name="history_policy_description">Audio and text have independent histories. Manual saves are pinned forever. Unpinning starts a new retention countdown. Background cleanup and startup checks remove expired unpinned entries.</string>
+    <string name="transcript_history_title">Transcript history</string>
+    <string name="transcript_history_empty">No saved transcripts.</string>
+    <string name="history_pin">Pin — keep forever</string>
+    <string name="history_unpin">Unpin — start retention countdown</string>
+    <string name="history_not_pinned">Unpinned — automatic retention</string>
+    <string name="history_unpinned_now">Unpinned. The retention countdown starts now.</string>
+    <string name="history_unpin_immediate">Unpinned. Kept until the next genuine app launch.</string>
+    <string name="history_temporary_recovery">Temporary recovery audio — open to retry, save or discard</string>
+    <string name="history_open">Open</string>
 </resources>
