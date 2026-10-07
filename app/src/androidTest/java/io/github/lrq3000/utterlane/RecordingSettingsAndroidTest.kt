@@ -18,6 +18,31 @@ class RecordingSettingsAndroidTest {
     private val app get() = instrumentation.targetContext.applicationContext as UtterlaneApp
     private val ui = OnboardingTestUi()
 
+    @Test fun highRefreshOptionsAreScrollableSelectableAndPersistent() = runBlocking {
+        ui.prepare()
+        val previous = app.settingsRepository.visualRefreshRate.first()
+        var activity: SettingsActivity? = null
+        try {
+            app.settingsRepository.setVisualRefreshRate(60)
+            activity = open(RecordingRecovery.EXTRA_MODELS)
+            for (rate in listOf(30, 60, 90, 200)) {
+                ui.clickText(app.getString(R.string.visual_refresh_title))
+                val cancel = ui.textNode(app.getString(R.string.overlay_cancel))
+                val popupWindow = cancel.windowId
+                @Suppress("DEPRECATION") cancel.recycle()
+                ui.clickText(app.getString(R.string.visual_refresh_rate, rate))
+                withTimeout(5000) { while (app.settingsRepository.visualRefreshRate.first() != rate) delay(20) }
+                // Do not target the title of a closing popup on the next loop.
+                withTimeout(5000) { while (instrumentation.uiAutomation.windows.any { it.id == popupWindow }) delay(20) }
+            }
+            assertEquals(200, app.settingsRepository.visualRefreshRate.first())
+            ui.screenshot("recording-visual-refresh-200hz")
+        } finally {
+            activity?.let { screen -> instrumentation.runOnMainSync { screen.finish() } }
+            app.settingsRepository.setVisualRefreshRate(previous)
+        }
+    }
+
     @Test fun visualFrequencyCanBeChangedInAppearanceAndSurvivesReopening() = runBlocking {
         ui.prepare()
         val previous = app.settingsRepository.visualRefreshRate.first()

@@ -91,7 +91,7 @@ class MicrophoneSession(
                     }
                     override fun onSilenced(silenced: Boolean) { metrics.silenced(silenced) }
                 })
-                ticker = launch { while (isActive) { metrics.tick(); delay(50) } }
+                ticker = launch { while (isActive) { metrics.tick(); delay(metrics.visualRefreshIntervalMillis()) } }
                 val result = RecordingPipeline(recorder, app.recordingHistory, saved, captureOptions).run(
                     prepare = {
                         phase = SessionFailure.Kind.MODEL

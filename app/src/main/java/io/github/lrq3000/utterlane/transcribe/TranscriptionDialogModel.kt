@@ -8,6 +8,7 @@ import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.asr.*
 import io.github.lrq3000.utterlane.history.*
+import io.github.lrq3000.utterlane.settings.VisualRefreshRate
 import java.io.File
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -21,7 +22,7 @@ data class TranscriptionDialogState(
     val preview: String = "", val pageOffset: Long? = null, val running: Boolean = false,
     val importing: Boolean = false, val saving: Boolean = false, val closing: Boolean = false,
     val progress: Int? = null, val message: String? = null, val model: String = "",
-    val capture: CaptureSnapshot = CaptureSnapshot(), val visualRate: Int = 10
+    val capture: CaptureSnapshot = CaptureSnapshot(), val visualRate: Int = VisualRefreshRate.DEFAULT
 )
 
 /**
@@ -152,7 +153,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                                 metrics.tick()
                                 mutable.update { old -> old.copy(progress = latestProgress, capture = metrics.state.value,
                                     preview = if (old.pageOffset == null) latestPreview else old.preview) }
-                                delay(1000L / mutable.value.visualRate)
+                                delay(VisualRefreshRate.intervalMillis(mutable.value.visualRate))
                             }
                         }
                         session = app.recognizerManager.createSession(options, onProcessed = metrics::processed) {

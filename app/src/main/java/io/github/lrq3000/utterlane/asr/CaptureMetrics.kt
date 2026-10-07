@@ -2,6 +2,7 @@ package io.github.lrq3000.utterlane.asr
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import io.github.lrq3000.utterlane.settings.VisualRefreshRate
 
 enum class CapturePhase { LOADING, CAPTURING, STOPPING, PROCESSING, COMPLETE, FAILED, CANCELLED }
 enum class CaptureSignal { WAITING, AUDIO, LOW, NO_FRAMES, BLOCKED }
@@ -38,7 +39,7 @@ class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 10000
     private val waveform = WaveformHistory()
     private var capturedSamples = 0L
     private var fileInput = false
-    private var intervalMs = 100L
+    private var visualHz = VisualRefreshRate.DEFAULT
     private var nextVisual = Long.MIN_VALUE
     private var lastFrames = 0L
     private var lastAudible = 0L
@@ -47,10 +48,12 @@ class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 10000
     private var processedEndSample = 0L
 
     @Synchronized fun setVisualRefreshRate(hz: Int) {
-        require(hz in setOf(1, 2, 5, 10, 20))
-        intervalMs = 1000L / hz
-        nextVisual = clock() + intervalMs
+        VisualRefreshRate.requireValid(hz)
+        if (hz == visualHz) return
+        visualHz = hz
+        nextVisual = clock() * visualHz + 1000
     }
+    @Synchronized fun visualRefreshIntervalMillis(): Long = VisualRefreshRate.intervalMillis(visualHz)
     @Synchronized fun model(name: String) { pending = pending.copy(modelName = name); publish(true) }
     @Synchronized fun preparing(value: Boolean) { pending = pending.copy(modelPreparing = value); publish(true) }
     @Synchronized fun recognitionFailed(message: String) {
@@ -125,9 +128,13 @@ class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 10000
         publish()
     }
     private fun publish(force: Boolean = false) {
-        val now = clock()
+        // Scale the millisecond clock by Hz: every deadline is exactly 1000
+        // units apart, including fractional periods such as 60/90 Hz. Advance
+        // past obsolete slots rather than drifting or replaying delayed frames.
+        val now = clock() * visualHz
         if (!force && now < nextVisual) return
-        nextVisual = now + intervalMs
+        nextVisual = if (force || nextVisual == Long.MIN_VALUE) now + 1000
+            else nextVisual + ((now - nextVisual) / 1000 + 1) * 1000
         val processed = processedEndSample.coerceIn(0, capturedSamples)
         pending = pending.copy(capturedSamples = capturedSamples, processedSamples = processed,
             waveform = waveform.snapshot(), level = if (pending.signal in setOf(CaptureSignal.NO_FRAMES, CaptureSignal.BLOCKED)) 0f else waveform.level)

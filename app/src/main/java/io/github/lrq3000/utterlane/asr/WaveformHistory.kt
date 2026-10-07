@@ -28,19 +28,26 @@ internal class WaveformHistory {
                 cursor = (cursor + 1) % levels.size
                 energy = 0.0
                 bucketSamples = 0
-                revision++
             }
         }
         val db = decibels(blockEnergy, pcm.size)
         level = normalized(db)
         audible = db > -55
+        if (pcm.isNotEmpty()) revision++
     }
 
-    // Immutable-to-consumers snapshots are reused until a new audio bucket
-    // completes. Only newly captured samples enter the energy calculation.
+    // Historical buckets remain fixed in audio time. The last point can show
+    // the current partial bucket, so a 60/200 Hz display is not secretly capped
+    // by the 100 ms history buckets. Energy still accumulates only once per PCM
+    // sample; a safe snapshot is built only when a visual publication is due.
     fun snapshot(): FloatArray {
         if (revision != publishedRevision) {
-            published = FloatArray(levels.size) { levels[(cursor + it) % levels.size] }
+            val partial = bucketSamples > 0
+            val tip = if (partial) normalized(decibels(energy, bucketSamples)) else 0f
+            published = FloatArray(levels.size) {
+                if (partial && it == levels.lastIndex) tip
+                else levels[(cursor + (if (partial) 1 else 0) + it) % levels.size]
+            }
             publishedRevision = revision
         }
         return published

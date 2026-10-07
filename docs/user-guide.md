@@ -205,11 +205,14 @@ reset recognition** remains available to recover from genuinely stuck native wor
 Model **idle unloading** is a separate setting and does not interrupt active
 sessions.
 
-**Appearance → Maximum visual refresh rate** offers 1, 2, 5, 10 (default), or
-20 updates per second. Lower values reduce waveform and routine progress-display
-work on older devices. The waveform keeps the same 6.4-second audio history at
+**Appearance → Maximum visual refresh rate** offers 1, 2, 5, 10, 20, 30,
+**60 (default)**, 90, or 200 updates per second. Lower values reduce waveform and
+routine progress-display work on older devices. The waveform keeps the same 6.4-second audio history at
 every rate. Recording, recognition, speaker labeling, and final text are unaffected;
 important control, signal-warning, and completion changes appear immediately.
+The newest waveform point can update before its history bucket finishes. These
+are maximum update rates; actual drawing also depends on incoming audio and the
+device display. Previously saved frequency choices are preserved.
 
 Optional diagnostics are local and off by default. Enable them for a new run,
 then use **Share diagnostics** to export a content-free snapshot, or clear the

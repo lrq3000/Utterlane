@@ -14,23 +14,50 @@ class VisualRefreshTest {
         assertEquals(16000L, metrics.state.value.capturedSamples)
     }
 
-    @Test fun tenSecondsOf100HzCapturePublishesOnlyTheSelectedVisualWorkBudget() {
-        for (rate in listOf(1, 10, 20)) {
+    @Test fun tenSecondsOfDenseCapturePublishesOnlyTheSelectedVisualWorkBudget() {
+        for (rate in listOf(1, 2, 5, 10, 20, 30, 60, 90, 200)) {
             var now = 0L
             val metrics = CaptureMetrics { now }
             metrics.setVisualRefreshRate(rate)
             metrics.samples(ShortArray(1600) { 3000 }, true)
             var previous = metrics.state.value
             var publications = 0
-            repeat(1000) {
-                now += 10
-                metrics.samples(ShortArray(160) { 3000 }, true)
+            repeat(10000) {
+                now++
+                metrics.samples(ShortArray(16) { 3000 }, true)
                 if (metrics.state.value !== previous) { publications++; previous = metrics.state.value }
             }
-            assertEquals("$rate Hz display budget during 1000 capture callbacks", rate * 10, publications)
+            assertEquals("$rate Hz display budget during 10000 capture callbacks", rate * 10, publications)
             metrics.captureEnded()
             assertEquals("Visual coalescing must not discard input counts", 161600L, metrics.state.value.capturedSamples)
         }
+    }
+
+    @Test fun defaultCadencePublishesSixtyTimesPerSecond() {
+        var now = 0L
+        val metrics = CaptureMetrics { now }
+        metrics.samples(ShortArray(1600) { 3000 }, true)
+        var previous = metrics.state.value
+        var publications = 0
+        repeat(1000) {
+            now++
+            metrics.samples(ShortArray(16) { 3000 }, true)
+            if (metrics.state.value !== previous) { publications++; previous = metrics.state.value }
+        }
+        assertEquals(60, publications)
+    }
+
+    @Test fun partialAudioBucketProvidesFreshFeedbackBeforeOneHundredMilliseconds() {
+        val waveform = WaveformHistory()
+        waveform.accept(ShortArray(160) { 2000 })
+        val first = waveform.snapshot()
+        val copy = first.clone()
+        waveform.accept(ShortArray(160) { 16000 })
+        val second = waveform.snapshot()
+        assertTrue("Initial PCM must be visible without waiting for a full history bucket", first.last() > 0f)
+        assertTrue("New audio must update the live tip at high refresh rates", second.last() > first.last())
+        assertArrayEquals(copy, first, 0f)
+        assertSame(second, waveform.snapshot())
     }
 
     @Test fun waveformUsesAudioTimeRatherThanBlockOrRefreshFrequency() {
@@ -69,6 +96,7 @@ class VisualRefreshTest {
     @Test fun unchangedAudioSignalReusesPublishedWaveformUntilRefreshDeadline() {
         var now = 0L
         val metrics = CaptureMetrics { now }
+        metrics.setVisualRefreshRate(10)
         metrics.samples(ShortArray(1600) { 4000 }, true)
         val first = metrics.state.value
         repeat(9) {

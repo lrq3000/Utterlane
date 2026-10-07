@@ -11,6 +11,7 @@ import android.media.MediaPlayer
 import androidx.core.content.ContextCompat
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.history.HistoryEntry
+import io.github.lrq3000.utterlane.settings.VisualRefreshRate
 import java.io.Closeable
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,7 +42,7 @@ class AudioPlaybackController(private val app: UtterlaneApp) {
     private var submittedOffset = 0L
     private var requestedPosition = 0L
     private var wantsPlayback = false
-    private var periodMs = 100L
+    private var periodMs = VisualRefreshRate.intervalMillis(VisualRefreshRate.DEFAULT)
     private val audio = app.getSystemService(AudioManager::class.java)
     private var focus: AudioFocusRequest? = null
     private var receiverRegistered = false
@@ -50,7 +51,7 @@ class AudioPlaybackController(private val app: UtterlaneApp) {
         override fun onReceive(context: Context?, intent: Intent?) { mutable.value.owner?.let(::pause) }
     }
 
-    fun play(owner: String, id: String, rate: Int = 10) {
+    fun play(owner: String, id: String, rate: Int = VisualRefreshRate.DEFAULT) {
         if (mutable.value.owner == owner && mutable.value.audioId == id && mutable.value.active) {
             wantsPlayback = true
             if (prepared && !seeking) startReady()
@@ -59,7 +60,7 @@ class AudioPlaybackController(private val app: UtterlaneApp) {
         stopCurrent()
         val token = generation
         wantsPlayback = true
-        periodMs = 1000L / rate.coerceIn(1, 20)
+        periodMs = VisualRefreshRate.intervalMillis(rate)
         mutable.value = AudioPlaybackState(owner, id, active = true, preparing = true)
         preparation = app.applicationScope.launch {
             var acquired: Closeable? = null
@@ -82,7 +83,7 @@ class AudioPlaybackController(private val app: UtterlaneApp) {
         }
     }
 
-    fun setRate(owner: String, rate: Int) { if (mutable.value.owner == owner) periodMs = 1000L / rate.coerceIn(1, 20) }
+    fun setRate(owner: String, rate: Int) { if (mutable.value.owner == owner) periodMs = VisualRefreshRate.intervalMillis(rate) }
 
     fun pause(owner: String) {
         if (mutable.value.owner != owner || !mutable.value.active) return

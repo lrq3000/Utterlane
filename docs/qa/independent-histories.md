@@ -120,7 +120,25 @@ the initial recovery-lifetime discussion in `recording-first-backpressure.md`.
   owners. Existing leases protect pending IO without leaving a crash window that
   would reclassify a deliberate dismissal as unfinished recovery.
 
-## Final reproduction
+## Defaults and high-refresh follow-up
+
+- Transcript history now defaults on with the same 24-hour retention. The settings
+  migration test first failed against the previous default, then passed; explicit
+  saved opt-outs remain off.
+- Added 30/60/90/200 Hz and changed the unset/default visual rate to 60 Hz, preserving
+  explicitly saved rates. Reproduced unsupported/default-rate failures and the old
+  100 ms waveform-tip delay before implementing the changes.
+- Fixed history buckets retain their audio-time axis while an immutable provisional
+  tip reflects fresh PCM. Integer scaled deadlines preserve fractional 60/90 Hz
+  cadence without rounding drift or replaying missed updates.
+- Extended deterministic publication-budget tests cover every selectable rate and
+  exact input counts. Old snapshots remain immutable and repeated reads reuse them.
+- Follow-up verification: **290 JVM tests passed**, debug app/test APKs built, and
+  **10 relevant Android tests passed** (six Settings/panel tests and four playback
+  tests). The Settings test selects all four added rates, including scrolling to
+  200 Hz. Actual rendered frame rate remains limited by the display and fresh audio.
+
+## Reproduction commands
 
 ```powershell
 .\gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest "-PqaApplicationIdSuffix=.recordingfirst" "-Pkotlin.compiler.execution.strategy=in-process" --console=plain -q --offline
