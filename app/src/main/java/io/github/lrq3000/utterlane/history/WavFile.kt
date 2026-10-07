@@ -9,6 +9,7 @@ import java.nio.ByteOrder
 /** PCM16 WAV with bounded block IO. The capture writer and backlog reader use distinct handles. */
 class WavFile(val file: File) : Closeable {
     private val output = RandomAccessFile(file, "rw")
+    private var bytes = ByteBuffer.allocate(6400).order(ByteOrder.LITTLE_ENDIAN)
     var samples: Long = 0
         private set
 
@@ -16,10 +17,11 @@ class WavFile(val file: File) : Closeable {
 
     fun append(data: ShortArray) {
         check(samples + data.size <= Int.MAX_VALUE / 2) { "WAV part is full" }
-        val bytes = ByteBuffer.allocate(data.size * 2).order(ByteOrder.LITTLE_ENDIAN)
+        if (bytes.capacity() < data.size * 2) bytes = ByteBuffer.allocate(data.size * 2).order(ByteOrder.LITTLE_ENDIAN)
+        bytes.clear()
         bytes.asShortBuffer().put(data)
         output.seek(44 + samples * 2)
-        output.write(bytes.array())
+        output.write(bytes.array(), 0, data.size * 2)
         samples += data.size
     }
 
@@ -27,6 +29,19 @@ class WavFile(val file: File) : Closeable {
 
     override fun close() {
         try { writeHeader(output, samples * 2) } finally { output.close() }
+    }
+
+    /** One independent read handle per session/part; never shares the writer's seek position. */
+    class Reader(file: File) : Closeable {
+        private val input = RandomAccessFile(file, "r")
+        private val bytes = ByteArray(6400)
+        fun readInto(offset: Long, target: ShortArray, start: Int, count: Int) {
+            require(count in 0..3200)
+            input.seek(44 + offset * 2)
+            input.readFully(bytes, 0, count * 2)
+            ByteBuffer.wrap(bytes, 0, count * 2).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(target, start, count)
+        }
+        override fun close() = input.close()
     }
 
     companion object {
