@@ -70,12 +70,13 @@ class MicrophoneSession(
                 diagnosticObserver = launch { metrics.state.collect { captureDiagnostics.record(it) } }
                 metrics.model(app.modelManager.selected.value.name)
                 metrics.preparing(true)
-                val retention = app.settingsRepository.historyRetention.first()
+                val retention = app.settingsRepository.audioHistoryRetention.first()
+                val automaticHistory = app.settingsRepository.audioHistoryEnabled.first()
                 phase = SessionFailure.Kind.AUDIO
                 // This minimal private-storage setup precedes capture; model
                 // verification/loading/warm-up do not. The file is also the
                 // processing backlog when completed-recording history is off.
-                val saved = app.recordingHistory.begin(retention)
+                val saved = app.recordingHistory.begin(retention, automaticHistory)
                 recording = saved
                 lease = app.recordingHistory.acquire(saved.entry.id)
                 recorder.setObserver(object : CaptureObserver {
@@ -139,8 +140,6 @@ class MicrophoneSession(
                             try { lease?.close() }
                             finally { active.compareAndSet(this@MicrophoneSession, null) }
                         }
-                        try { UtterlaneApp.instance.recordingHistory.prune(UtterlaneApp.instance.settingsRepository.historyRetention.first()) }
-                        catch (e: Exception) { Log.e("MicrophoneSession", "History pruning failed", e) }
                     }
                     withContext(NonCancellable + Dispatchers.Main) {
                         val originalFailure = failure

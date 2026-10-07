@@ -20,3 +20,15 @@ the initial recovery-lifetime discussion in `recording-first-backpressure.md`.
 ```powershell
 .\gradlew.bat :app:testDebugUnitTest --tests '*History*Test' --tests '*RecordingReaderTest' --tests '*RecordingRecoveryTest' "-PqaApplicationIdSuffix=.recordingfirst" "-Pkotlin.compiler.execution.strategy=in-process" --console=plain -q --offline
 ```
+
+## Policy and scheduling milestone
+
+- Independent audio/text auto-save and duration preferences preserve legacy audio
+  opt-out. Transcript defaults are off / 24 hours; manual saving remains independent.
+- Audio/text periodic jobs use their finite durations. Immediate and Forever do not
+  create polling jobs; unchanged schedules are not restarted on each opening.
+- Only user-facing entry activities release persisted Immediate-unpin holds.
+  Internal navigation and same-process activity recreation are excluded.
+- Removed bulk pruning from history rendering and microphone completion. Startup
+  and background requests share serialized, coalesced metadata-based cleanup.
+- Focused scheduling, settings-transaction and recording-pipeline tests passed.

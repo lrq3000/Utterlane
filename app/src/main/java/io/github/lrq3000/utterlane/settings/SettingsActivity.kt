@@ -126,6 +126,7 @@ class SettingsActivity : LocalizedActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        UtterlaneApp.instance.historyCleanup.userEntry(intent, savedInstanceState)
         recoveryVisible.value = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_RECOVERY, false)
         if (recoveryVisible.value || intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS, false)) {
             showSettings()

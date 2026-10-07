@@ -86,9 +86,7 @@ fun HistoryDialog(onDismiss: () -> Unit) {
     LaunchedEffect(page, refresh, retention, revision) {
         try {
             entries = withContext(Dispatchers.IO) {
-                // Compose's initial value is presentation-only. Never use the
-                // temporary No history label as an instruction to delete audio.
-                history.prune(app.settingsRepository.historyRetention.first())
+                history.initialize()
                 history.list(page)
             }
         }
@@ -131,7 +129,8 @@ fun HistoryDialog(onDismiss: () -> Unit) {
                                 }) { Text(stringResource(R.string.transcribe_share)) }
                             }
                             Row {
-                                TextButton(onClick = { context.startActivity(Intent(context, TranscribeActivity::class.java).putExtra("history_id", entry.id)) }) { Text(stringResource(R.string.history_retranscribe)) }
+                                TextButton(onClick = { context.startActivity(Intent(context, TranscribeActivity::class.java).putExtra("history_id", entry.id)
+                                    .putExtra(HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true)) }) { Text(stringResource(R.string.history_retranscribe)) }
                                 TextButton(onClick = { scope.launch { withContext(Dispatchers.IO) { history.delete(entry.id) }; refresh++ } }) { Text(stringResource(R.string.history_delete)) }
                             }
                         }

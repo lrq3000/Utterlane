@@ -51,6 +51,7 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        UtterlaneApp.instance.historyCleanup.userEntry(intent, savedInstanceState)
 
         val audioUri = extractAudioUri(intent)
         val filePath = intent.getStringExtra(EXTRA_FILE_PATH)

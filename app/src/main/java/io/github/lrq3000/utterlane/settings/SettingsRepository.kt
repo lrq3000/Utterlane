@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import io.github.lrq3000.utterlane.asr.ModelCatalog
 import io.github.lrq3000.utterlane.asr.ModelIdleTimeout
 import io.github.lrq3000.utterlane.history.HistoryRetention
@@ -36,6 +37,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         private val MONITORED_FOLDERS_KEY = stringSetPreferencesKey("monitored_folders")
         private val FLOATING_BUTTON_SIZE_KEY = stringPreferencesKey("floating_button_size")
         private val HISTORY_RETENTION_KEY = stringPreferencesKey("history_retention")
+        private val AUDIO_HISTORY_ENABLED_KEY = booleanPreferencesKey("audio_history_enabled")
+        private val AUDIO_HISTORY_RETENTION_KEY = stringPreferencesKey("audio_history_retention")
+        private val TRANSCRIPT_HISTORY_ENABLED_KEY = booleanPreferencesKey("transcript_history_enabled")
+        private val TRANSCRIPT_HISTORY_RETENTION_KEY = stringPreferencesKey("transcript_history_retention")
         private val SELECTED_MODEL_KEY = stringPreferencesKey("selected_model")
         private val DIARIZATION_KEY = booleanPreferencesKey("speaker_diarization")
         private val SPEAKER_COUNT_KEY = intPreferencesKey("speaker_count")
@@ -98,8 +103,28 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     // Retain the injected DataStore so this also observes advanced-option edits.
     val hasSavedSettings: Flow<Boolean> = dataStore.data.map { it.asMap().isNotEmpty() }
 
-    val historyRetention: Flow<HistoryRetention> = dataStore.data.map { preferences ->
-        HistoryRetention.fromKey(preferences[HISTORY_RETENTION_KEY])
+    // Legacy No history meant automatic saving off, not immediate expiry of a
+    // manually saved item. Read the old key as a fallback without rewriting it.
+    val audioHistoryEnabled: Flow<Boolean> = dataStore.data.map {
+        it[AUDIO_HISTORY_ENABLED_KEY] ?: (HistoryRetention.fromKey(it[HISTORY_RETENTION_KEY]) != HistoryRetention.NONE)
+    }
+    val audioHistoryRetention: Flow<HistoryRetention> = dataStore.data.map {
+        it[AUDIO_HISTORY_RETENTION_KEY]?.let(HistoryRetention::fromKey)
+            ?: HistoryRetention.fromKey(it[HISTORY_RETENTION_KEY]).takeUnless { value -> value == HistoryRetention.NONE }
+            ?: HistoryRetention.HOUR
+    }
+    val transcriptHistoryEnabled: Flow<Boolean> = dataStore.data.map { it[TRANSCRIPT_HISTORY_ENABLED_KEY] ?: false }
+    val transcriptHistoryRetention: Flow<HistoryRetention> = dataStore.data.map {
+        it[TRANSCRIPT_HISTORY_RETENTION_KEY]?.let(HistoryRetention::fromKey) ?: HistoryRetention.DAY
+    }
+    suspend fun setAudioHistoryEnabled(value: Boolean) { dataStore.edit { it[AUDIO_HISTORY_ENABLED_KEY] = value } }
+    suspend fun setAudioHistoryRetention(value: HistoryRetention) { dataStore.edit { it[AUDIO_HISTORY_RETENTION_KEY] = value.key } }
+    suspend fun setTranscriptHistoryEnabled(value: Boolean) { dataStore.edit { it[TRANSCRIPT_HISTORY_ENABLED_KEY] = value } }
+    suspend fun setTranscriptHistoryRetention(value: HistoryRetention) { dataStore.edit { it[TRANSCRIPT_HISTORY_RETENTION_KEY] = value.key } }
+
+    /** Compatibility for older integrations; new UI uses independent preferences. */
+    val historyRetention: Flow<HistoryRetention> = combine(audioHistoryEnabled, audioHistoryRetention) { enabled, duration ->
+        if (enabled) duration else HistoryRetention.NONE
     }
 
     val selectedModelId: Flow<String> = dataStore.data.map { it[SELECTED_MODEL_KEY] ?: ModelCatalog.DEFAULT.id }
@@ -110,7 +135,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun setSelectedModelId(id: String) { dataStore.edit { it[SELECTED_MODEL_KEY] = id } }
 
     suspend fun setHistoryRetention(retention: HistoryRetention) {
-        dataStore.edit { it[HISTORY_RETENTION_KEY] = retention.key }
+        dataStore.edit {
+            it[AUDIO_HISTORY_ENABLED_KEY] = retention != HistoryRetention.NONE
+            if (retention != HistoryRetention.NONE) it[AUDIO_HISTORY_RETENTION_KEY] = retention.key
+        }
     }
 
     val themeMode: Flow<String> = dataStore.data.map { preferences ->

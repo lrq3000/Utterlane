@@ -16,6 +16,21 @@ import org.junit.Test
 import java.util.concurrent.atomic.AtomicInteger
 
 class RuntimeOptionsPersistenceTest {
+    @Test fun historySettingsMigrateOptOutAndKeepAudioAndTextPoliciesIndependent() = runBlocking {
+        val store = MemoryStore()
+        store.edit { it[stringPreferencesKey("history_retention")] = "none" }
+        val repository = SettingsRepository(store)
+        assertFalse(repository.audioHistoryEnabled.first())
+        assertEquals(io.github.lrq3000.utterlane.history.HistoryRetention.HOUR, repository.audioHistoryRetention.first())
+        assertFalse(repository.transcriptHistoryEnabled.first())
+        assertEquals(io.github.lrq3000.utterlane.history.HistoryRetention.DAY, repository.transcriptHistoryRetention.first())
+        repository.setTranscriptHistoryEnabled(true)
+        repository.setTranscriptHistoryRetention(io.github.lrq3000.utterlane.history.HistoryRetention.MONTH)
+        repository.setAudioHistoryRetention(io.github.lrq3000.utterlane.history.HistoryRetention.NONE)
+        assertFalse(repository.audioHistoryEnabled.first())
+        assertEquals(io.github.lrq3000.utterlane.history.HistoryRetention.MONTH, repository.transcriptHistoryRetention.first())
+        assertTrue(repository.transcriptHistoryEnabled.first())
+    }
     @Test fun visualFrequencyPersistsIndependentlyOfRecognitionAndDiagnostics() = runBlocking {
         val store = MemoryStore()
         val repository = SettingsRepository(store)
