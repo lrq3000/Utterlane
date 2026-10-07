@@ -174,6 +174,27 @@ the initial recovery-lifetime discussion in `recording-first-backpressure.md`.
 - **291 JVM tests passed**, zero failures/skips. An interrupted full run reported a
   local Gradle worker connection timeout; focused and full incremental runs then
   passed with `--max-workers=2`, without changing project build configuration.
+- Debug app/test APKs built and installed under the separate `.waveformqa` identity.
+  **Six Android tests passed** on API-28 LDPlayer (`emulator-5554`): three existing
+  recording-panel tests and three new rendered-waveform cases at 30/60/200 Hz.
+  The latter drive the production panel with controlled 10 ms PCM blocks and check
+  rendered pixels: a tall marker moves from column 63 to 43 after 20 callbacks and
+  to 13 after 50, then disappears after the ring wraps. Every refresh setting yields
+  the same positions. This validates input-relative movement, not physical display
+  FPS; the test clock is controlled and screenshots add wall-clock pauses.
+- Six native screenshots were pulled into the ignored
+  `app/build/outputs/waveform-qa/` directory; 30 Hz progression and matching 200 Hz
+  position were visually inspected. The device crash buffer was empty. Subjective
+  smoothness on the user's phone still benefits from testing with live speech.
+
+Waveform-specific reproduction (PowerShell, JDK 21):
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest "-PqaApplicationIdSuffix=.waveformqa" "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q --offline
+adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5554 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s emulator-5554 shell am instrument -w -e class io.github.lrq3000.utterlane.WaveformCadenceAndroidTest,io.github.lrq3000.utterlane.CapturePanelAndroidTest io.github.lrq3000.utterlane.waveformqa.test/androidx.test.runner.AndroidJUnitRunner
+```
 
 ## Reproduction commands
 
