@@ -74,11 +74,13 @@ class CapturePanelAndroidTest {
         val settings = app.settingsRepository
         val previous = settings.showTranscriptionStreamStatistics.first()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-        val metrics = CaptureMetrics()
+        var now = 0L
+        val metrics = CaptureMetrics { now }
         metrics.model("QA stream")
         metrics.captured(32000)
         metrics.recognition(RecognitionActivity(stage = "speaker/transformer", elapsedMillis = 10000,
             sinceProgressMillis = 2000, active = true))
+        now += 100; metrics.tick()
         val backlog = RecognitionStatusText.backlog(app, metrics.state.value)
         val activity = RecognitionStatusText.activity(app, metrics.state.value.recognition)
         lateinit var panel: RecordingPanel
@@ -103,6 +105,7 @@ class CapturePanelAndroidTest {
             awaitPanel { texts(panel).any { it.text.toString() == "QA stream" } }
             metrics.captureEnded()
             metrics.processed(16000, 1000)
+            now += 100; metrics.tick()
             awaitPanel { texts(panel).any { it.text.toString().startsWith("50%") } }
             instrumentation.runOnMainSync {
                 assertFalse(texts(panel).any { it.visibility == View.VISIBLE && it.text.toString() == activity })

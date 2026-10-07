@@ -16,6 +16,21 @@ import org.junit.Test
 import java.util.concurrent.atomic.AtomicInteger
 
 class RuntimeOptionsPersistenceTest {
+    @Test fun visualFrequencyPersistsIndependentlyOfRecognitionAndDiagnostics() = runBlocking {
+        val store = MemoryStore()
+        val repository = SettingsRepository(store)
+        assertEquals(10, repository.visualRefreshRate.first())
+        for (rate in listOf(1, 2, 5, 10, 20)) {
+            repository.setVisualRefreshRate(rate)
+            assertEquals(rate, SettingsRepository(store).visualRefreshRate.first())
+        }
+        try { repository.setVisualRefreshRate(60); fail("Invalid rate accepted") } catch (_: IllegalArgumentException) { }
+        repository.resetRuntimeOptions()
+        assertEquals(20, repository.visualRefreshRate.first())
+        assertEquals(RuntimeOptions(), repository.runtimeOptions.first())
+        store.edit { it[intPreferencesKey("visual_refresh_rate")] = -1 }
+        assertEquals(10, repository.visualRefreshRate.first())
+    }
     // DataStore 1.0 uses File.renameTo to replace files, which is not portable to
     // Windows JVM tests. Exercise repository transactions against an in-memory store;
     // Android still owns the real on-disk DataStore and its atomic file replacement.

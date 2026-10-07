@@ -25,6 +25,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         private val SERVICE_ENABLED_KEY = booleanPreferencesKey("service_enabled")
         private val THEME_KEY = stringPreferencesKey("theme_mode")
         private val SHOW_TRANSCRIPTION_STREAM_STATISTICS_KEY = booleanPreferencesKey("show_transcription_stream_statistics")
+        private val VISUAL_REFRESH_RATE_KEY = intPreferencesKey("visual_refresh_rate")
+        val VISUAL_REFRESH_RATES = listOf(1, 2, 5, 10, 20)
         private val BUTTON_X_KEY = intPreferencesKey("button_x")
         private val BUTTON_Y_KEY = intPreferencesKey("button_y")
         private val AUTO_LOAD_MODEL_KEY = booleanPreferencesKey("auto_load_model")
@@ -123,6 +125,15 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     suspend fun setShowTranscriptionStreamStatistics(show: Boolean) {
         dataStore.edit { it[SHOW_TRANSCRIPTION_STREAM_STATISTICS_KEY] = show }
+    }
+
+    val visualRefreshRate: Flow<Int> = dataStore.data.map {
+        (it.asMap()[VISUAL_REFRESH_RATE_KEY] as? Int)?.takeIf { rate -> rate in VISUAL_REFRESH_RATES } ?: 10
+    }
+
+    suspend fun setVisualRefreshRate(hz: Int) {
+        require(hz in VISUAL_REFRESH_RATES)
+        dataStore.edit { it[VISUAL_REFRESH_RATE_KEY] = hz }
     }
 
     val buttonPosition: Flow<Pair<Int, Int>> = dataStore.data.map { preferences ->

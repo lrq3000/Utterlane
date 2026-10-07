@@ -42,6 +42,7 @@ class CaptureMetricsTest {
         assertEquals(50, meter.state.value.percent)
         assertEquals(2.0, meter.state.value.remainingSeconds!!, 0.01)
         meter.processed(160000, 2000)
+        clock += 100; meter.tick()
         assertEquals(99, meter.state.value.percent)
         meter.completed(null)
         assertEquals(100, meter.state.value.percent)
