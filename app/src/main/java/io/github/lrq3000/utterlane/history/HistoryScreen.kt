@@ -160,7 +160,9 @@ fun HistoryDialog(transcripts: Boolean = false, onDismiss: () -> Unit) {
                                     .putExtra(if (transcripts) TranscribeActivity.EXTRA_TRANSCRIPT_ID else TranscribeActivity.EXTRA_AUDIO_ID, entry.id)
                                     .putExtra(HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true))
                             }) { Text(stringResource(R.string.history_open)) }
-                            TextButton(onClick = { action {
+                            TextButton(onClick = {
+                                if (!transcripts) app.audioPlayback.stopAudio(entry.id)
+                                action {
                                 if (transcripts) app.transcriptHistory.delete(entry.id) else app.recordingHistory.delete(entry.id)
                             } }) { Text(stringResource(if (transcripts) R.string.dialog_delete_text else if (entry.temporary) R.string.dialog_discard else R.string.history_delete)) }
                         }

@@ -368,4 +368,9 @@
     <string name="history_unpin_immediate">Unpinned. Kept until the next genuine app launch.</string>
     <string name="history_temporary_recovery">Temporary recovery audio — open to retry, save or discard</string>
     <string name="history_open">Open</string>
+    <string name="audio_play">Play</string>
+    <string name="audio_pause">Pause</string>
+    <string name="audio_resume">Resume</string>
+    <string name="audio_stop">Stop playback</string>
+    <string name="audio_duration_unknown">Unknown duration</string>
 </resources>

@@ -70,3 +70,19 @@ the initial recovery-lifetime discussion in `recording-first-backpressure.md`.
   cleanup check, and independent transcript pinning. Screenshots are recorded in
   the QA application's `files/onboarding-qa/` directory.
 - Focused pin/settings JVM tests and debug app/test APK builds passed.
+
+## Playback milestone
+
+- A shared, owner-token-guarded MediaPlayer controller provides on-demand playback,
+  audio focus/noisy-route pausing, independent read leases and rate-limited progress.
+- Play expands to Pause/Stop and one seek timeline. Pause retains position, resume
+  continues, and Stop/end reset and collapse. Drag seeks are submitted on release;
+  native requests are coalesced while a seek is in flight.
+- Hourly PCM parts use O(1) global-time addressing with Long durations; encoded
+  imports use their original format and the native player's available duration.
+- Two JVM timeline tests and three actual-player Android tests passed. Android
+  coverage includes paused seeking, resume/stop controls, older-owner isolation,
+  lease-protected deletion and Stop before preparation. A paused-seek screenshot
+  is in the QA application's `files/onboarding-qa/` directory.
+- Device fixtures use four seconds of silence: these tests establish player and
+  control behavior, not a subjective assessment of acoustic fidelity.

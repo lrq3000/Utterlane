@@ -79,8 +79,7 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                         else -> R.string.dialog_retained_info
                     }), style = MaterialTheme.typography.bodySmall)
 
-                    // Playback is supplied by the shared controller in the next
-                    // milestone; all action ownership already follows this model.
+                    AudioPlaybackControls(model)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Box {
                             Button(onClick = { modelMenu = true }, enabled = state.audio != null && !state.running && !state.importing && !state.closing) {

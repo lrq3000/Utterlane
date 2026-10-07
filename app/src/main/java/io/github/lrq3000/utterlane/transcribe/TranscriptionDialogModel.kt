@@ -28,6 +28,7 @@ data class TranscriptionDialogState(
  * not acknowledge/discard a session. Only explicit dismiss/delete does that.
  */
 class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogInput) : ViewModel() {
+    val playbackOwner: String = java.util.UUID.randomUUID().toString()
     private val mutable = MutableStateFlow(TranscriptionDialogState(importing = true))
     val state: StateFlow<TranscriptionDialogState> = mutable
     private val audioActions = DialogAudioActions(app)
@@ -249,6 +250,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     fun dismiss(delete: Boolean = false, done: () -> Unit) {
         if (state.value.closing) return
         mutable.update { it.copy(closing = true) }
+        app.audioPlayback.stop(playbackOwner)
         val task = operation
         app.applicationScope.launch {
             try {
@@ -283,6 +285,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         // Unexpected owner destruction preserves disk-backed input and useful
         // partial text. Explicit dismiss already deleted/released its own work.
         currentStore?.keepForRecovery()
+        app.audioPlayback.stop(playbackOwner)
         super.onCleared()
     }
 }
