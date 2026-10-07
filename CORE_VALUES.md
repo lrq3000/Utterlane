@@ -91,6 +91,7 @@ reconstruct work unnecessarily.
 
 - Do not interrupt capture to repair a processing failure. Preserve the recording, explain the failure at an appropriate moment, and offer actionable recovery—such as retrying or choosing another compatible model—without requiring the user to repeat the recording.
 - Authoritative data vs speculative work: Keep authoritative user input and committed results distinct from speculative or best-effort processing. Derived work may be recomputed, coalesced, or discarded for efficiency; source material and already-committed progress must never be silently lost.
+- explicit dismissal discards temporary work; unexpected interruption preserves it for recovery.
 
 **Examples:**
 - Preserve completed transcript segments as work advances. Keep saved audio
