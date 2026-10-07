@@ -333,4 +333,24 @@
     <string name="visual_refresh_rate">%1$d Hz</string>
     <string name="recording_processing_unavailable">Recognition unavailable — saved audio is available for retry</string>
     <string name="recording_model_loading_saved">Model loading — waiting to process saved audio</string>
+    <string name="dialog_recovery_info">This recording was interrupted. You can listen, retry transcription, save it, or discard it.</string>
+    <string name="dialog_importing">Preparing a private audio working copy…</string>
+    <string name="dialog_closing">Finishing cleanup…</string>
+    <string name="dialog_saving">Saving…</string>
+    <string name="dialog_audio_action_done">Saved successfully.</string>
+    <string name="dialog_audio_unavailable">Source audio is unavailable. Saved text remains usable.</string>
+    <string name="dialog_temporary_info">Temporary audio is discarded when this dialog closes. Use Save to keep a copy.</string>
+    <string name="dialog_retained_info">This audio is saved in history and follows its retention policy.</string>
+    <string name="dialog_retranscribe">Re-transcribe</string>
+    <string name="dialog_same_model">With the same model</string>
+    <string name="dialog_save_audio">Save audio</string>
+    <string name="dialog_save_history">Save to history — keep forever</string>
+    <string name="dialog_share_audio">Share audio…</string>
+    <string name="dialog_save_device">Save audio to device…</string>
+    <string name="dialog_share_text">Share transcript</string>
+    <string name="dialog_keep_text">Keep transcript forever</string>
+    <string name="dialog_delete_text">Delete transcript</string>
+    <string name="dialog_discard">Discard</string>
+    <string name="history_pinned">Pinned — kept until unpinned or deleted</string>
+    <string name="dialog_model_failed">The transcription model failed to load. Your audio is saved; choose another model or retry.</string>
 </resources>

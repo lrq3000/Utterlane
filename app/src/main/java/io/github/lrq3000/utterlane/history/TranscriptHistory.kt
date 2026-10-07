@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 data class TranscriptEntry(val id: String, val directory: File, val created: Long, val model: String,
-    val audioId: String?, val retention: RetentionMark) {
+    val audioId: String?, val retention: RetentionMark, val modelId: String? = null) {
     val file get() = File(directory, "transcript.txt")
 }
 
@@ -34,14 +34,14 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
             if (p.getProperty("discarded", "false").toBoolean()) { directory.deleteRecursively(); return@forEach }
             val created = p.getProperty("created").toLong()
             if (File(directory, "transcript.txt").isFile) put(TranscriptEntry(directory.name, directory, created,
-                p.getProperty("model", ""), p.getProperty("audioId"), HistoryMetadata.readMark(p, created)))
+                p.getProperty("model", ""), p.getProperty("audioId"), HistoryMetadata.readMark(p, created), p.getProperty("modelId")))
         }
         initialized = true
     }
 
     /** A stable attempt ID deduplicates manual saving; a new recognition attempt uses a new ID. */
     @Synchronized fun save(source: File, model: String, audioId: String? = null, pinned: Boolean = false,
-        attempt: String = source.name): TranscriptEntry {
+        attempt: String = source.name, modelId: String? = null): TranscriptEntry {
         initialize()
         val id = UUID.nameUUIDFromBytes(attempt.toByteArray(Charsets.UTF_8)).toString()
         entries[id]?.let { existing ->
@@ -52,7 +52,7 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
         check(source.isFile && source.length() > 0) { "There is no transcript to save" }
         val directory = File(root, id)
         check(directory.mkdir()) { "Cannot create transcript history" }
-        val entry = TranscriptEntry(id, directory, clock(), model, audioId, RetentionMark(clock(), pinned))
+        val entry = TranscriptEntry(id, directory, clock(), model, audioId, RetentionMark(clock(), pinned), modelId)
         try {
             source.inputStream().use { input -> entry.file.outputStream().use { input.copyTo(it, 64 * 1024) } }
             persist(entry)
@@ -116,6 +116,7 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
         val p = Properties().apply {
             setProperty("created", entry.created.toString()); setProperty("model", entry.model)
             entry.audioId?.let { setProperty("audioId", it) }
+            entry.modelId?.let { setProperty("modelId", it) }
             setProperty("discarded", discarded.toString())
             HistoryMetadata.writeMark(this, entry.retention)
         }

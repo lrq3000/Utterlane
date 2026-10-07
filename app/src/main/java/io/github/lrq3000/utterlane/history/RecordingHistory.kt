@@ -10,7 +10,8 @@ import java.util.UUID
 data class HistoryEntry(val id: String, val directory: File, val started: Long, val reference: Long, val samples: Long, val status: String,
     val needsRecovery: Boolean = false, val temporary: Boolean = false,
     val pinned: Boolean = false, val holdForLaunch: String? = null,
-    val sourceName: String? = null, val mimeType: String = "audio/wav", val importedDurationMs: Long = 0) {
+    val sourceName: String? = null, val mimeType: String = "audio/wav", val importedDurationMs: Long = 0,
+    val failureMessage: String? = null, val failureKind: String? = null) {
     val retention get() = RetentionMark(reference, pinned, holdForLaunch)
     val durationMs: Long get() = if (sourceName == null) samples * 1000 / 16000 else importedDurationMs
     val seconds: Long get() = durationMs / 1000
@@ -63,7 +64,7 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
             val entry = HistoryEntry(directory.name, directory, properties.getProperty("started", "0").toLong(), reference, samples, status,
                 properties.getProperty("recovery", "false").toBoolean(), properties.getProperty("temporary", "false").toBoolean(),
                 mark.pinned, mark.holdForLaunch, source, properties.getProperty("mime", "audio/wav"),
-                properties.getProperty("durationMs", "0").toLong())
+                properties.getProperty("durationMs", "0").toLong(), properties.getProperty("failureMessage"), properties.getProperty("failureKind"))
             put(entry)
             if (status == "interrupted") save(entry)
         }
@@ -146,13 +147,19 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
         else { val updated = entry.copy(needsRecovery = false); save(updated); put(updated) }
     }
 
+    @Synchronized fun recordFailure(id: String, message: String, kind: String) {
+        val entry = entries[id]?.takeUnless { id in deferred } ?: return
+        val updated = entry.copy(needsRecovery = true, failureMessage = message, failureKind = kind)
+        save(updated); put(updated)
+    }
+
     /** Call only after the entire recovered transcript (including speaker EOF) is saved. */
     @Synchronized fun completeRecovery(id: String, retention: HistoryRetention) {
         val entry = get(id)
         if (!entry.needsRecovery || id in active || id in deferred) return
         // Retrying does not extend saved audio's retention, and a temporary
         // dialog retains its source through successful retries until dismissal.
-        val completed = entry.copy(status = "saved", needsRecovery = entry.temporary)
+        val completed = entry.copy(status = "saved", needsRecovery = entry.temporary, failureMessage = null, failureKind = null)
         save(completed)
         put(completed)
     }
@@ -258,6 +265,8 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
             HistoryMetadata.writeMark(this, entry.retention)
             entry.sourceName?.let { setProperty("source", it) }
             setProperty("mime", entry.mimeType); setProperty("durationMs", entry.importedDurationMs.toString())
+            entry.failureMessage?.let { setProperty("failureMessage", it) }
+            entry.failureKind?.let { setProperty("failureKind", it) }
         }
         HistoryMetadata.write(File(entry.directory, "recording.properties"), properties)
     }

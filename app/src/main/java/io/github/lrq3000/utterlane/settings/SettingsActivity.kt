@@ -64,6 +64,7 @@ class SettingsActivity : LocalizedActivity() {
 
     private val refreshTrigger = mutableStateOf(0)
     private val recoveryVisible = mutableStateOf(false)
+    private val modelSelectionRequested = mutableStateOf(false)
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -127,6 +128,7 @@ class SettingsActivity : LocalizedActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         UtterlaneApp.instance.historyCleanup.userEntry(intent, savedInstanceState)
+        modelSelectionRequested.value = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS, false)
         recoveryVisible.value = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_RECOVERY, false)
         if (recoveryVisible.value || intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS, false)) {
             showSettings()
@@ -181,7 +183,9 @@ class SettingsActivity : LocalizedActivity() {
                         modelFolderPickerLauncher.launch(null)
                     },
                     isVoiceImeEnabled = { isVoiceImeEnabled() },
-                    onOpenInputMethodSettings = { openInputMethodSettings() }
+                    onOpenInputMethodSettings = { openInputMethodSettings() },
+                    openModelSelection = modelSelectionRequested.value,
+                    onModelSelectionOpened = { modelSelectionRequested.value = false; intent.removeExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS) }
                 )
                 if (recoveryVisible.value) io.github.lrq3000.utterlane.history.HistoryDialog { recoveryVisible.value = false }
             }
@@ -226,6 +230,14 @@ class SettingsActivity : LocalizedActivity() {
             // Dismiss the boot notification now that services are started
             app.serviceAlertNotification.dismiss()
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        UtterlaneApp.instance.historyCleanup.userEntry(intent, null)
+        modelSelectionRequested.value = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS, false)
+        recoveryVisible.value = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_RECOVERY, false)
     }
 
     private fun requestMicPermission() {
@@ -355,10 +367,14 @@ fun SettingsScreen(
     onPickFolder: ((String) -> Unit) -> Unit,
     onPickModelFolder: ((Uri) -> Unit) -> Unit,
     isVoiceImeEnabled: () -> Boolean,
-    onOpenInputMethodSettings: () -> Unit
+    onOpenInputMethodSettings: () -> Unit,
+    openModelSelection: Boolean = false,
+    onModelSelectionOpened: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val scrollState = rememberScrollState()
+    LaunchedEffect(openModelSelection) { if (openModelSelection) scrollState.scrollTo(0) }
     val settingsRepository = UtterlaneApp.instance.settingsRepository
     val modelManager = UtterlaneApp.instance.modelManager
 
@@ -417,12 +433,12 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(vertical = 8.dp)
         ) {
             // Speech Model (required for all voice input)
             SettingsSection(title = stringResource(R.string.section_speech_model)) {
-                ModelSelector()
+                ModelSelector(openModelSelection, onModelSelectionOpened)
                 ModelSettingItem(
                     isCustom = selectedModel.isCustom,
                     modelName = selectedModel.name,

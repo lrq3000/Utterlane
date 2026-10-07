@@ -62,7 +62,9 @@ class RecordingFirstAndroidTest {
                             (view is android.widget.TextView && view.visibility == android.view.View.VISIBLE && view.text.toString() == text) ||
                                 (view is android.view.ViewGroup && (0 until view.childCount).any { contains(view.getChildAt(it)) })
                         found = contains(panel)
-                        assertEquals(android.view.View.VISIBLE, panel.findViewById<android.view.View>(R.id.recording_done).visibility)
+                        // The initial loading frame is legitimate before the
+                        // StateFlow collector renders the requested capture state.
+                        if (found) assertEquals(android.view.View.VISIBLE, panel.findViewById<android.view.View>(R.id.recording_done).visibility)
                     }
                     if (found) break
                     delay(10)

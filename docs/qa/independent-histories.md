@@ -44,3 +44,18 @@ the initial recovery-lifetime discussion in `recording-first-backpressure.md`.
   Immediate text retention avoids creating a retained result.
 - Focused pipeline, history-lifetime and transcript-finalization tests passed.
   An Android Cancel/discard regression is included for the integrated device run.
+
+## Unified dialog milestone
+
+- Sharing, audio/text history and recovery use one retained operation owner, with
+  private encoded imports, same/other-model retries and bounded preview updates.
+- Audio Save offers pinned/deduplicated history, an independent share snapshot,
+  and streaming document/folder export. Text can be copied/shared or manually pinned.
+- Recovery links carry recording IDs and model selection opens the actual picker.
+  Original failure details survive restart. Closing a transcript viewer never
+  deletes its independently owned source audio.
+- App/test APKs built; focused JVM storage/pipeline tests passed. Seven Android
+  dialog/capture tests passed, including explicit Cancel, failed retry followed by
+  discard, imported-source ownership and idempotent pinned manual saving.
+- The capture-panel test now waits for its requested state before asserting button
+  visibility; asserting against the legitimate initial loading frame was a race.

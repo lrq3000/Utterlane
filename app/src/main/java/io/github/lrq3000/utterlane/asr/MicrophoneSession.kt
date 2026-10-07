@@ -107,7 +107,8 @@ class MicrophoneSession(
                         val complete = checkNotNull(session)
                         complete.finish()
                         if (saveTranscripts && textRetention != io.github.lrq3000.utterlane.history.HistoryRetention.NONE && complete.store.segments > 0) {
-                            app.transcriptHistory.save(complete.store.file, metrics.state.value.modelName, saved.entry.id)
+                            app.transcriptHistory.save(complete.store.file, metrics.state.value.modelName, saved.entry.id,
+                                modelId = app.modelManager.selected.value.id)
                         }
                     },
                     onSamples = { metrics.samples(it, true) },
@@ -149,15 +150,25 @@ class MicrophoneSession(
                         try { recording?.finish((failure != null && failure.kind != SessionFailure.Kind.NO_SPEECH) || cancelled) }
                         catch (e: Exception) { Log.e("MicrophoneSession", "History finalization failed", e); finalizationWarning = context.getString(R.string.history_save_failed, e.message ?: "Storage error") }
                         finally {
-                            try { lease?.close() }
-                            finally { active.compareAndSet(this@MicrophoneSession, null) }
+                            try {
+                                val failed = failure
+                                if (!discardRequested && failed != null && failed.kind != SessionFailure.Kind.NO_SPEECH) {
+                                    recording?.takeIf { it.writtenSamples > 0 }?.let {
+                                        UtterlaneApp.instance.recordingHistory.recordFailure(it.entry.id, failed.message, failed.kind.name)
+                                    }
+                                }
+                            } catch (e: Exception) { Log.e("MicrophoneSession", "Could not save recovery details", e) }
+                            finally {
+                                try { lease?.close() }
+                                finally { active.compareAndSet(this@MicrophoneSession, null) }
+                            }
                         }
                     }
                     withContext(NonCancellable + Dispatchers.Main) {
                         val originalFailure = failure
                         recording?.takeIf { !discardRequested && it.writtenSamples > 0 && (cancelled || (originalFailure != null && originalFailure.kind != SessionFailure.Kind.NO_SPEECH)) }?.let {
-                            io.github.lrq3000.utterlane.history.RecordingRecovery.show(context)
-                            failure = originalFailure?.copy(message = originalFailure.message + "\n" + context.getString(R.string.recording_recovery_saved))
+                            io.github.lrq3000.utterlane.history.RecordingRecovery.show(context, it.entry.id)
+                            failure = originalFailure?.copy(message = originalFailure.message + "\n" + context.getString(R.string.recording_recovery_saved), recoveryId = it.entry.id)
                         }
                         if (cancelled) metrics.cancelled() else metrics.completed(failure?.message)
                         captureDiagnostics?.record(metrics.state.value)
