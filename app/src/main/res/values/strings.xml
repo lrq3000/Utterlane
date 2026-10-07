@@ -320,4 +320,19 @@
     <string name="speaker_unknown">Unknown speaker</string>
     <string name="app_language">App language</string>
     <string name="app_language_system">System (device language)</string>
+    <string name="capture_starting">Starting microphone…</string>
+    <string name="capture_recording_without_transcription">Transcription is unavailable. Audio is still recording.</string>
+    <string name="recording_recover_title">Recover recording</string>
+    <string name="recording_recover_notification">Recording finished. Open to retry transcription or choose another model.</string>
+    <string name="recording_recover_item">Recover unfinished recording %1$d</string>
+    <string name="recording_model_failed">The transcription model failed to load. Try again, or choose a smaller compatible model in Settings.</string>
+    <string name="recording_processing_failed">Transcription could not finish. You can retry the recorded audio.</string>
+    <string name="recording_recovery_unavailable">This recording is no longer available. It may have expired or been deleted.</string>
+    <string name="recording_storage_failed">Audio storage failed. Only the successfully saved audio is available for recovery. %1$s</string>
+    <string name="recording_storage_overload">Recording stopped because audio storage could not keep up. The captured audio was saved for recovery.</string>
+    <string name="recording_choose_model">Choose another model</string>
+    <string name="recording_retry">Retry transcription</string>
+    <string name="recording_temporary_available">Audio is held privately for this recovery. Closing this screen deletes the temporary recording.</string>
+    <string name="recording_history_available">Saved audio is available according to your recording-history retention setting.</string>
+    <string name="recording_temporary_description">Recording uses private temporary audio while loading or processing, even with No history. Successful or cancelled live sessions delete it. Failed recordings remain available for retry until the recovery screen is closed; abandoned temporary audio is cleaned up on the next app process start.</string>
 </resources>

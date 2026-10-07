@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,7 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
         const val ACTION_TRANSCRIBE = "io.github.lrq3000.utterlane.action.TRANSCRIBE"
         const val EXTRA_AUDIO_URI = "audio_uri"
         const val EXTRA_FILE_PATH = "file_path"
+        const val EXTRA_RECORDING_RECOVERY = "recording_recovery"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,6 +56,8 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
 
         val audioUri = extractAudioUri(intent)
         val filePath = intent.getStringExtra(EXTRA_FILE_PATH)
+        val recoveryId = intent.getStringExtra(EXTRA_RECORDING_RECOVERY)
+        recoveryId?.let { io.github.lrq3000.utterlane.service.RecordingRecovery.dismissNotification(this, it) }
 
         setContent {
             val settingsRepository = UtterlaneApp.instance.settingsRepository
@@ -75,6 +79,7 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
                     filePath = filePath,
                     historyId = intent.getStringExtra("history_id"),
                     transcriptPath = intent.getStringExtra("transcript_path"),
+                    recoveryId = recoveryId,
                     onDismiss = { finish() },
                     onCopy = { text -> copyToClipboard(text) }
                 )
@@ -115,6 +120,11 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
 
     override fun onDestroy() {
         super.onDestroy()
+        // Navigating to model settings or rotating is not a discard. Finishing
+        // this recovery screen is; an in-flight reader lease defers actual deletion.
+        if (isFinishing) intent.getStringExtra(EXTRA_RECORDING_RECOVERY)?.let {
+            io.github.lrq3000.utterlane.service.RecordingRecovery.discard(this, it)
+        }
         // Dismiss the "audio detected" notification when activity closes
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(AudioMonitorService.AUDIO_DETECTED_NOTIFICATION_ID)
@@ -129,23 +139,26 @@ fun TranscribeScreen(
     onDismiss: () -> Unit,
     onCopy: (String) -> Unit,
     historyId: String? = null,
-    transcriptPath: String? = null
+    transcriptPath: String? = null,
+    recoveryId: String? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var store by remember { mutableStateOf<TranscriptStore?>(null) }
     var preview by remember { mutableStateOf("") }
     var progress by remember { mutableStateOf<Int?>(null) }
-    var running by remember { mutableStateOf(true) }
+    var running by remember { mutableStateOf(recoveryId == null) }
+    var attempt by rememberSaveable(recoveryId) { mutableIntStateOf(0) }
+    var recoveredSuccessfully by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var pageOffset by remember { mutableStateOf<Long?>(null) }
     var processingJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var preserveResult by remember { mutableStateOf(false) }
-    val captureMetrics = remember { io.github.lrq3000.utterlane.asr.CaptureMetrics() }
+    val captureMetrics = remember(attempt) { io.github.lrq3000.utterlane.asr.CaptureMetrics() }
     val capture by captureMetrics.state.collectAsState()
     val showStreamStatistics by UtterlaneApp.instance.settingsRepository.showTranscriptionStreamStatistics.collectAsStateWithLifecycle(initialValue = false)
     val manager = remember { UtterlaneApp.instance.recognizerManager }
-    LaunchedEffect(manager, running) {
+    LaunchedEffect(manager, running, captureMetrics) {
         if (running && transcriptPath == null) manager.activity.collect {
             if (it.active || captureMetrics.state.value.recognition.active) captureMetrics.recognition(it)
         }
@@ -173,12 +186,25 @@ fun TranscribeScreen(
     }
 
     // Decoding and inference interleave. Only a bounded tail enters Compose state.
-    LaunchedEffect(audioUri, filePath, historyId, transcriptPath) {
+    LaunchedEffect(audioUri, filePath, historyId, transcriptPath, recoveryId, attempt) {
+        if (recoveryId != null && attempt == 0) {
+            val audio = runCatching { UtterlaneApp.instance.microphoneRecordings.get(recoveryId) }.getOrNull()
+            message = when {
+                audio == null -> context.getString(R.string.recording_recovery_unavailable)
+                audio.modelFailure -> context.getString(R.string.recording_model_failed)
+                else -> context.getString(R.string.recording_processing_failed)
+            }
+            return@LaunchedEffect
+        }
+        running = true
+        message = null
+        progress = null
         processingJob = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
         var activeSession: io.github.lrq3000.utterlane.asr.TranscriptionSession? = null
         var power: io.github.lrq3000.utterlane.asr.TranscriptionPower? = null
         var captureDiagnostics: io.github.lrq3000.utterlane.diagnostics.CaptureDiagnosticSession? = null
         var diagnosticObserver: kotlinx.coroutines.Job? = null
+        var audioLease: java.io.Closeable? = null
         try {
             if (transcriptPath != null) {
                 val recovered = withContext(Dispatchers.IO) {
@@ -190,10 +216,12 @@ fun TranscribeScreen(
                 preview = withContext(Dispatchers.IO) { recovered.page((recovered.file.length() - 8000).coerceAtLeast(0)) }
                 return@LaunchedEffect
             }
-            require(audioUri != null || filePath != null || historyId != null) { context.getString(R.string.transcribe_error_no_audio) }
+            require(audioUri != null || filePath != null || historyId != null || recoveryId != null) { context.getString(R.string.transcribe_error_no_audio) }
             power = io.github.lrq3000.utterlane.asr.TranscriptionPower(context)
             withContext(Dispatchers.IO) {
                 val app = UtterlaneApp.instance
+                val recoveredAudio = recoveryId?.let { app.microphoneRecordings.get(it) }
+                audioLease = recoveredAudio?.acquire()
                 val options = app.settingsRepository.runtimeOptions.first()
                 val diagnosticSession = app.recognitionDiagnostics.capture(options)
                 captureDiagnostics = diagnosticSession
@@ -215,7 +243,17 @@ fun TranscribeScreen(
                     captureMetrics.captured(samples.size)
                     session.accept(samples)
                 }
-                if (historyId != null) {
+                if (recoveredAudio != null) {
+                    var offset = 0L
+                    while (offset < recoveredAudio.samples) {
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                        val samples = recoveredAudio.read(offset, 3200)
+                        check(samples.isNotEmpty()) { context.getString(R.string.recording_recovery_unavailable) }
+                        accept(samples)
+                        offset += samples.size
+                        onProgress((offset * 100 / recoveredAudio.samples).toInt())
+                    }
+                } else if (historyId != null) {
                     app.recordingHistory.acquire(historyId).use {
                         val entry = app.recordingHistory.get(historyId)
                         var offset = 0L
@@ -233,7 +271,7 @@ fun TranscribeScreen(
                 captureMetrics.captureEnded()
                 session.finish()
                 captureMetrics.completed(null)
-                withContext(Dispatchers.Main) { progress = 100 }
+                withContext(Dispatchers.Main) { progress = 100; recoveredSuccessfully = true; preserveResult = false }
                 if (session.store.segments == 0) withContext(Dispatchers.Main) { message = context.getString(R.string.toast_no_speech) }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -254,7 +292,10 @@ fun TranscribeScreen(
                 // Cancellation can happen between file creation and the first UI
                 // publication. Such an unexposed empty store still has an owner.
                 if (store == null) withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { activeSession?.store?.dispose() }
-            } finally { running = false; power?.close() }
+            } finally {
+                try { withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { audioLease?.close() } }
+                finally { running = false; power?.close() }
+            }
         }
     }
 
@@ -286,6 +327,24 @@ fun TranscribeScreen(
                         Text(io.github.lrq3000.utterlane.ui.RecognitionStatusText.backlog(context, capture), style = MaterialTheme.typography.bodySmall)
                     }
                     message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (recoveryId != null && !running && !recoveredSuccessfully) {
+                        val audio = runCatching { UtterlaneApp.instance.microphoneRecordings.get(recoveryId) }.getOrNull()
+                        audio?.let {
+                            Text(stringResource(if (it.temporary) R.string.recording_temporary_available else R.string.recording_history_available),
+                                style = MaterialTheme.typography.bodySmall)
+                            if (attempt == 0) it.failureMessage?.let { details -> Text(details, style = MaterialTheme.typography.bodySmall) }
+                        }
+                        // Keep this immediately below the failure: one action goes
+                        // directly to model selection, and Back returns to this audio.
+                        Button(onClick = {
+                            context.startActivity(io.github.lrq3000.utterlane.settings.SettingsActivity.modelSelectionIntent(context))
+                        }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.recording_choose_model)) }
+                        TextButton(enabled = audio != null, onClick = {
+                            preserveResult = true
+                            preview = ""
+                            attempt++
+                        }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.recording_retry)) }
+                    }
                     if (preview.isNotEmpty()) {
                         SuccessContent(preview, onCopy = {
                             scope.launch {

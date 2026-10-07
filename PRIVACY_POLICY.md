@@ -1,6 +1,6 @@
 # Privacy Policy for Utterlane
 
-**Last updated:** October 6, 2026
+**Last updated:** October 7, 2026
 
 ## Overview
 
@@ -12,6 +12,7 @@ Utterlane is a voice-to-text application maintained by Stephen Karl Larroque tha
 
 - Audio and text are processed locally and are not automatically uploaded
 - Microphone audio is saved locally with one-hour history retention by default; you can disable history or change retention, and existing choices are preserved
+- Active microphone sessions use private disk-backed audio buffering, including with history disabled, so model loading or failure does not discard speech
 - Transcription uses temporary local text files for bounded-memory display, recovery, and export
 - No usage analytics or remote metrics reporting
 - No account required
@@ -42,6 +43,24 @@ only choosing a receiving app shares it. At most two export snapshots are kept,
 and they expire after one day; creating another export may remove the oldest.
 The receiving app controls any copy you share. An operation keeps its starting
 diagnostics preference, so a changed preference applies to subsequent operations.
+
+### Temporary microphone audio
+
+Capture starts independently of model loading. With recording history enabled,
+the history recording also supplies the transcription backlog. With **No history**,
+audio is buffered separately in the app's private, backup-excluded temporary
+storage and does not appear in recording history.
+
+Successful or cancelled live sessions delete their temporary audio. After a
+recognition failure, the audio remains available for the recovery flow: retry
+transcription or visit model settings and return without recording again. Closing
+the recovery screen deletes this temporary recording after any active reader
+finishes. Changing configuration or visiting Settings is not a discard. Abandoned
+temporary audio from a terminated process is cleaned up when the main app process
+next starts; Android can defer that cleanup until the app runs again. Retained
+history recordings continue to obey the user's retention and deletion choices.
+
+Recovery notifications contain no audio, transcript, or model-error details.
 
 ## Permissions
 
@@ -92,6 +111,7 @@ Utterlane processes and stores application data locally. Android may back up eli
 - User preferences stored locally
 - Word correction rules stored locally
 - Microphone history stored in private files and excluded from Android cloud backup and device transfer. Retention defaults to one hour and is configurable from No history to Forever; existing choices are preserved and imported/shared audio is not duplicated
+- No-history microphone buffers are stored separately in Android's no-backup directory and cleaned up as described under Temporary microphone audio
 - Successful delivered/dismissed transcripts are removed once active readers finish. Recoverable temporary transcripts expire after seven days, with best-effort scheduled and startup cleanup
 - User-requested audio and text export snapshots remain temporarily available for the receiving app and expire after one day. These copies are separate from recording-history retention
 - Android may defer background deletion while asleep or force-stopped. Active capture, playback, transcription, and export readers are protected from cleanup

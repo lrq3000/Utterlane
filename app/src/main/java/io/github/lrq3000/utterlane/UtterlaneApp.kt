@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import io.github.lrq3000.utterlane.history.RecordingHistory
+import io.github.lrq3000.utterlane.history.MicrophoneRecordings
 import io.github.lrq3000.utterlane.history.HistoryCleanupService
 import java.io.File
 import io.github.lrq3000.utterlane.asr.CacheArtifacts
@@ -64,6 +65,9 @@ class UtterlaneApp : Application() {
     lateinit var recordingHistory: RecordingHistory
         private set
 
+    lateinit var microphoneRecordings: MicrophoneRecordings
+        private set
+
     val serviceAlertNotification: ServiceAlertNotification by lazy {
         ServiceAlertNotification(this)
     }
@@ -93,6 +97,11 @@ class UtterlaneApp : Application() {
         modelWakeObserver = DeviceWakeObserver(this) { recognizerManager.recheckIdleTimeout() }
         transcribeManager = TranscribeManager(this)
         recordingHistory = RecordingHistory(File(filesDir, "microphone-history"))
+        microphoneRecordings = MicrophoneRecordings(recordingHistory, File(noBackupFilesDir, "microphone-temporary"))
+        applicationScope.launch(Dispatchers.IO) {
+            try { microphoneRecordings.initializeTemporaryStorage() }
+            catch (e: Exception) { Log.e(TAG, "Temporary audio cleanup failed", e) }
+        }
         createNotificationChannel()
 
         // Policy changes and recovery/pruning never scan storage on the UI thread.

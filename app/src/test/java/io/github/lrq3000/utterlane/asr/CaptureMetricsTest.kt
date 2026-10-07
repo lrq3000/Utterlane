@@ -5,6 +5,23 @@ import org.junit.Test
 import kotlinx.coroutines.runBlocking
 
 class CaptureMetricsTest {
+    @Test fun loadingAndFailureDoNotReplaceTheLiveCaptureState() {
+        val meter = CaptureMetrics()
+        meter.preparingModel()
+        meter.started()
+        meter.samples(shortArrayOf(1000), true)
+        assertEquals(CapturePhase.CAPTURING, meter.state.value.phase)
+        assertTrue(meter.state.value.modelLoading)
+        meter.recognitionFailed("load failed")
+        meter.samples(shortArrayOf(2000), true)
+        assertEquals(CapturePhase.CAPTURING, meter.state.value.phase)
+        assertFalse(meter.state.value.modelLoading)
+        assertEquals("load failed", meter.state.value.recognitionError)
+        assertEquals(2L, meter.state.value.capturedSamples)
+        meter.stopping(); meter.captureEnded(); meter.completed("load failed")
+        assertEquals(CapturePhase.FAILED, meter.state.value.phase)
+    }
+
     @Test fun waveformReflectsActualPcmAndSilenceClearsOnSignal() {
         var clock = 0L
         val meter = CaptureMetrics { clock }

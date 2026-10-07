@@ -45,14 +45,21 @@ fun HistorySettings() {
     val app = UtterlaneApp.instance
     val scope = rememberCoroutineScope()
     val retention by app.settingsRepository.historyRetention.collectAsStateWithLifecycle(initialValue = HistoryRetention.DEFAULT)
+    val pending by app.microphoneRecordings.pending.collectAsStateWithLifecycle()
     var choose by remember { mutableStateOf(false) }
     var browse by remember { mutableStateOf(false) }
     ListItem(headlineContent = { Text(stringResource(R.string.history_retention)) },
         supportingContent = { Text(stringResource(retention.label())) },
         trailingContent = { TextButton(onClick = { choose = true }) { Text(stringResource(R.string.history_change)) } })
     Text(stringResource(R.string.history_description), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(R.string.recording_temporary_description), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall)
     TextButton(onClick = { browse = true }, Modifier.padding(horizontal = 8.dp)) { Text(stringResource(R.string.history_title)) }
     TextButton(onClick = { io.github.lrq3000.utterlane.service.TranscriptRecovery.open(app) }, Modifier.padding(horizontal = 8.dp)) { Text(stringResource(R.string.stream_recover)) }
+    pending.forEachIndexed { index, id ->
+        TextButton(onClick = { io.github.lrq3000.utterlane.service.RecordingRecovery.open(app, id) }, Modifier.padding(horizontal = 8.dp)) {
+            Text(stringResource(R.string.recording_recover_item, index + 1))
+        }
+    }
     if (choose) AlertDialog(onDismissRequest = { choose = false }, title = { Text(stringResource(R.string.history_retention)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) { HistoryRetention.entries.forEach { option ->
             Row { RadioButton(selected = option == retention, onClick = { scope.launch { app.settingsRepository.setHistoryRetention(option) }; choose = false })

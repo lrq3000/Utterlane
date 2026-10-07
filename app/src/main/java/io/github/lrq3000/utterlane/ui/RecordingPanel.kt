@@ -126,7 +126,7 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         processing.visibility = if (capturing) View.GONE else View.VISIBLE
         waveform.levels = snapshot.waveform
         title.text = context.getString(when (snapshot.phase) {
-            CapturePhase.LOADING -> R.string.model_loading
+            CapturePhase.LOADING -> R.string.capture_starting
             CapturePhase.CAPTURING -> R.string.capture_listening
             CapturePhase.STOPPING -> R.string.capture_stopping
             CapturePhase.PROCESSING -> R.string.capture_processing
@@ -135,7 +135,12 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
             CapturePhase.CANCELLED -> R.string.stream_cancelled
         })
         details.text = if (showStatistics) snapshot.modelName + "\n" + RecognitionStatusText.backlog(context, snapshot) else snapshot.modelName
-        recognition.text = if (showStatistics) RecognitionStatusText.activity(context, snapshot.recognition) else ""
+        recognition.text = when {
+            snapshot.recognitionError != null && capturing -> context.getString(R.string.capture_recording_without_transcription)
+            snapshot.modelLoading -> context.getString(R.string.model_loading)
+            showStatistics -> RecognitionStatusText.activity(context, snapshot.recognition)
+            else -> ""
+        }
         recognition.visibility = if (recognition.text.isEmpty()) View.GONE else View.VISIBLE
         signal.visibility = if (capturing && snapshot.signal in listOf(CaptureSignal.LOW, CaptureSignal.NO_FRAMES, CaptureSignal.BLOCKED)) View.VISIBLE else View.GONE
         signal.text = context.getString(when (snapshot.signal) {

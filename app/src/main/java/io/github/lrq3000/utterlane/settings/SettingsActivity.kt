@@ -61,8 +61,14 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class SettingsActivity : LocalizedActivity() {
+    companion object {
+        private const val EXTRA_SELECT_MODEL = "select_recognition_model"
+        fun modelSelectionIntent(context: android.content.Context) = Intent(context, SettingsActivity::class.java)
+            .putExtra(EXTRA_SELECT_MODEL, true)
+    }
 
     private val refreshTrigger = mutableStateOf(0)
+    private val modelSelectionRequested = mutableStateOf(false)
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -126,6 +132,14 @@ class SettingsActivity : LocalizedActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        modelSelectionRequested.value = intent.getBooleanExtra(EXTRA_SELECT_MODEL, false)
+        if (modelSelectionRequested.value) {
+            // Recovery is an explicit navigation request, even on a device whose
+            // first model could not be installed/loaded during onboarding.
+            showSettings()
+            return
+        }
+
         lifecycleScope.launch {
             val app = UtterlaneApp.instance
             app.modelManager.initializeSelection()
@@ -174,7 +188,12 @@ class SettingsActivity : LocalizedActivity() {
                         modelFolderPickerLauncher.launch(null)
                     },
                     isVoiceImeEnabled = { isVoiceImeEnabled() },
-                    onOpenInputMethodSettings = { openInputMethodSettings() }
+                    onOpenInputMethodSettings = { openInputMethodSettings() },
+                    openModelSelection = modelSelectionRequested.value,
+                    onModelSelectionOpened = {
+                        modelSelectionRequested.value = false
+                        intent.removeExtra(EXTRA_SELECT_MODEL)
+                    }
                 )
             }
         }
@@ -218,6 +237,12 @@ class SettingsActivity : LocalizedActivity() {
             // Dismiss the boot notification now that services are started
             app.serviceAlertNotification.dismiss()
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        modelSelectionRequested.value = intent.getBooleanExtra(EXTRA_SELECT_MODEL, false)
     }
 
     private fun requestMicPermission() {
@@ -347,7 +372,9 @@ fun SettingsScreen(
     onPickFolder: ((String) -> Unit) -> Unit,
     onPickModelFolder: ((Uri) -> Unit) -> Unit,
     isVoiceImeEnabled: () -> Boolean,
-    onOpenInputMethodSettings: () -> Unit
+    onOpenInputMethodSettings: () -> Unit,
+    openModelSelection: Boolean = false,
+    onModelSelectionOpened: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -377,6 +404,8 @@ fun SettingsScreen(
     val monitoredFolders by settingsRepository.monitoredFolders.collectAsStateWithLifecycle(initialValue = emptySet())
     val floatingButtonSize by settingsRepository.floatingButtonSize.collectAsStateWithLifecycle(initialValue = SettingsRepository.BUTTON_SIZE_MEDIUM)
     val transcribeManager = UtterlaneApp.instance.transcribeManager
+    val scrollState = rememberScrollState()
+    LaunchedEffect(openModelSelection) { if (openModelSelection) scrollState.scrollTo(0) }
 
     val hasMicPermission = remember { mutableStateOf(false) }
     val hasOverlayPermission = remember { mutableStateOf(false) }
@@ -409,12 +438,12 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(vertical = 8.dp)
         ) {
             // Speech Model (required for all voice input)
             SettingsSection(title = stringResource(R.string.section_speech_model)) {
-                ModelSelector()
+                ModelSelector(openModelSelection, onModelSelectionOpened)
                 ModelSettingItem(
                     isCustom = selectedModel.isCustom,
                     modelName = selectedModel.name,

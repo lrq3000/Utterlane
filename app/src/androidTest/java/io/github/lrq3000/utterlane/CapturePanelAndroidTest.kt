@@ -17,6 +17,33 @@ import android.widget.TextView
 
 @RunWith(AndroidJUnit4::class)
 class CapturePanelAndroidTest {
+    @Test fun loadingAndRecognitionFailureKeepTheMicrophoneControlsLive(): Unit = runBlocking {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val app = instrumentation.targetContext.applicationContext as UtterlaneApp
+        val previous = app.settingsRepository.showTranscriptionStreamStatistics.first()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        val metrics = CaptureMetrics()
+        lateinit var panel: RecordingPanel
+        instrumentation.runOnMainSync { panel = RecordingPanel(app, {}, {}) }
+        try {
+            app.settingsRepository.setShowTranscriptionStreamStatistics(false)
+            instrumentation.runOnMainSync { panel.bind(scope, metrics.state) }
+            metrics.preparingModel(); metrics.started(); metrics.samples(shortArrayOf(5000), true)
+            awaitPanel { texts(panel).any { it.visibility == View.VISIBLE && it.text.toString() == app.getString(R.string.model_loading) } }
+            instrumentation.runOnMainSync {
+                assertEquals(View.VISIBLE, panel.findViewById<View>(R.id.recording_done).visibility)
+                assertTrue(panel.findViewById<View>(R.id.recording_done).isEnabled)
+                assertTrue(texts(panel).any { it.text.toString() == app.getString(R.string.capture_listening) })
+            }
+            metrics.recognitionFailed("injected load failure")
+            awaitPanel { texts(panel).any { it.text.toString() == app.getString(R.string.capture_recording_without_transcription) } }
+            instrumentation.runOnMainSync { assertTrue(panel.findViewById<View>(R.id.recording_done).isEnabled) }
+        } finally {
+            instrumentation.runOnMainSync { panel.release() }; scope.cancel()
+            app.settingsRepository.setShowTranscriptionStreamStatistics(previous)
+        }
+    }
+
     @Test fun initialPanelDoesNotShowStreamStatistics() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp

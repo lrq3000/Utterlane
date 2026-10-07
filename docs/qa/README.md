@@ -4,6 +4,9 @@ Current application/test identity:
 `io.github.lrq3000.utterlane` / `io.github.lrq3000.utterlane.test`.
 First-party test classes live under `io.github.lrq3000.utterlane`.
 
+See [parallel microphone capture verification](parallel-capture.md) for recording
+during model loading, failure survival, temporary audio, and model-switch recovery.
+
 The dated investigation reports in this folder describe actual historical runs
 against their recorded commits. Old package names or local workspace paths in
 those reports are evidence of the tested build, not current setup instructions.

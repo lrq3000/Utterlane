@@ -216,15 +216,36 @@ Pauses, the selected model, and device speed affect how soon results appear.
 The recording panel provides a waveform, low/no-signal feedback, processing
 progress, and an estimated remaining time after stopping.
 
+Recording starts while the selected model loads in the background. **Listening**
+and **Loading model** can appear together; the waveform and Stop control remain
+active. If recognition fails, capture continues and the panel explains that audio
+is still recording. Stop ends capture; any remaining model preparation and audio
+backlog then finish processing.
+
+If model loading failed, the recovery screen appears after recording ends.
+**Choose another model** opens Settings directly at model selection, where you can
+choose a smaller compatible model. Return to the recovery screen and use **Retry
+transcription** on the same audio. Retry results are shown for copying/sharing,
+instead of being inserted again into a possibly changed text field. Pending audio
+recovery is also available from recording-history settings and a notification.
+
 Microphone history defaults to **one-hour retention**, so saved audio is available
 for recovery, replay, sharing, or retranscription. You can delete recordings,
 disable history, or change retention from one hour to forever. Existing retention
 choices, including disabled history, are preserved. Recordings use approximately **115 MB per hour**.
 Android can delay background cleanup while asleep or force-stopped.
 
-If your device cannot keep up with recognition while history is disabled,
-recording stops visibly and accepted audio finishes processing. With history
-enabled, saved audio also lets processing catch up with the recording.
+Audio uses a disk-backed backlog with bounded RAM, so slow or failed recognition
+does not exhaust the capture queue. With **No history**, this is private temporary
+audio, not a retained history entry. Successful or cancelled live sessions delete
+it. Failed recordings remain available while you retry or visit model settings;
+closing the recovery screen deletes the temporary audio. Abandoned temporary
+audio is cleaned up on the next main app process start.
+
+A real microphone/storage failure can still stop capture. The app reports that
+failure and preserves the successfully written audio; a full capture-to-disk queue
+stops visibly and drains its accepted blocks, including the block that reached the
+limit. Model failure alone does not stop recording.
 
 Saved history is private to the app and excluded from Android cloud backup and
 device transfer. Exports and clipboard transfers give data to their receiving

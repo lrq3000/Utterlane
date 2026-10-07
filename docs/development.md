@@ -100,17 +100,34 @@ inference call. This is segment-by-segment output, not a promise of instantaneou
 word-by-word results. Latency depends on pauses, model, and device speed;
 recognition near segment boundaries can differ from a single whole-recording pass.
 
-With history disabled, microphone audio stays in bounded memory queues. If the
-device cannot keep up, recording stops visibly and accepted audio finishes
-processing. With history enabled, recordings also provide a disk-backed backlog.
+`MicrophonePipeline` separates capture, a bounded capture-to-writer queue, and an
+independent recognition consumer. Model preparation is inside the consumer;
+neither it nor inference failure cancels capture. The writer publishes successful
+sample offsets through a conflated state flow, and recognition reads bounded
+blocks from that watermark. Stop ends capture and drains the writer before final
+completion; cancellation releases every component. Queue overflow retains the
+already-read triggering block while capture stops, so the writer can drain it.
+
+`MicrophoneRecordings` reuses the history WAV implementation for both retained
+recordings and a separate no-backup temporary repository when history is disabled.
+Successful/cancelled temporary sessions are deleted; failed recordings transfer
+to app-owned recovery. Reader leases protect retries during disposal. Pending
+retained-history recovery releases its owner lease so retention/explicit deletion
+still apply. Temporary initialization and abandoned-file cleanup share a single
+lazy boundary, preventing startup cleanup from racing a new recording.
+
+All microphone entry points use the same factory recovery handoff. After Stop,
+the existing transcription activity offers retry and a model-selector Settings
+intent. Background restrictions are covered by a content-free notification and a
+Settings recovery action. Retry does not reuse an old editor insertion target.
 Optional audio history is approximately **115 MB per hour**, split into hourly
 PCM16 WAV parts. Retention ranges from one hour to forever; Android can delay
 background cleanup while asleep or force-stopped.
 
-Long-session handling uses bounded audio queues, chunked decoding, cancellation,
+Long-session handling uses bounded working memory, chunked decoding, cancellation,
 and recoverable completed transcripts. Temporary text files support long
-transcripts and recovery. See the [privacy policy](../PRIVACY_POLICY.md) for data
-retention details.
+transcripts and recovery. See the [privacy policy](../PRIVACY_POLICY.md) for audio
+buffering and data-retention details.
 
 ### Model lifecycle
 
