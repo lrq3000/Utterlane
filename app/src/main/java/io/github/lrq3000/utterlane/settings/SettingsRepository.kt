@@ -113,7 +113,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             ?: HistoryRetention.fromKey(it[HISTORY_RETENTION_KEY]).takeUnless { value -> value == HistoryRetention.NONE }
             ?: HistoryRetention.HOUR
     }
-    val transcriptHistoryEnabled: Flow<Boolean> = dataStore.data.map { it[TRANSCRIPT_HISTORY_ENABLED_KEY] ?: false }
+    val transcriptHistoryEnabled: Flow<Boolean> = dataStore.data.map { it[TRANSCRIPT_HISTORY_ENABLED_KEY] ?: true }
     val transcriptHistoryRetention: Flow<HistoryRetention> = dataStore.data.map {
         it[TRANSCRIPT_HISTORY_RETENTION_KEY]?.let(HistoryRetention::fromKey) ?: HistoryRetention.DAY
     }

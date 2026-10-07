@@ -14,7 +14,8 @@ limits, and the branch's incremental commits for milestone boundaries.
   preserves unfinished sessions; persist deletion intent so a crash during
   deletion cannot resurrect discarded input. Never delete a sender's source file.
 - Audio and transcript histories have independent automatic-save switches and
-  retention durations. Transcript history defaults off, duration 24 hours. Migrate
+  retention durations. Transcript history defaults on, duration 24 hours (updated
+  by the maintainer's subsequent defaults request; explicit opt-outs survive). Migrate
   existing No history to audio auto-save off, preserving normal saved durations.
 - Manual saves are pinned forever. Outline/filled pin controls exist in both
   histories. Unpin resets the retention timestamp without changing creation time.

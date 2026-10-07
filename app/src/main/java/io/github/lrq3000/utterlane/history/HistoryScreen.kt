@@ -50,7 +50,7 @@ fun HistorySettings() {
     val scope = rememberCoroutineScope()
     val audioEnabled by settings.audioHistoryEnabled.collectAsStateWithLifecycle(initialValue = true)
     val audioRetention by settings.audioHistoryRetention.collectAsStateWithLifecycle(initialValue = HistoryRetention.HOUR)
-    val textEnabled by settings.transcriptHistoryEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val textEnabled by settings.transcriptHistoryEnabled.collectAsStateWithLifecycle(initialValue = true)
     val textRetention by settings.transcriptHistoryRetention.collectAsStateWithLifecycle(initialValue = HistoryRetention.DAY)
     var browse by remember { mutableStateOf<Boolean?>(null) }
     HistoryPolicySetting(stringResource(R.string.history_auto_audio), audioEnabled, audioRetention,

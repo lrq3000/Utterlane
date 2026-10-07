@@ -226,9 +226,10 @@ Under **Audio and transcript histories**, configure the two histories independen
 
 - **Automatically save microphone audio:** on by default, with one-hour retention.
   Existing automatic-history opt-outs are preserved.
-- **Automatically save completed transcripts:** off by default, with **24-hour**
+- **Automatically save completed transcripts:** on by default, with **24-hour**
   retention selected. Every completed re-transcription creates a new text entry,
   even when the audio and model are unchanged. Earlier results are not overwritten.
+  An explicitly saved opt-out remains off after an update.
 - **Delete unpinned entries after:** a separate duration for each history, ranging
   from Immediate to Forever. Turning automatic saving off does not prevent manual saves.
 

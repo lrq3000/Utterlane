@@ -12,7 +12,7 @@ Utterlane is a voice-to-text application maintained by Stephen Karl Larroque tha
 
 - Audio and text are processed locally and are not automatically uploaded
 - Microphone audio is buffered in private local files during processing, including when automatic audio history is disabled. Automatic microphone history defaults to one-hour retention; audio and transcript history settings are independent
-- Transcript history is off by default, with 24-hour retention selected when enabled. Each completed transcription attempt is a separate text entry; deleting or expiring audio does not delete its saved transcripts
+- Transcript history is on by default, with 24-hour retention. An explicitly saved opt-out is preserved. Each completed transcription attempt is a separate text entry; deleting or expiring audio does not delete its saved transcripts
 - Transcription uses temporary local text files for bounded-memory display, recovery, and export. Explicit dismissal discards temporary work; unexpected interruption preserves it for recovery
 - No usage analytics or remote metrics reporting
 - No account required
