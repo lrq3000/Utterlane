@@ -334,7 +334,7 @@
     <string name="recording_processing_unavailable">Recognition unavailable — saved audio is available for retry</string>
     <string name="recording_model_loading_saved">Model loading — waiting to process saved audio</string>
     <string name="dialog_recovery_info">This recording was interrupted. You can listen, retry transcription, save it, or discard it.</string>
-    <string name="dialog_importing">Preparing a private audio working copy…</string>
+    <string name="dialog_importing">Preparing the local transcription session…</string>
     <string name="dialog_closing">Finishing cleanup…</string>
     <string name="dialog_saving">Saving…</string>
     <string name="dialog_audio_action_done">Saved successfully.</string>

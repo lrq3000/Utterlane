@@ -121,7 +121,9 @@ class AudioPlaybackController(private val app: UtterlaneApp) {
             candidate.setOnPreparedListener {
                 if (player !== candidate) return@setOnPreparedListener
                 prepared = true
-                val duration = if (entry?.sourceName != null) candidate.duration.toLong().coerceAtLeast(entry!!.durationMs) else timeline!!.durationMs
+                // Import metadata can be an estimate (for example VBR audio).
+                // Once prepared, a positive native duration is authoritative.
+                val duration = if (entry?.sourceName != null) candidate.duration.toLong().takeIf { it > 0 } ?: entry!!.durationMs else timeline!!.durationMs
                 if (duration > 0 && entry?.sourceName != null) timeline = AudioTimeline(duration)
                 mutable.value = mutable.value.copy(durationMs = duration.coerceAtLeast(0), preparing = false)
                 val target = timeline!!.locate(requestedPosition)

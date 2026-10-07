@@ -110,3 +110,26 @@ the initial recovery-lifetime discussion in `recording-first-backpressure.md`.
   implementation at `fdee5c6`, with the approved retention and separate-text semantics.
 - Screenshots wait for semantic assertions and a short compositor settling interval;
   no behavioral assertion relies on that screenshot-only delay.
+- A final player regression reproduced an overestimated import duration (9 seconds
+  of metadata for a real 4-second WAV). A positive prepared-player duration now
+  replaces that estimate. Nine targeted player/dialog tests passed after the fix;
+  **24 distinct targeted Android tests** passed across the focused batches.
+- Import initialization no longer simultaneously reports that audio is unavailable
+  or that recognition has already started; its progress label describes preparation.
+
+## Final reproduction
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest "-PqaApplicationIdSuffix=.recordingfirst" "-Pkotlin.compiler.execution.strategy=in-process" --console=plain -q --offline
+adb -s emulator-5554 install -r "app/build/outputs/apk/debug/app-debug.apk"
+adb -s emulator-5554 install -r "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+adb -s emulator-5554 shell am instrument -w -e onboardingTimeoutSeconds 15 -e class io.github.lrq3000.utterlane.RecordingFirstAndroidTest,io.github.lrq3000.utterlane.CapturePanelAndroidTest,io.github.lrq3000.utterlane.TranscriptionDialogAndroidTest,io.github.lrq3000.utterlane.HistoryPinsAndroidTest,io.github.lrq3000.utterlane.AudioPlaybackAndroidTest,io.github.lrq3000.utterlane.RecordingSettingsAndroidTest io.github.lrq3000.utterlane.recordingfirst.test/androidx.test.runner.AndroidJUnitRunner
+adb -s emulator-5554 shell am instrument -w -e class io.github.lrq3000.utterlane.NativeHistoryAndroidTest io.github.lrq3000.utterlane.recordingfirst.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+The native tests require the pinned Redux ternary GGUF already present at
+`/sdcard/Download/parakeet-qa/parakeet-redux-0.6b-TQ1_Q8_0.gguf`; tests never download
+weights. Native cases are also runnable individually to keep harness output bounded.
+New strings remain English fallback strings pending the repository's release-time
+translation batch. No release publication or physical-phone performance guarantee
+is part of this verification.

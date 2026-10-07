@@ -22,6 +22,21 @@ class AudioPlaybackAndroidTest {
         return app.recordingHistory.get(audio.entry.id)
     }
 
+    @Test fun preparedDurationOverridesAnOverestimatedImportedDuration() = runBlocking {
+        val raw = fixture()
+        val imported = raw.part(0).inputStream().use { app.recordingHistory.importAudio(it, "wav", "audio/wav", 9000) }
+        app.recordingHistory.delete(raw.id)
+        val activity = instrumentation.startActivitySync(RecordingRecovery.intent(app, imported.id))
+        try {
+            instrumentation.runOnMainSync { app.audioPlayback.play("duration-check", imported.id) }
+            val ready = withTimeout(10000) { app.audioPlayback.state.first { it.playing } }
+            assertTrue("Seek timeline must use the prepared audio duration, not the import estimate: ${ready.durationMs}", ready.durationMs in 3900..4100)
+        } finally {
+            instrumentation.runOnMainSync { app.audioPlayback.stop("duration-check"); activity.finish() }
+            app.recordingHistory.delete(imported.id)
+        }
+    }
+
     @Test fun dialogExpandsPlaybackAndSeeksWhilePausedThenCollapsesOnStop() = runBlocking {
         ui.prepare()
         val entry = fixture()

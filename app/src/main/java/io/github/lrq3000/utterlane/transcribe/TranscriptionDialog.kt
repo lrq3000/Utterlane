@@ -65,13 +65,13 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                         Text(stringResource(R.string.transcribe_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                         IconButton(onClick = onClose, enabled = !state.closing) { Icon(Icons.Default.Close, stringResource(R.string.transcribe_close)) }
                     }
-                    if (state.importing) Text(stringResource(R.string.dialog_importing))
                     if (state.running || state.importing || state.saving || state.closing) {
                         if (state.progress == null || !state.running) LinearProgressIndicator(Modifier.fillMaxWidth())
                         else LinearProgressIndicator(progress = { state.progress!! / 100f }, modifier = Modifier.fillMaxWidth())
                         Text(stringResource(when {
                             state.closing -> R.string.dialog_closing
                             state.saving -> R.string.dialog_saving
+                            state.importing -> R.string.dialog_importing
                             else -> R.string.transcribe_transcribing
                         }))
                     }
@@ -80,7 +80,7 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                         Text(io.github.lrq3000.utterlane.ui.RecognitionStatusText.backlog(context, state.capture), style = MaterialTheme.typography.bodySmall)
                     }
                     state.message?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    Text(stringResource(when {
+                    if (!state.importing) Text(stringResource(when {
                         state.audio == null -> R.string.dialog_audio_unavailable
                         state.audio!!.pinned -> R.string.history_pinned
                         state.audio!!.temporary -> R.string.dialog_temporary_info
