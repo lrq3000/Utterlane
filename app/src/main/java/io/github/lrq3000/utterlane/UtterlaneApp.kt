@@ -98,7 +98,10 @@ class UtterlaneApp : Application() {
         // Policy changes and recovery/pruning never scan storage on the UI thread.
         applicationScope.launch(Dispatchers.IO) {
             settingsRepository.historyRetention.collect { retention ->
-                try { recordingHistory.prune(retention) }
+                try {
+                    recordingHistory.prune(retention)
+                    if (recordingHistory.recoveryCount() > 0) io.github.lrq3000.utterlane.history.RecordingRecovery.show(this@UtterlaneApp)
+                }
                 catch (e: Exception) { Log.e(TAG, "History cleanup failed", e) }
             }
         }

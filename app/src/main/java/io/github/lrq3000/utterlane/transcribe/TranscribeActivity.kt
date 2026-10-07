@@ -136,6 +136,8 @@ fun TranscribeScreen(
     var store by remember { mutableStateOf<TranscriptStore?>(null) }
     var preview by remember { mutableStateOf("") }
     var progress by remember { mutableStateOf<Int?>(null) }
+    val previewUpdates = remember { kotlinx.coroutines.flow.MutableStateFlow("") }
+    val progressUpdates = remember { kotlinx.coroutines.flow.MutableStateFlow<Int?>(null) }
     var running by remember { mutableStateOf(true) }
     var message by remember { mutableStateOf<String?>(null) }
     var pageOffset by remember { mutableStateOf<Long?>(null) }
@@ -145,6 +147,21 @@ fun TranscribeScreen(
     val capture by captureMetrics.state.collectAsState()
     val showStreamStatistics by UtterlaneApp.instance.settingsRepository.showTranscriptionStreamStatistics.collectAsStateWithLifecycle(initialValue = false)
     val manager = remember { UtterlaneApp.instance.recognizerManager }
+    val visualRate by UtterlaneApp.instance.settingsRepository.visualRefreshRate.collectAsStateWithLifecycle(initialValue = 10)
+    // One presentation owner samples the latest values. File decoding can race
+    // ahead without creating a coroutine per obsolete percentage or preview.
+    LaunchedEffect(visualRate, running) {
+        captureMetrics.setVisualRefreshRate(visualRate)
+        if (transcriptPath == null) {
+            do {
+                progress = progressUpdates.value
+                if (pageOffset == null) preview = previewUpdates.value
+                captureMetrics.tick()
+                if (!running) break
+                kotlinx.coroutines.delay(1000L / visualRate)
+            } while (true)
+        }
+    }
     LaunchedEffect(manager, running) {
         if (running && transcriptPath == null) manager.activity.collect {
             if (it.active || captureMetrics.state.value.recognition.active) captureMetrics.recognition(it)
@@ -203,37 +220,41 @@ fun TranscribeScreen(
                 check(app.modelManager.isModelReady()) { context.getString(R.string.transcribe_error_no_model) }
                 var session: io.github.lrq3000.utterlane.asr.TranscriptionSession? = null
                 session = app.recognizerManager.createSession(options, onProcessed = captureMetrics::processed) {
-                    val tail = session!!.store.preview()
-                    withContext(Dispatchers.Main) { if (pageOffset == null) preview = tail }
+                    previewUpdates.value = session!!.store.preview()
                 }
+                captureMetrics.preparing(false)
                 activeSession = session
                 withContext(Dispatchers.Main) { store = session.store }
                 val decoder = AudioDecoder(app)
                 // Decoder completion is not transcript finalization (speaker/ASR tail may remain).
-                val onProgress: (Int?) -> Unit = { value -> scope.launch { progress = value?.coerceIn(0, 99) } }
+                val onProgress: (Int?) -> Unit = { value -> progressUpdates.value = value?.coerceIn(0, 99) }
                 val accept: suspend (ShortArray) -> Unit = { samples ->
                     captureMetrics.captured(samples.size)
                     session.accept(samples)
                 }
                 if (historyId != null) {
-                    app.recordingHistory.acquire(historyId).use {
+                    app.recordingHistory.openReader(historyId).use { reader ->
                         val entry = app.recordingHistory.get(historyId)
-                        var offset = 0L
-                        while (offset < entry.samples) {
+                        while (reader.offset < entry.samples) {
                             kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                            val samples = app.recordingHistory.read(historyId, offset, 3200)
+                            val samples = reader.read()
+                            check(samples.isNotEmpty()) { "Recording became unavailable" }
                             accept(samples)
-                            offset += samples.size
-                            onProgress((offset * 100 / entry.samples).toInt())
+                            onProgress((reader.offset * 100 / entry.samples).toInt())
                         }
                         session.finish()
+                        app.recordingHistory.completeRecovery(historyId, app.settingsRepository.historyRetention.first())
                     }
                 } else if (filePath != null) decoder.decode(filePath, accept, onProgress)
                 else decoder.decode(audioUri!!, accept, onProgress)
                 captureMetrics.captureEnded()
                 session.finish()
                 captureMetrics.completed(null)
-                withContext(Dispatchers.Main) { progress = 100 }
+                progressUpdates.value = 100
+                withContext(Dispatchers.Main) {
+                    progress = 100
+                    if (pageOffset == null) preview = previewUpdates.value
+                }
                 if (session.store.segments == 0) withContext(Dispatchers.Main) { message = context.getString(R.string.toast_no_speech) }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -286,6 +307,11 @@ fun TranscribeScreen(
                         Text(io.github.lrq3000.utterlane.ui.RecognitionStatusText.backlog(context, capture), style = MaterialTheme.typography.bodySmall)
                     }
                     message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (message != null && historyId != null) {
+                        TextButton(onClick = { io.github.lrq3000.utterlane.history.RecordingRecovery.openModels(context) }) {
+                            Text(stringResource(R.string.recording_choose_model))
+                        }
+                    }
                     if (preview.isNotEmpty()) {
                         SuccessContent(preview, onCopy = {
                             scope.launch {

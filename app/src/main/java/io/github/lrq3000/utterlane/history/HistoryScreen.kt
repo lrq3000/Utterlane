@@ -47,11 +47,19 @@ fun HistorySettings() {
     val retention by app.settingsRepository.historyRetention.collectAsStateWithLifecycle(initialValue = HistoryRetention.DEFAULT)
     var choose by remember { mutableStateOf(false) }
     var browse by remember { mutableStateOf(false) }
+    val revision by app.recordingHistory.revision.collectAsStateWithLifecycle()
+    var recoveryCount by remember { mutableStateOf(0) }
+    LaunchedEffect(revision) {
+        recoveryCount = withContext(Dispatchers.IO) { app.recordingHistory.recoveryCount() }
+    }
     ListItem(headlineContent = { Text(stringResource(R.string.history_retention)) },
         supportingContent = { Text(stringResource(retention.label())) },
         trailingContent = { TextButton(onClick = { choose = true }) { Text(stringResource(R.string.history_change)) } })
     Text(stringResource(R.string.history_description), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall)
     TextButton(onClick = { browse = true }, Modifier.padding(horizontal = 8.dp)) { Text(stringResource(R.string.history_title)) }
+    if (recoveryCount > 0) TextButton(onClick = { browse = true }) {
+        Text(stringResource(R.string.recording_recovery_count, recoveryCount))
+    }
     TextButton(onClick = { io.github.lrq3000.utterlane.service.TranscriptRecovery.open(app) }, Modifier.padding(horizontal = 8.dp)) { Text(stringResource(R.string.stream_recover)) }
     if (choose) AlertDialog(onDismissRequest = { choose = false }, title = { Text(stringResource(R.string.history_retention)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) { HistoryRetention.entries.forEach { option ->
@@ -68,13 +76,14 @@ fun HistoryDialog(onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     val history = app.recordingHistory
     val retention by app.settingsRepository.historyRetention.collectAsStateWithLifecycle(initialValue = HistoryRetention.DEFAULT)
+    val revision by history.revision.collectAsStateWithLifecycle()
     var entries by remember { mutableStateOf(emptyList<HistoryEntry>()) }
     var page by remember { mutableStateOf(0) }
     var refresh by remember { mutableStateOf(0) }
     var message by remember { mutableStateOf<String?>(null) }
     val playback = remember { HistoryPlayback(context, history) { message = it } }
     DisposableEffect(Unit) { onDispose { playback.stop() } }
-    LaunchedEffect(page, refresh, retention) {
+    LaunchedEffect(page, refresh, retention, revision) {
         try {
             entries = withContext(Dispatchers.IO) {
                 // Compose's initial value is presentation-only. Never use the
@@ -89,6 +98,8 @@ fun HistoryDialog(onDismiss: () -> Unit) {
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.history_title)) },
         text = {
             Column {
+                Text(stringResource(R.string.recording_recovery_explanation))
+                TextButton(onClick = { RecordingRecovery.openModels(context) }) { Text(stringResource(R.string.recording_choose_model)) }
                 message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (entries.isEmpty()) Text(stringResource(R.string.history_empty))
                 LazyColumn(Modifier.heightIn(max = 420.dp)) {
@@ -99,6 +110,7 @@ fun HistoryDialog(onDismiss: () -> Unit) {
                             Text(DateFormat.getDateTimeInstance().format(Date(entry.started)))
                             Text(stringResource(R.string.history_duration, entry.seconds))
                             Text(stringResource(when (entry.status) { "saved" -> R.string.history_saved; "failed" -> R.string.history_failed; else -> R.string.history_interrupted }))
+                            if (entry.needsRecovery) Text(stringResource(R.string.recording_recovery_pending))
                             Row {
                                 TextButton(onClick = { playback.play(entry) }) { Text(stringResource(R.string.history_play)) }
                                 TextButton(onClick = {

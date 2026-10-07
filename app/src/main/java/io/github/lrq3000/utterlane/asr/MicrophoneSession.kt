@@ -6,8 +6,6 @@ import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.history.RecordingHistory
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
 import java.io.Closeable
@@ -52,8 +50,8 @@ class MicrophoneSession(
             var activityObserver: Job? = null
             var diagnosticObserver: Job? = null
             var captureDiagnostics: io.github.lrq3000.utterlane.diagnostics.CaptureDiagnosticSession? = null
-            val captureFailure = java.util.concurrent.atomic.AtomicReference<SessionFailure?>(null)
-            val historyWriteFailed = java.util.concurrent.atomic.AtomicBoolean(false)
+            var ticker: Job? = null
+            var visualOptionsObserver: Job? = null
             try {
                 power = TranscriptionPower(context) { recorder.resumeAfterSleep() }
                 val app = UtterlaneApp.instance
@@ -66,121 +64,76 @@ class MicrophoneSession(
                 // Capture, queue and every wake reopen retain one immutable snapshot.
                 // Preferences changed during recording take effect only next session.
                 val captureOptions = app.settingsRepository.runtimeOptions.first()
+                metrics.setVisualRefreshRate(app.settingsRepository.visualRefreshRate.first())
+                visualOptionsObserver = launch { app.settingsRepository.visualRefreshRate.collect { metrics.setVisualRefreshRate(it) } }
                 captureDiagnostics = app.recognitionDiagnostics.capture(captureOptions)
                 diagnosticObserver = launch { metrics.state.collect { captureDiagnostics.record(it) } }
                 metrics.model(app.modelManager.selected.value.name)
-                session = app.recognizerManager.createSession(captureOptions, onProcessed = { end, ms -> metrics.processed(end, ms) }) { delta ->
-                    if (!cancelled) withContext(Dispatchers.Main) { onText(delta, session!!.store) }
-                }
-                phase = SessionFailure.Kind.INFERENCE
-                metrics.model(app.modelManager.selected.value.name)
+                metrics.preparing(true)
                 val retention = app.settingsRepository.historyRetention.first()
-                try {
-                    recording = app.recordingHistory.begin(retention)
-                    recording?.let { lease = app.recordingHistory.acquire(it.entry.id) }
-                } catch (e: Exception) {
-                    val warning = context.getString(R.string.history_save_failed, e.message ?: "Storage error")
-                    Log.e("MicrophoneSession", warning, e)
-                    withContext(Dispatchers.Main) { onWarning(warning) }
-                }
-                val queue = BoundedAudioQueue(captureOptions)
-                coroutineScope {
-                    val ticker = launch { while (isActive) { metrics.tick(); delay(200) } }
-                    val capture = launch(Dispatchers.IO) {
-                        try {
-                            val captureContext = currentCoroutineContext()
-                            withContext(Dispatchers.Main) { if (!cancelled) onReady() }
-                            recorder.setObserver(object : CaptureObserver {
-                                override fun onStarted() { metrics.started() }
-                                override fun onSilenced(silenced: Boolean) { metrics.silenced(silenced) }
-                            })
-                            recorder.startRecording(captureOptions, { samples ->
-                                val accepted = queue.offer(samples)
-                                metrics.samples(samples, accepted)
-                                if (!accepted) {
-                                    captureFailure.compareAndSet(null, SessionFailure(SessionFailure.Kind.CAPACITY, context.getString(R.string.stream_overload)))
-                                    recorder.stop()
-                                }
-                            }, { captureContext.isActive })
-                        } catch (e: CancellationException) { throw e
-                        } catch (e: Exception) {
-                            Log.e("MicrophoneSession", "Capture failed", e)
-                            captureFailure.compareAndSet(null, SessionFailure(SessionFailure.Kind.AUDIO, e.message ?: context.getString(R.string.toast_recording_error)))
-                        } finally {
-                            queue.close()
-                            metrics.captureEnded()
-                            withContext(NonCancellable + Dispatchers.Main) { if (!cancelled) onCaptureEnded() }
-                        }
+                phase = SessionFailure.Kind.AUDIO
+                // This minimal private-storage setup precedes capture; model
+                // verification/loading/warm-up do not. The file is also the
+                // processing backlog when completed-recording history is off.
+                val saved = app.recordingHistory.begin(retention)
+                recording = saved
+                lease = app.recordingHistory.acquire(saved.entry.id)
+                recorder.setObserver(object : CaptureObserver {
+                    override fun onStarted() {
+                        metrics.started()
+                        launch(Dispatchers.Main) { if (!cancelled) onReady() }
                     }
-                    val saved = recording
-                    if (saved == null) {
-                        for (samples in queue.blocks) session.accept(samples)
-                    } else {
-                        data class Published(val length: Long, val done: Boolean = false, val failed: Boolean = false)
-                        val published = MutableStateFlow(Published(0))
-                        val recovery = Channel<ShortArray>(Channel.RENDEZVOUS)
-                        val writer = launch(Dispatchers.IO) {
-                            var writeFailed = false
-                            try {
-                                for (samples in queue.blocks) {
-                                    if (writeFailed) { recovery.send(samples); continue }
-                                    val before = saved.writtenSamples
-                                    try {
-                                        saved.append(samples)
-                                        published.value = Published(saved.writtenSamples)
-                                    } catch (e: Exception) {
-                                        writeFailed = true
-                                        historyWriteFailed.set(true)
-                                        val warning = context.getString(R.string.history_save_failed, e.message ?: "Storage error")
-                                        Log.e("MicrophoneSession", warning, e)
-                                        published.value = Published(saved.writtenSamples, failed = true)
-                                        withContext(Dispatchers.Main) { if (!cancelled) onWarning(warning) }
-                                        // History is optional. Continue through the same bounded
-                                        // live queue; only genuine backlog overflow stops capture.
-                                        // Any prefix already published belongs to the disk reader.
-                                        val written = (saved.writtenSamples - before).toInt()
-                                        if (written < samples.size) recovery.send(samples.copyOfRange(written, samples.size))
-                                    }
-                                }
-                            } finally {
-                                published.value = Published(saved.writtenSamples, done = true, failed = writeFailed)
-                                recovery.close()
-                            }
+                    override fun onSilenced(silenced: Boolean) { metrics.silenced(silenced) }
+                })
+                ticker = launch { while (isActive) { metrics.tick(); delay(50) } }
+                val result = RecordingPipeline(recorder, app.recordingHistory, saved, captureOptions).run(
+                    prepare = {
+                        phase = SessionFailure.Kind.MODEL
+                        session = app.recognizerManager.createSession(captureOptions, onProcessed = metrics::processed) { delta ->
+                            if (!cancelled) withContext(Dispatchers.Main) { onText(delta, session!!.store) }
                         }
-                        var offset = 0L
-                        while (true) {
-                            currentCoroutineContext().ensureActive()
-                            val snapshot = published.value
-                            if (offset < snapshot.length) {
-                                val samples = app.recordingHistory.read(saved.entry.id, offset, minOf(3200L, snapshot.length - offset).toInt())
-                                session.accept(samples)
-                                offset += samples.size
-                            } else if (snapshot.failed || snapshot.done) break
-                            else published.first { it.length > offset || it.done || it.failed }
-                        }
-                        // If writing failed, the bounded recovery channel lets accepted
-                        // blocks finish recognition without making another audio file.
-                        for (samples in recovery) session.accept(samples)
-                        writer.join()
-                    }
-                    capture.join()
-                    ticker.cancel()
+                        phase = SessionFailure.Kind.INFERENCE
+                        metrics.preparing(false)
+                        metrics.model(app.modelManager.selected.value.name)
+                    },
+                    accept = { checkNotNull(session).accept(it) },
+                    finish = { checkNotNull(session).finish() },
+                    onSamples = { metrics.samples(it, true) },
+                    onCaptureEnded = {
+                        metrics.captureEnded()
+                        withContext(Dispatchers.Main) { if (!cancelled) onCaptureEnded() }
+                    },
+                    onProcessingFailed = { error ->
+                        Log.e("MicrophoneSession", "Recognition failed; continuing audio capture", error)
+                        metrics.recognitionFailed(error.message ?: context.getString(R.string.transcribe_error_failed))
+                        session?.close()
+                    })
+                failure = when {
+                    result.storageError != null -> SessionFailure(SessionFailure.Kind.AUDIO,
+                        context.getString(R.string.history_save_failed, result.storageError.message ?: "Storage error"))
+                    result.captureError is RecordingPipeline.CaptureCapacityException ->
+                        SessionFailure(SessionFailure.Kind.CAPACITY, context.getString(R.string.stream_overload))
+                    result.captureError != null -> SessionFailure(SessionFailure.Kind.AUDIO,
+                        result.captureError.message ?: context.getString(R.string.toast_recording_error))
+                    result.processingError != null -> SessionFailure(phase,
+                        result.processingError.message ?: context.getString(R.string.transcribe_error_failed))
+                    else -> null
                 }
-                failure = captureFailure.get()
-                session.finish()
-                if (session.store.segments == 0 && failure == null) failure = SessionFailure(SessionFailure.Kind.NO_SPEECH, context.getString(R.string.toast_no_speech))
+                if (session?.store?.segments == 0 && failure == null) failure = SessionFailure(SessionFailure.Kind.NO_SPEECH, context.getString(R.string.toast_no_speech))
             } catch (e: CancellationException) { cancelled = true; throw e
             } catch (e: Exception) {
                 Log.e("MicrophoneSession", "Transcription failed", e)
                 failure = SessionFailure(phase, e.message ?: context.getString(R.string.transcribe_error_failed))
             } finally {
+                ticker?.cancel()
+                visualOptionsObserver?.cancel()
                 activityObserver?.cancel()
                 diagnosticObserver?.cancel()
                 try {
                     recorder.stop()
                     withContext(NonCancellable + Dispatchers.IO) {
                         session?.close()
-                        try { recording?.finish((failure != null && failure.kind != SessionFailure.Kind.NO_SPEECH) || cancelled || historyWriteFailed.get()) }
+                        try { recording?.finish((failure != null && failure.kind != SessionFailure.Kind.NO_SPEECH) || cancelled) }
                         catch (e: Exception) { Log.e("MicrophoneSession", "History finalization failed", e); finalizationWarning = context.getString(R.string.history_save_failed, e.message ?: "Storage error") }
                         finally {
                             try { lease?.close() }
@@ -190,6 +143,11 @@ class MicrophoneSession(
                         catch (e: Exception) { Log.e("MicrophoneSession", "History pruning failed", e) }
                     }
                     withContext(NonCancellable + Dispatchers.Main) {
+                        val originalFailure = failure
+                        recording?.takeIf { it.writtenSamples > 0 && (cancelled || (originalFailure != null && originalFailure.kind != SessionFailure.Kind.NO_SPEECH)) }?.let {
+                            io.github.lrq3000.utterlane.history.RecordingRecovery.show(context)
+                            failure = originalFailure?.copy(message = originalFailure.message + "\n" + context.getString(R.string.recording_recovery_saved))
+                        }
                         if (cancelled) metrics.cancelled() else metrics.completed(failure?.message)
                         captureDiagnostics?.record(metrics.state.value)
                         if (!cancelled) finalizationWarning?.let { onWarning(it) }

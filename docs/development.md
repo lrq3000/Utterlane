@@ -100,12 +100,27 @@ inference call. This is segment-by-segment output, not a promise of instantaneou
 word-by-word results. Latency depends on pauses, model, and device speed;
 recognition near segment boundaries can differ from a single whole-recording pass.
 
-With history disabled, microphone audio stays in bounded memory queues. If the
-device cannot keep up, recording stops visibly and accepted audio finishes
-processing. With history enabled, recordings also provide a disk-backed backlog.
-Optional audio history is approximately **115 MB per hour**, split into hourly
-PCM16 WAV parts. Retention ranges from one hour to forever; Android can delay
-background cleanup while asleep or force-stopped.
+`RecordingPipeline` starts capture alongside model preparation and persists PCM
+through a bounded writer queue, independent of inference speed. Its disk-backed
+backlog is also used with history disabled. The processor follows a conflated
+saved-sample watermark using a lease-protected sequential WAV reader. Inference
+failure is an outcome, not cancellation of capture/writing. Stop drains ordered
+recognition and all enabled speaker-label work; Cancel drains the accepted writer
+tail and preserves unfinished audio. A single emergency block slot retains the
+block that detects writer-queue overflow, then capture stops and the writer drains.
+
+Audio is approximately **115 MB per hour**, split into hourly PCM16 WAV parts.
+Recovery metadata is written before the first sample and survives process death.
+History-off successes are deleted; unresolved recordings are exempt from pruning
+until successful retry or explicit deletion. Completed-recording retention ranges
+from one hour to forever; Android can delay background cleanup.
+
+`WaveformHistory` calculates energy only for newly captured samples, accumulates
+100 ms audio-time buckets in a 64-point ring and reuses immutable published arrays
+until a bucket changes. `CaptureMetrics` publishes exact cumulative counters at
+the configured visual cadence (1/2/5/10/20 Hz), with immediate control/error states.
+File percentage and preview updates use latest-value state and one presentation
+owner, rather than allocating a UI coroutine for every decoder callback.
 
 Long-session handling uses bounded audio queues, chunked decoding, cancellation,
 and recoverable completed transcripts. Temporary text files support long

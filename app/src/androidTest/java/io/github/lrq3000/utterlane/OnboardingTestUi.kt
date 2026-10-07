@@ -34,6 +34,21 @@ internal class OnboardingTestUi {
         finally { @Suppress("DEPRECATION") node.recycle() }
     }
 
+    /** Text-based controls outside the guide share the same real-window scrolling rules. */
+    fun clickText(text: String) {
+        var node = awaitNode(text, scrollAction = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) {
+            it.text?.toString() == text && it.isVisibleToUser
+        }
+        try {
+            while (!node.isClickable) {
+                val parent = node.parent ?: error("No clickable parent for $text")
+                @Suppress("DEPRECATION") node.recycle()
+                node = parent
+            }
+            assertTrue("Cannot click $text", node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+        } finally { @Suppress("DEPRECATION") node.recycle() }
+    }
+
     fun recognizedText(id: String? = null, windowId: Int? = null): String {
         val node = awaitNode("recognized Alice reading", 150_000, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) {
             (id == null || it.viewIdResourceName == id) && (windowId == null || it.windowId == windowId) &&

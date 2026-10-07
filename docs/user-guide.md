@@ -205,6 +205,12 @@ reset recognition** remains available to recover from genuinely stuck native wor
 Model **idle unloading** is a separate setting and does not interrupt active
 sessions.
 
+**Appearance → Maximum visual refresh rate** offers 1, 2, 5, 10 (default), or
+20 updates per second. Lower values reduce waveform and routine progress-display
+work on older devices. The waveform keeps the same 6.4-second audio history at
+every rate. Recording, recognition, speaker labeling, and final text are unaffected;
+important control, signal-warning, and completion changes appear immediately.
+
 Optional diagnostics are local and off by default. Enable them for a new run,
 then use **Share diagnostics** to export a content-free snapshot, or clear the
 stored logs. See the [privacy policy](../PRIVACY_POLICY.md#optional-local-diagnostics).
@@ -222,9 +228,23 @@ disable history, or change retention from one hour to forever. Existing retentio
 choices, including disabled history, are preserved. Recordings use approximately **115 MB per hour**.
 Android can delay background cleanup while asleep or force-stopped.
 
-If your device cannot keep up with recognition while history is disabled,
-recording stops visibly and accepted audio finishes processing. With history
-enabled, saved audio also lets processing catch up with the recording.
+Capture starts while the selected model loads in the background. The panel shows
+recording and model loading separately. Microphone audio is buffered in private
+files even with history disabled, keeping RAM bounded. Speech recognition and
+enabled speaker labeling continue incrementally; a slower device can catch up
+after you tap Stop. Speaker labeling is never automatically disabled for speed.
+
+A model-loading or recognition failure leaves capture running. After stopping,
+open **Recordings** or **Recover unfinished recordings** in Settings to retry,
+share/export, or delete the saved audio. **Choose transcription model** opens the
+model settings if you need a smaller model. Unfinished audio survives restarts and
+automatic history cleanup, including with **No history** selected. Successful
+temporary recordings are deleted; successful retries follow the current history
+setting. Cancelling processing preserves unfinished audio for the same recovery.
+
+If the microphone or storage itself fails, recording stops with an error and the
+successfully saved portion remains available. Storage-writer overload drains its
+bounded buffer, including the block that detected overload, before finalization.
 
 Saved history is private to the app and excluded from Android cloud backup and
 device transfer. Exports and clipboard transfers give data to their receiving

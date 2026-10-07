@@ -63,6 +63,7 @@ import kotlinx.coroutines.launch
 class SettingsActivity : LocalizedActivity() {
 
     private val refreshTrigger = mutableStateOf(0)
+    private val recoveryVisible = mutableStateOf(false)
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -125,6 +126,11 @@ class SettingsActivity : LocalizedActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        recoveryVisible.value = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_RECOVERY, false)
+        if (recoveryVisible.value || intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS, false)) {
+            showSettings()
+            return
+        }
 
         lifecycleScope.launch {
             val app = UtterlaneApp.instance
@@ -176,6 +182,7 @@ class SettingsActivity : LocalizedActivity() {
                     isVoiceImeEnabled = { isVoiceImeEnabled() },
                     onOpenInputMethodSettings = { openInputMethodSettings() }
                 )
+                if (recoveryVisible.value) io.github.lrq3000.utterlane.history.HistoryDialog { recoveryVisible.value = false }
             }
         }
     }
@@ -836,6 +843,7 @@ fun SettingsScreen(
             // Appearance Section
             SettingsSection(title = stringResource(R.string.section_appearance)) {
                 AppLanguageSetting()
+                VisualRefreshSetting(settingsRepository)
                 ThemeSettingItem(
                     selectedTheme = themeMode,
                     onThemeSelected = { theme ->

@@ -1,6 +1,6 @@
 # Privacy Policy for Utterlane
 
-**Last updated:** October 6, 2026
+**Last updated:** October 7, 2026
 
 ## Overview
 
@@ -11,7 +11,7 @@ Utterlane is a voice-to-text application maintained by Stephen Karl Larroque tha
 **We do not collect any personal data.**
 
 - Audio and text are processed locally and are not automatically uploaded
-- Microphone audio is saved locally with one-hour history retention by default; you can disable history or change retention, and existing choices are preserved
+- Microphone audio is buffered in private local files during processing, including when history is disabled. Successful recordings follow your history setting (one hour by default); unfinished recordings remain available for recovery until successfully retried or explicitly deleted
 - Transcription uses temporary local text files for bounded-memory display, recovery, and export
 - No usage analytics or remote metrics reporting
 - No account required
@@ -23,7 +23,9 @@ The recording interface computes microphone levels, a bounded waveform, signal
 status, and transcription progress and time estimates on your device. These
 capture metrics normally exist only in memory to provide recording feedback and
 are not sent to a server. The metrics component does not retain raw recordings.
-Optional recording history is separate and described below.
+Private audio buffering and optional completed-recording history are separate
+from these metrics and described below. Visual refresh frequency is configurable;
+it does not change which audio is recorded or which transcription features run.
 
 ### Optional local diagnostics
 
@@ -91,7 +93,9 @@ Utterlane processes and stores application data locally. Android may back up eli
 - Speech recognition model stored in app's private storage
 - User preferences stored locally
 - Word correction rules stored locally
-- Microphone history stored in private files and excluded from Android cloud backup and device transfer. Retention defaults to one hour and is configurable from No history to Forever; existing choices are preserved and imported/shared audio is not duplicated
+- Microphone audio is buffered in private files excluded from Android cloud backup and device transfer. Processing reads this same audio incrementally, so a slow or unavailable model does not require keeping the whole recording in RAM. No shared-storage permission is needed for this buffering
+- Completed-recording retention defaults to one hour and is configurable from No history to Forever. With No history, successful recordings are deleted when active readers finish. Existing choices are preserved and imported/shared audio is not duplicated
+- Failed, cancelled, and interrupted microphone recordings are shown as unfinished recordings in Settings, including with No history selected. Automatic history cleanup does not delete them. You can retry, export, or explicitly delete them; a successful retry resolves recovery and applies your current history setting
 - Successful delivered/dismissed transcripts are removed once active readers finish. Recoverable temporary transcripts expire after seven days, with best-effort scheduled and startup cleanup
 - User-requested audio and text export snapshots remain temporarily available for the receiving app and expire after one day. These copies are separate from recording-history retention
 - Android may defer background deletion while asleep or force-stopped. Active capture, playback, transcription, and export readers are protected from cleanup
