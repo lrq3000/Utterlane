@@ -28,6 +28,20 @@ internal class OnboardingTestUi {
 
     fun node(id: String): AccessibilityNodeInfo = awaitNode(id) { it.viewIdResourceName == id }
     fun textNode(text: String): AccessibilityNodeInfo = awaitNode(text, 150_000) { it.text?.toString() == text }
+    fun awaitChecked(id: String, checked: Boolean) {
+        val node = awaitNode("$id checked=$checked") { it.viewIdResourceName == id && it.isCheckable && it.isChecked == checked }
+        @Suppress("DEPRECATION") node.recycle()
+    }
+    fun hasVisibleText(text: String): Boolean {
+        var found = false
+        roots().forEach { root ->
+            val node = find(root) { it.isVisibleToUser && it.text?.toString() == text }
+            if (node != null) found = true
+            @Suppress("DEPRECATION") node?.recycle()
+            @Suppress("DEPRECATION") root.recycle()
+        }
+        return found
+    }
     fun click(id: String) {
         val node = awaitNode(id, scrollAction = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) { it.viewIdResourceName == id }
         try { assertTrue("Cannot click $id", node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) }

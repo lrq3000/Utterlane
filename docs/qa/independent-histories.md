@@ -138,13 +138,33 @@ the initial recovery-lifetime discussion in `recording-first-backpressure.md`.
   tests). The Settings test selects all four added rates, including scrolling to
   200 Hz. Actual rendered frame rate remains limited by the display and fresh audio.
 
+## Compact history design B follow-up
+
+- Both list-interaction regressions first failed because the old lists exposed
+  deletion buttons. Recording and transcript rows now open on the whole entry;
+  their independent pin toggle does not navigate. Delete remains in the detail dialog.
+- Applied compact grouped design B with the requested removal of visible retention
+  captions and persistent pin-feedback text. Kept 48 dp pin targets and accessible
+  checked/retention state, localized date grouping, short durations and bounded
+  two-line transcript previews. Pin changes preserve item ordering.
+- A compact dialog surface avoids the unused action/footer area of AlertDialog.
+  Zero inherited tonal elevation preserves the intended white/light and navy/dark
+  surfaces so alternating rows are visibly distinct. Pagination appears only when
+  useful and retains space on smaller windows.
+- **290 JVM tests passed** and app/test APKs built. **Eight targeted Android tests
+  passed** after the final UI change, including pin launch grace, independent row
+  navigation, absence of listing deletion/captions, and Settings behavior.
+- Inspected native multi-entry audio/text screenshots and the dark text-history
+  variant under `app/build/outputs/history-design-b-*.png`. These generated QA
+  images and the earlier design mockups are local/ignored, not tracked artifacts.
+
 ## Reproduction commands
 
 ```powershell
 .\gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest "-PqaApplicationIdSuffix=.recordingfirst" "-Pkotlin.compiler.execution.strategy=in-process" --console=plain -q --offline
 adb -s emulator-5554 install -r "app/build/outputs/apk/debug/app-debug.apk"
 adb -s emulator-5554 install -r "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
-adb -s emulator-5554 shell am instrument -w -e onboardingTimeoutSeconds 15 -e class io.github.lrq3000.utterlane.RecordingFirstAndroidTest,io.github.lrq3000.utterlane.CapturePanelAndroidTest,io.github.lrq3000.utterlane.TranscriptionDialogAndroidTest,io.github.lrq3000.utterlane.HistoryPinsAndroidTest,io.github.lrq3000.utterlane.AudioPlaybackAndroidTest,io.github.lrq3000.utterlane.RecordingSettingsAndroidTest io.github.lrq3000.utterlane.recordingfirst.test/androidx.test.runner.AndroidJUnitRunner
+adb -s emulator-5554 shell am instrument -w -e onboardingTimeoutSeconds 15 -e class io.github.lrq3000.utterlane.RecordingFirstAndroidTest,io.github.lrq3000.utterlane.CapturePanelAndroidTest,io.github.lrq3000.utterlane.TranscriptionDialogAndroidTest,io.github.lrq3000.utterlane.HistoryPinsAndroidTest,io.github.lrq3000.utterlane.HistoryListInteractionAndroidTest,io.github.lrq3000.utterlane.AudioPlaybackAndroidTest,io.github.lrq3000.utterlane.RecordingSettingsAndroidTest io.github.lrq3000.utterlane.recordingfirst.test/androidx.test.runner.AndroidJUnitRunner
 adb -s emulator-5554 shell am instrument -w -e class io.github.lrq3000.utterlane.NativeHistoryAndroidTest io.github.lrq3000.utterlane.recordingfirst.test/androidx.test.runner.AndroidJUnitRunner
 ```
 

@@ -245,6 +245,10 @@ entry does not delete audio, and deleting audio does not delete saved text.
 Manual saving to history **pins the item forever**, without duplicating an already
 saved source/attempt. Both histories show an outline pin for normal entries and a
 filled accent-colored pin for permanent entries. Tap the pin to toggle it.
+History lists group compact entries by date. Tap anywhere on an entry to open it;
+the pin acts independently. Deletion is available only inside the opened item,
+so the lists have no separate Open or Delete buttons. Retention captions are omitted
+from rows; the icon and accessibility state indicate pinning without using another line.
 Unpinning starts a fresh retention countdown **from the time of unpinning**, not
 the original date. Under Immediate retention, the item waits until the next genuine
 user-facing app launch and is skipped by background cleanup; repinning cancels that

@@ -82,10 +82,9 @@ class RecordingSettingsAndroidTest {
             app.settingsRepository.setHistoryRetention(HistoryRetention.NONE)
             app.recordingHistory.prune(HistoryRetention.NONE)
             activity = open(RecordingRecovery.EXTRA_RECOVERY)
-            val pending = ui.textNode(app.getString(R.string.history_temporary_recovery))
+            val pending = ui.node("history_entry_${recording.entry.id}")
             @Suppress("DEPRECATION") pending.recycle()
-            val open = ui.textNode(app.getString(R.string.history_open))
-            @Suppress("DEPRECATION") open.recycle()
+            assertFalse(ui.hasVisibleText(app.getString(R.string.history_open)))
             ui.screenshot("recording-unfinished-recovery")
             assertTrue(recording.entry.directory.exists())
         } finally {

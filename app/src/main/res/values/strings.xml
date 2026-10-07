@@ -373,4 +373,10 @@
     <string name="audio_resume">Resume</string>
     <string name="audio_stop">Stop playback</string>
     <string name="audio_duration_unknown">Unknown duration</string>
+    <string name="history_recordings_heading">Recordings</string>
+    <string name="history_transcripts_heading">Transcripts</string>
+    <string name="history_today">Today</string>
+    <string name="history_yesterday">Yesterday</string>
+    <string name="history_under_second">&lt;1 s</string>
+    <string name="history_recovery_item">Recording awaiting recovery</string>
 </resources>
