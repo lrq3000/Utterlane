@@ -182,7 +182,7 @@ together; active operations retain their starting snapshot.
   slow models can require a larger limit or disabling it.
 - **CPU:** separate ASR and speaker-model thread counts. Defaults remain four;
   Auto uses up to four available processors. More threads are not always faster.
-- **Diarization:** streaming preset, buffered-step batching (default 8, strict
+- **Diarization:** streaming preset (default **Low latency**), buffered-step batching (default 8, strict
   schedule 1), probability/margin thresholds, ordinary and strong confirmation,
   same-speaker gap bridging (default 1 s), label lookahead, timestamp tolerance,
   and fallback word intervals when native ends are unavailable. These trade

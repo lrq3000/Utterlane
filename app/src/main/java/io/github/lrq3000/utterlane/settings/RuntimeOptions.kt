@@ -8,7 +8,7 @@ data class RuntimeOptions(
     val absoluteOperationSeconds: Long = 0,
     val asrThreads: Int = 4,
     val diarizationThreads: Int = 4,
-    val diarizationMode: String = "very_low_latency",
+    val diarizationMode: String = "low_latency",
     // Batch only already-buffered native steps; preserves live ASR cadence.
     // Acoustic replay reduced 53 native forwards to 8 on the 25 s fixture.
     val diarizationBatch: Int = 8,

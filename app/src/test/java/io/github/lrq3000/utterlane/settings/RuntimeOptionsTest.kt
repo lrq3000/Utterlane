@@ -12,7 +12,7 @@ class RuntimeOptionsTest {
         assertEquals(0L, options.absoluteOperationSeconds)
         assertEquals(4, options.asrThreads)
         assertEquals(4, options.diarizationThreads)
-        assertEquals("very_low_latency", options.diarizationMode)
+        assertEquals("low_latency", options.diarizationMode)
         assertEquals(8, options.diarizationBatch)
         assertEquals(1000, options.unknownBridgeMs)
         assertEquals(10.0, options.asrWindowSeconds, 0.0)
@@ -24,10 +24,11 @@ class RuntimeOptionsTest {
         assertEquals(264, options.nativeFifoFrames)
         assertEquals(222, options.nativeUpdateFrames)
         assertEquals(options, RuntimeOptions.fromMap(emptyMap()))
+        assertEquals(options, options.copy(diarizationMode = "very_low_latency").resetGroup(RuntimeOptionGroup.DIARIZATION))
     }
 
     @Test fun everyFieldRoundTripsWithStableKeys() {
-        val options = RuntimeOptions(12, 13, 14, 15, 0, 8, "low_latency", 2,
+        val options = RuntimeOptions(12, 13, 14, 15, 0, 8, "very_low_latency", 2,
             0.7f, 0.1f, 250, 400, 350, 150, 8.0, 2.0, 0.5, 1.5, 700, 250,
             30, 2.0, 100, 2000, 6000, 45, 90, 128, 128, 100, true)
         assertEquals(35, options.toMap().size)
@@ -93,7 +94,7 @@ class RuntimeOptionsTest {
 
     @Test fun persistedCorruptionDefaultsInvalidFieldsAndDependentGroupsOnly() {
         val restored = RuntimeOptions.fromMap(mapOf(
-            "asr_threads" to "8", "diarization_batch" to "oops", "diagnostics" to "yes",
+            "asr_threads" to "8", "diarization_mode" to "invalid", "diarization_batch" to "oops", "diagnostics" to "yes",
             "speaker_threshold" to "NaN", "asr_window_seconds" to "12",
             "native_fifo_frames" to "16", "download_read_seconds" to "-1",
             "future_key" to "ignored"
