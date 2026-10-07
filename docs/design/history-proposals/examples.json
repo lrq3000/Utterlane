@@ -1,0 +1,174 @@
+{
+  "a-audio": [
+    {
+      "time": "10:42",
+      "day": "Today",
+      "duration": "2 min 36 sec",
+      "short": "02:36",
+      "pinned": false,
+      "text": "We should confirm the delivery date before updating the schedule."
+    },
+    {
+      "time": "10:18",
+      "day": "Today",
+      "duration": "8 min 14 sec",
+      "short": "08:14",
+      "pinned": true,
+      "text": "The next step is to test the revised workflow on a slower phone."
+    },
+    {
+      "time": "18:05",
+      "day": "Yesterday",
+      "duration": "36 min 42 sec",
+      "short": "36:42",
+      "pinned": true,
+      "text": "Keep the audio only when needed. The transcript can stay on its own."
+    }
+  ],
+  "a-text": [
+    {
+      "time": "10:42",
+      "day": "Today",
+      "duration": "2 min 36 sec",
+      "short": "02:36",
+      "pinned": false,
+      "text": "We should confirm the delivery date before updating the schedule."
+    },
+    {
+      "time": "10:18",
+      "day": "Today",
+      "duration": "8 min 14 sec",
+      "short": "08:14",
+      "pinned": true,
+      "text": "The next step is to test the revised workflow on a slower phone."
+    },
+    {
+      "time": "18:05",
+      "day": "Yesterday",
+      "duration": "36 min 42 sec",
+      "short": "36:42",
+      "pinned": false,
+      "text": "Keep the audio only when needed. The transcript can stay on its own."
+    }
+  ],
+  "b-audio": [
+    {
+      "time": "10:42",
+      "day": "Today",
+      "duration": "2 min 36 sec",
+      "short": "02:36",
+      "pinned": false,
+      "text": "We should confirm the delivery date before updating the schedule."
+    },
+    {
+      "time": "10:18",
+      "day": "Today",
+      "duration": "8 min 14 sec",
+      "short": "08:14",
+      "pinned": true,
+      "text": "The next step is to test the revised workflow on a slower phone."
+    },
+    {
+      "time": "18:05",
+      "day": "Yesterday",
+      "duration": "36 min 42 sec",
+      "short": "36:42",
+      "pinned": true,
+      "text": "Keep the audio only when needed. The transcript can stay on its own."
+    },
+    {
+      "time": "09:10",
+      "day": "5 October",
+      "duration": "1 hr 12 min",
+      "short": "1:12:00",
+      "pinned": true,
+      "text": "These are the observations we want to keep for the next review."
+    }
+  ],
+  "b-text": [
+    {
+      "time": "10:42",
+      "day": "Today",
+      "duration": "2 min 36 sec",
+      "short": "02:36",
+      "pinned": false,
+      "text": "We should confirm the delivery date before updating the schedule."
+    },
+    {
+      "time": "10:18",
+      "day": "Today",
+      "duration": "8 min 14 sec",
+      "short": "08:14",
+      "pinned": true,
+      "text": "The next step is to test the revised workflow on a slower phone."
+    },
+    {
+      "time": "18:05",
+      "day": "Yesterday",
+      "duration": "36 min 42 sec",
+      "short": "36:42",
+      "pinned": false,
+      "text": "Keep the audio only when needed. The transcript can stay on its own."
+    },
+    {
+      "time": "09:10",
+      "day": "5 October",
+      "duration": "1 hr 12 min",
+      "short": "1:12:00",
+      "pinned": true,
+      "text": "These are the observations we want to keep for the next review."
+    }
+  ],
+  "c-audio": [
+    {
+      "time": "10:42",
+      "day": "Today",
+      "duration": "2 min 36 sec",
+      "short": "02:36",
+      "pinned": false,
+      "text": "We should confirm the delivery date before updating the schedule."
+    },
+    {
+      "time": "10:18",
+      "day": "Today",
+      "duration": "8 min 14 sec",
+      "short": "08:14",
+      "pinned": true,
+      "text": "The next step is to test the revised workflow on a slower phone."
+    },
+    {
+      "time": "18:05",
+      "day": "Yesterday",
+      "duration": "36 min 42 sec",
+      "short": "36:42",
+      "pinned": true,
+      "text": "Keep the audio only when needed. The transcript can stay on its own."
+    }
+  ],
+  "c-text": [
+    {
+      "time": "10:42",
+      "day": "Today",
+      "duration": "2 min 36 sec",
+      "short": "02:36",
+      "pinned": false,
+      "text": "We should confirm the delivery date before updating the schedule."
+    },
+    {
+      "time": "10:18",
+      "day": "Today",
+      "duration": "8 min 14 sec",
+      "short": "08:14",
+      "pinned": true,
+      "text": "The next step is to test the revised workflow on a slower phone."
+    },
+    {
+      "time": "18:05",
+      "day": "Yesterday",
+      "duration": "36 min 42 sec",
+      "short": "36:42",
+      "pinned": false,
+      "text": "Keep the audio only when needed. The transcript can stay on its own."
+    }
+  ]
+}
