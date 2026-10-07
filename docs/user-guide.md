@@ -207,12 +207,15 @@ sessions.
 
 **Appearance → Maximum visual refresh rate** offers 1, 2, 5, 10, 20, 30,
 **60 (default)**, 90, or 200 updates per second. Lower values reduce waveform and
-routine progress-display work on older devices. The waveform keeps the same 6.4-second audio history at
-every rate. Recording, recognition, speaker labeling, and final text are unaffected;
+routine progress-display work on older devices. The waveform keeps the latest 64
+microphone blocks and advances whenever new audio arrives, independently of this
+setting. Lower refresh rates show larger steps between frames rather than slowing
+the waveform's progression. Recording, recognition, speaker labeling, and final text are unaffected;
 important control, signal-warning, and completion changes appear immediately.
-The newest waveform point can update before its history bucket finishes. These
-are maximum update rates; actual drawing also depends on incoming audio and the
-device display. Previously saved frequency choices are preserved.
+Each block contributes its own amplitude point; it is not averaged with adjacent
+blocks into a slower history. The displayed time span depends on microphone block
+sizes. These are maximum update rates; actual drawing also depends on incoming
+audio and the device display. Previously saved frequency choices are preserved.
 
 Optional diagnostics are local and off by default. Enable them for a new run,
 then use **Share diagnostics** to export a content-free snapshot, or clear the

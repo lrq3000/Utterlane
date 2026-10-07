@@ -158,6 +158,23 @@ the initial recovery-lifetime discussion in `recording-first-backpressure.md`.
   variant under `app/build/outputs/history-design-b-*.png`. These generated QA
   images and the earlier design mockups are local/ignored, not tracked artifacts.
 
+## Waveform progression correction (2026-10-08)
+
+- The fixed 100 ms buckets described above unintentionally changed scrolling speed
+  and amplitude detail, beyond the requested publication-rate limit. The current
+  waveform instead retains the last 64 nonempty microphone callback RMS levels,
+  matching the pre-limiter implementation at `1237054`. Refresh frequency controls
+  snapshot publication, not point insertion; displayed duration depends on block size.
+- Three regressions failed on the old buckets before the correction: two short
+  callbacks did not create independent points, RMS differed from the old algorithm,
+  and low-rate publication contained the wrong history. The replacement tests cover
+  rollover, mixed callback lengths, silence/PCM extrema, immutable snapshots and all
+  nine refresh choices with 10/20/50 ms callbacks. Existing publication-budget and
+  exact-input-count checks remain in place.
+- **291 JVM tests passed**, zero failures/skips. An interrupted full run reported a
+  local Gradle worker connection timeout; focused and full incremental runs then
+  passed with `--max-workers=2`, without changing project build configuration.
+
 ## Reproduction commands
 
 ```powershell

@@ -136,11 +136,13 @@ working text and granted export snapshots keep their separate cleanup lifetimes.
 coalesced native seeks and O(1) hourly-part timeline addressing. Playback updates
 only its own UI state and stops polling while paused.
 
-`WaveformHistory` calculates energy only for newly captured samples, accumulates
-100 ms audio-time buckets in a 64-point ring. A provisional newest point uses the
-already-accumulated current bucket, so higher refresh rates do not wait for a
-100 ms cut. Immutable snapshots are reused until new PCM arrives and rebuilt only
-at publication. `CaptureMetrics` publishes exact cumulative counters at the
+`WaveformHistory` calculates each nonempty microphone callback's RMS once and
+appends its normalized level to a 64-point ring, matching the original waveform.
+The ring advances on input even between visual publications: the refresh cap must
+not impose an audio-time aggregation bucket or stretch the waveform's time scale.
+Memory is bounded; processing is O(samples), insertion O(1), and immutable 64-point
+snapshots are rebuilt only at publication after new PCM. Unchanged snapshots are
+reused. `CaptureMetrics` publishes exact cumulative counters at the
 configured visual cadence (1/2/5/10/20/30/60/90/200 Hz; default 60), with immediate
 control/error states. Hz-scaled monotonic deadlines avoid fractional-period drift
 and skip obsolete slots rather than queuing catch-up work. `VisualRefreshRate`
