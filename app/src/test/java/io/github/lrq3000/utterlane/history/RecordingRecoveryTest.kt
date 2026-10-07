@@ -36,7 +36,7 @@ class RecordingRecoveryTest {
 
     @Test fun failedInputSurvivesDisabledHistoryPruningAndRestart() {
         val history = RecordingHistory(temporary.root)
-        val recording = history.begin(HistoryRetention.HOUR)!!
+        val recording = history.begin(HistoryRetention.NONE)
         recording.append(shortArrayOf(7, 8, 9))
         recording.finish(true)
         history.prune(HistoryRetention.NONE)

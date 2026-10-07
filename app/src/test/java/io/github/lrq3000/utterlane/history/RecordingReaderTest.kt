@@ -35,6 +35,7 @@ class RecordingReaderTest {
         history.openReader(recording.entry.id).use {
             history.completeRecovery(recording.entry.id, HistoryRetention.NONE)
             assertArrayEquals(shortArrayOf(1), it.read())
+            history.dismiss(recording.entry.id)
             assertTrue(history.list().isEmpty())
         }
         assertFalse(recording.entry.directory.exists())
