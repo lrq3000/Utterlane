@@ -48,6 +48,10 @@ class HistoryTest {
             assertEquals(44 + RecordingHistory.PART_SAMPLES * 2, entry.part(0).length())
             assertEquals(48L, entry.part(1).length())
             assertArrayEquals(shortArrayOf(7, 12, 34), history.read(entry.id, RecordingHistory.PART_SAMPLES - 1, 3))
+            history.openReader(entry.id, RecordingHistory.PART_SAMPLES - 1).use { reader ->
+                assertArrayEquals(shortArrayOf(7, 12, 34), reader.read())
+                assertTrue(reader.read().isEmpty())
+            }
         } finally { directory.deleteRecursively() }
     }
 
@@ -68,13 +72,13 @@ class HistoryTest {
             recording.finish(true) // Close the original handle after simulating process recovery.
         } finally { directory.deleteRecursively() }
     }
-    @Test fun disabledHistoryCreatesNoAudioAndLeasesDeferPruning() {
+    @Test fun successfulTemporaryAudioIsRemovedAndLeasesDeferPruning() {
         val directory = Files.createTempDirectory("history-test").toFile()
         var now = 1000L
         val history = RecordingHistory(directory) { now }
         try {
             history.initialize()
-            assertNull(history.begin(HistoryRetention.NONE))
+            history.begin(HistoryRetention.NONE).finish(false)
             assertTrue(directory.listFiles()!!.isEmpty())
             val recording = history.begin(HistoryRetention.HOUR)!!
             recording.append(shortArrayOf(1, 2, 3))

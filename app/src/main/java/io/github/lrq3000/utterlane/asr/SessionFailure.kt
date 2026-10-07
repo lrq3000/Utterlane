@@ -2,7 +2,7 @@ package io.github.lrq3000.utterlane.asr
 
 import android.speech.SpeechRecognizer
 
-data class SessionFailure(val kind: Kind, val message: String) {
+data class SessionFailure(val kind: Kind, val message: String, val recoveryId: String? = null) {
     enum class Kind { BUSY, MODEL, AUDIO, INFERENCE, CAPACITY, NO_SPEECH }
     fun recognitionError(): Int = when (kind) {
         Kind.BUSY -> SpeechRecognizer.ERROR_RECOGNIZER_BUSY

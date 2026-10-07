@@ -5,16 +5,20 @@ import org.junit.Test
 
 class CaptureBacklogTest {
     @Test fun backlogUsesAcceptedSamplesAndProcessedOwnershipNotWallTime() {
-        val metrics = CaptureMetrics()
+        var now = 0L
+        val metrics = CaptureMetrics { now }
         metrics.samples(ShortArray(16000), true)
         metrics.samples(ShortArray(8000), false)
         metrics.processed(4000, 9000)
+        now += 100; metrics.tick() // Exact counters are published at the visual deadline.
         assertEquals(1.0, metrics.state.value.capturedSeconds, 0.0)
         assertEquals(0.25, metrics.state.value.processedSeconds, 0.0)
         assertEquals(0.75, metrics.state.value.backlogSeconds, 0.0)
         metrics.processed(-10, 0)
+        now += 100; metrics.tick()
         assertEquals(0.75, metrics.state.value.backlogSeconds, 0.0)
         metrics.processed(Long.MAX_VALUE, 0)
+        now += 100; metrics.tick()
         assertEquals(0.0, metrics.state.value.backlogSeconds, 0.0)
     }
 
@@ -42,11 +46,13 @@ class CaptureBacklogTest {
     }
 
     @Test fun processedCallbackRacingAcceptedCaptureDoesNotLoseOwnership() {
-        val metrics = CaptureMetrics()
+        var now = 0L
+        val metrics = CaptureMetrics { now }
         // queue.offer wakes its consumer before the recorder publishes its metrics.
         metrics.processed(800, 20)
         assertEquals(0.0, metrics.state.value.backlogSeconds, 0.0)
         metrics.samples(ShortArray(800), true)
+        now += 100; metrics.tick()
         assertEquals(800, metrics.state.value.processedSamples)
         assertEquals(0.0, metrics.state.value.backlogSeconds, 0.0)
     }

@@ -2,8 +2,7 @@ package io.github.lrq3000.utterlane.asr
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlin.math.log10
-import kotlin.math.sqrt
+import io.github.lrq3000.utterlane.settings.VisualRefreshRate
 
 enum class CapturePhase { LOADING, CAPTURING, STOPPING, PROCESSING, COMPLETE, FAILED, CANCELLED }
 enum class CaptureSignal { WAITING, AUDIO, LOW, NO_FRAMES, BLOCKED }
@@ -18,6 +17,8 @@ data class CaptureSnapshot(
     val remainingSeconds: Double? = null,
     val modelName: String = "",
     val error: String? = null,
+    val modelPreparing: Boolean = false,
+    val recognitionFailure: String? = null,
     val recognition: RecognitionStatus = RecognitionStatus.from(RecognitionActivity())
 ) {
     val capturedSeconds: Double get() = capturedSamples.coerceAtLeast(0) / 16000.0
@@ -34,64 +35,85 @@ data class CaptureSnapshot(
 class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 1000000 }) {
     private val mutable = MutableStateFlow(CaptureSnapshot())
     val state: StateFlow<CaptureSnapshot> = mutable
-    private val history = FloatArray(64)
-    private var cursor = 0
+    private var pending = mutable.value
+    private val waveform = WaveformHistory()
+    private var capturedSamples = 0L
+    private var fileInput = false
+    private var visualHz = VisualRefreshRate.DEFAULT
+    private var nextVisual = Long.MIN_VALUE
     private var lastFrames = 0L
     private var lastAudible = 0L
     private var blocked = false
     private var processingRate: Double? = null
     private var processedEndSample = 0L
 
-    @Synchronized fun model(name: String) { mutable.value = mutable.value.copy(modelName = name) }
+    @Synchronized fun setVisualRefreshRate(hz: Int) {
+        VisualRefreshRate.requireValid(hz)
+        if (hz == visualHz) return
+        visualHz = hz
+        nextVisual = clock() * visualHz + 1000
+    }
+    @Synchronized fun visualRefreshIntervalMillis(): Long = VisualRefreshRate.intervalMillis(visualHz)
+    @Synchronized fun model(name: String) { pending = pending.copy(modelName = name); publish(true) }
+    @Synchronized fun preparing(value: Boolean) { pending = pending.copy(modelPreparing = value); publish(true) }
+    @Synchronized fun recognitionFailed(message: String) {
+        pending = pending.copy(modelPreparing = false, recognitionFailure = message)
+        publish(true)
+    }
     @Synchronized fun recognition(activity: RecognitionActivity) {
-        if (mutable.value.phase in setOf(CapturePhase.COMPLETE, CapturePhase.FAILED, CapturePhase.CANCELLED)) return
-        mutable.value = mutable.value.copy(recognition = RecognitionStatus.from(activity))
+        if (terminal()) return
+        pending = pending.copy(recognition = RecognitionStatus.from(activity))
+        publish(!activity.active)
     }
     /** File decoding can count accepted PCM without computing or retaining a waveform. */
     @Synchronized fun captured(samples: Int) {
         require(samples >= 0)
-        if (mutable.value.phase == CapturePhase.LOADING) started()
-        mutable.value = counted(mutable.value, samples)
-    }
-    private fun counted(snapshot: CaptureSnapshot, samples: Int): CaptureSnapshot {
-        val total = snapshot.capturedSamples + samples
-        return snapshot.copy(capturedSamples = total, processedSamples = minOf(processedEndSample, total))
+        fileInput = true
+        if (pending.phase == CapturePhase.LOADING) started()
+        capturedSamples += samples
+        publish()
     }
     @Synchronized fun started() {
-        if (mutable.value.phase != CapturePhase.LOADING) return
+        if (pending.phase != CapturePhase.LOADING) return
         lastFrames = clock(); lastAudible = lastFrames
-        mutable.value = mutable.value.copy(phase = CapturePhase.CAPTURING)
+        pending = pending.copy(phase = CapturePhase.CAPTURING)
+        publish(true)
     }
     @Synchronized fun samples(pcm: ShortArray, accepted: Boolean) {
-        if (mutable.value.phase == CapturePhase.LOADING) started()
-        var squares = 0.0
-        pcm.forEach { val sample = it / 32768.0; squares += sample * sample }
-        val rms = if (pcm.isEmpty()) 0.0 else sqrt(squares / pcm.size)
-        val db = 20 * log10(rms.coerceAtLeast(1e-7))
+        fileInput = false
+        if (pending.phase == CapturePhase.LOADING) started()
+        waveform.accept(pcm)
         val now = clock()
         lastFrames = now
-        if (db > -55) lastAudible = now
-        val level = if (rms == 0.0) 0f else ((db + 60) / 60).coerceIn(0.0, 1.0).toFloat()
-        history[cursor] = level; cursor = (cursor + 1) % history.size
-        val visual = FloatArray(history.size) { history[(cursor + it) % history.size] }
-        mutable.value = counted(mutable.value.copy(level = level, waveform = visual), if (accepted) pcm.size else 0)
+        if (waveform.audible) lastAudible = now
+        if (accepted) capturedSamples += pcm.size
         tick()
     }
     @Synchronized fun tick() {
-        if (mutable.value.phase != CapturePhase.CAPTURING && mutable.value.phase != CapturePhase.STOPPING) return
+        if (terminal()) return
+        // File decoding can pause for inference without a microphone failure.
+        // Its presentation clock publishes counters, not live signal alarms.
+        if (fileInput) { publish(); return }
+        if (pending.phase != CapturePhase.CAPTURING && pending.phase != CapturePhase.STOPPING) { publish(); return }
         val now = clock()
         val signal = when {
             blocked -> CaptureSignal.BLOCKED
             now - lastFrames >= 1500 -> CaptureSignal.NO_FRAMES
             now - lastAudible >= 1500 -> CaptureSignal.LOW
-            mutable.value.level > 0 -> CaptureSignal.AUDIO
+            waveform.level > 0 -> CaptureSignal.AUDIO
             else -> CaptureSignal.WAITING
         }
-        mutable.value = mutable.value.copy(signal = signal, level = if (signal == CaptureSignal.NO_FRAMES || signal == CaptureSignal.BLOCKED) 0f else mutable.value.level)
+        val changed = signal != pending.signal
+        if (changed) pending = pending.copy(signal = signal)
+        publish(changed)
     }
     @Synchronized fun silenced(value: Boolean) { blocked = value; tick() }
-    @Synchronized fun stopping() { mutable.value = mutable.value.copy(phase = CapturePhase.STOPPING) }
-    @Synchronized fun captureEnded() { mutable.value = mutable.value.copy(phase = CapturePhase.PROCESSING); progress() }
+    @Synchronized fun stopping() { pending = pending.copy(phase = CapturePhase.STOPPING); publish(true) }
+    @Synchronized fun captureEnded() {
+        if (terminal()) return
+        pending = pending.copy(phase = CapturePhase.PROCESSING)
+        publish(true)
+    }
     @Synchronized fun processed(endSample: Long, milliseconds: Long) {
         // queue.offer can wake a fast consumer before samples() publishes capture counts.
         // Keep the real ownership watermark, but expose only already-counted input. The
@@ -103,24 +125,39 @@ class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 10000
             processingRate = processingRate?.let { it * 0.8 + rate * 0.2 } ?: rate
         }
         processedEndSample = end
-        mutable.value = mutable.value.copy(processedSamples = minOf(end, mutable.value.capturedSamples))
-        progress()
+        publish()
     }
-    private fun progress() {
-        if (mutable.value.phase != CapturePhase.PROCESSING) return
-        val snapshot = mutable.value
-        val percent = if (snapshot.capturedSamples == 0L) 0 else (snapshot.processedSamples.toDouble() * 100 / snapshot.capturedSamples).toInt().coerceIn(0, 99)
-        mutable.value = snapshot.copy(percent = percent,
-            remainingSeconds = processingRate?.times((snapshot.capturedSamples - snapshot.processedSamples).coerceAtLeast(0)))
+    private fun publish(force: Boolean = false) {
+        // Scale the millisecond clock by Hz: every deadline is exactly 1000
+        // units apart, including fractional periods such as 60/90 Hz. Advance
+        // past obsolete slots rather than drifting or replaying delayed frames.
+        val now = clock() * visualHz
+        if (!force && now < nextVisual) return
+        nextVisual = if (force || nextVisual == Long.MIN_VALUE) now + 1000
+            else nextVisual + ((now - nextVisual) / 1000 + 1) * 1000
+        val processed = processedEndSample.coerceIn(0, capturedSamples)
+        pending = pending.copy(capturedSamples = capturedSamples, processedSamples = processed,
+            waveform = waveform.snapshot(), level = if (pending.signal in setOf(CaptureSignal.NO_FRAMES, CaptureSignal.BLOCKED)) 0f else waveform.level)
+        if (pending.phase == CapturePhase.PROCESSING) {
+            pending = pending.copy(percent = if (capturedSamples == 0L) 0 else (processed.toDouble() * 100 / capturedSamples).toInt().coerceIn(0, 99),
+                remainingSeconds = processingRate?.times(capturedSamples - processed))
+        }
+        mutable.value = pending
     }
     @Synchronized fun completed(error: String?) {
-        mutable.value = mutable.value.copy(phase = if (error == null) CapturePhase.COMPLETE else CapturePhase.FAILED,
-            percent = if (error == null) 100 else mutable.value.percent?.coerceAtMost(99), error = error,
-            recognition = mutable.value.recognition.copy(active = false, opaque = false,
+        pending = pending.copy(phase = if (error == null) CapturePhase.COMPLETE else CapturePhase.FAILED,
+            percent = if (error == null) 100 else pending.percent?.coerceAtMost(99), error = error,
+            recognition = pending.recognition.copy(active = false, opaque = false,
                 stage = if (error == null) RecognitionStage.FINISHED else RecognitionStage.ERROR))
+        publish(true)
     }
     @Synchronized fun cancelled() {
-        mutable.value = mutable.value.copy(phase = CapturePhase.CANCELLED,
-            recognition = mutable.value.recognition.copy(active = false, opaque = false))
+        pending = pending.copy(phase = CapturePhase.CANCELLED,
+            recognition = pending.recognition.copy(active = false, opaque = false))
+        publish(true)
+    }
+    private fun terminal() = when (pending.phase) {
+        CapturePhase.COMPLETE, CapturePhase.FAILED, CapturePhase.CANCELLED -> true
+        else -> false
     }
 }

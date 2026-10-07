@@ -6,6 +6,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -22,13 +23,16 @@ import android.net.Uri
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun ModelSelector() {
+fun ModelSelector(openRequested: Boolean = false, onOpenHandled: () -> Unit = {}) {
     val app = UtterlaneApp.instance
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val selected by app.modelManager.selected.collectAsStateWithLifecycle()
     val custom by app.modelManager.customModels.collectAsStateWithLifecycle()
-    var choose by remember { mutableStateOf(false) }
+    var choose by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(openRequested) {
+        if (openRequested) { choose = true; onOpenHandled() }
+    }
     var imports by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var primary by remember { mutableStateOf<Uri?>(null) }
     var importing by remember { mutableStateOf(false) }

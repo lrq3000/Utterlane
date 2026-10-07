@@ -37,6 +37,7 @@ class UtterlaneApp : Application() {
 
     var microphoneSessions = MicrophoneSessionFactory()
         internal set
+    val audioPlayback by lazy { io.github.lrq3000.utterlane.transcribe.AudioPlaybackController(this) }
 
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var modelWakeObserver: DeviceWakeObserver? = null
@@ -62,6 +63,10 @@ class UtterlaneApp : Application() {
         private set
 
     lateinit var recordingHistory: RecordingHistory
+        private set
+    lateinit var transcriptHistory: io.github.lrq3000.utterlane.history.TranscriptHistory
+        private set
+    lateinit var historyCleanup: io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator
         private set
 
     val serviceAlertNotification: ServiceAlertNotification by lazy {
@@ -93,20 +98,22 @@ class UtterlaneApp : Application() {
         modelWakeObserver = DeviceWakeObserver(this) { recognizerManager.recheckIdleTimeout() }
         transcribeManager = TranscribeManager(this)
         recordingHistory = RecordingHistory(File(filesDir, "microphone-history"))
+        transcriptHistory = io.github.lrq3000.utterlane.history.TranscriptHistory(File(noBackupFilesDir, "transcript-history"))
+        historyCleanup = io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator(this)
         createNotificationChannel()
 
-        // Policy changes and recovery/pruning never scan storage on the UI thread.
+        // Policy changes update schedules without scanning histories. Background
+        // process startup must not release Immediate-unpin user-launch holds.
         applicationScope.launch(Dispatchers.IO) {
-            settingsRepository.historyRetention.collect { retention ->
-                try { recordingHistory.prune(retention) }
-                catch (e: Exception) { Log.e(TAG, "History cleanup failed", e) }
-            }
+            kotlinx.coroutines.flow.combine(settingsRepository.audioHistoryRetention, settingsRepository.transcriptHistoryRetention) { audio, text -> audio to text }
+                .distinctUntilChanged().collect { (audio, text) -> HistoryCleanupService.schedule(this@UtterlaneApp, audio, text) }
         }
-        HistoryCleanupService.schedule(this)
         applicationScope.launch(Dispatchers.IO) {
-            // Shared export grants need the file after a dialog closes. Expire old
-            // temporary text on startup, rather than deleting it during sharing.
-            cleanupCacheArtifacts()
+            try {
+                recordingHistory.initialize()
+                transcriptHistory.initialize()
+                if (recordingHistory.recoveryCount() > 0) io.github.lrq3000.utterlane.history.RecordingRecovery.show(this@UtterlaneApp)
+            } catch (e: Exception) { Log.e(TAG, "History initialization failed", e) }
         }
 
         // Auto-load model on startup if setting is enabled

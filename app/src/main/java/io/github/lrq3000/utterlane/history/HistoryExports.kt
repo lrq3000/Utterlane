@@ -16,7 +16,7 @@ object HistoryExports {
             CacheArtifacts.acquire(directory).use {
                 try {
                     return (0 until entry.parts).map { part ->
-                        File(directory, "audio-$part.wav").also { entry.part(part).copyTo(it) }
+                        File(directory, entry.part(part).name).also { entry.part(part).copyTo(it) }
                     }
                 } catch (e: Exception) { directory.deleteRecursively(); throw e }
             }

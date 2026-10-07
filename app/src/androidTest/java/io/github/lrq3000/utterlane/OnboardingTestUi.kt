@@ -28,10 +28,39 @@ internal class OnboardingTestUi {
 
     fun node(id: String): AccessibilityNodeInfo = awaitNode(id) { it.viewIdResourceName == id }
     fun textNode(text: String): AccessibilityNodeInfo = awaitNode(text, 150_000) { it.text?.toString() == text }
+    fun awaitChecked(id: String, checked: Boolean) {
+        val node = awaitNode("$id checked=$checked") { it.viewIdResourceName == id && it.isCheckable && it.isChecked == checked }
+        @Suppress("DEPRECATION") node.recycle()
+    }
+    fun hasVisibleText(text: String): Boolean {
+        var found = false
+        roots().forEach { root ->
+            val node = find(root) { it.isVisibleToUser && it.text?.toString() == text }
+            if (node != null) found = true
+            @Suppress("DEPRECATION") node?.recycle()
+            @Suppress("DEPRECATION") root.recycle()
+        }
+        return found
+    }
     fun click(id: String) {
         val node = awaitNode(id, scrollAction = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) { it.viewIdResourceName == id }
         try { assertTrue("Cannot click $id", node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) }
         finally { @Suppress("DEPRECATION") node.recycle() }
+    }
+
+    /** Text-based controls outside the guide share the same real-window scrolling rules. */
+    fun clickText(text: String) {
+        var node = awaitNode(text, scrollAction = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) {
+            it.text?.toString() == text && it.isVisibleToUser
+        }
+        try {
+            while (!node.isClickable) {
+                val parent = node.parent ?: error("No clickable parent for $text")
+                @Suppress("DEPRECATION") node.recycle()
+                node = parent
+            }
+            assertTrue("Cannot click $text", node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+        } finally { @Suppress("DEPRECATION") node.recycle() }
     }
 
     fun recognizedText(id: String? = null, windowId: Int? = null): String {
@@ -112,6 +141,11 @@ internal class OnboardingTestUi {
     }
 
     fun screenshot(name: String) {
+        // Assertions wait on semantics/state, but the compositor can still be
+        // finishing a dialog transition. This delay is only for stable evidence,
+        // never used to make a behavioral assertion pass.
+        instrumentation.waitForIdleSync()
+        Thread.sleep(250)
         val directory = File(app.getExternalFilesDir(null), "onboarding-qa").apply { mkdirs() }
         val image = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
         try { File(directory, "$name.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) } }

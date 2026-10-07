@@ -136,7 +136,7 @@ class FloatingMicService : Service() {
                 UtterlaneApp.instance.settingsRepository.setServiceEnabled(false)
             }
         }
-        microphoneSession?.cancel()
+        microphoneSession?.cancel(discard = false)
         microphoneSession = null
         hideCapturePanel()
         if (::floatingView.isInitialized) {

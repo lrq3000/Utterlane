@@ -100,12 +100,53 @@ inference call. This is segment-by-segment output, not a promise of instantaneou
 word-by-word results. Latency depends on pauses, model, and device speed;
 recognition near segment boundaries can differ from a single whole-recording pass.
 
-With history disabled, microphone audio stays in bounded memory queues. If the
-device cannot keep up, recording stops visibly and accepted audio finishes
-processing. With history enabled, recordings also provide a disk-backed backlog.
-Optional audio history is approximately **115 MB per hour**, split into hourly
-PCM16 WAV parts. Retention ranges from one hour to forever; Android can delay
-background cleanup while asleep or force-stopped.
+`RecordingPipeline` starts capture alongside model preparation and persists PCM
+through a bounded writer queue, independent of inference speed. Its disk-backed
+backlog is also used with history disabled. The processor follows a conflated
+saved-sample watermark using a lease-protected sequential WAV reader. Inference
+failure is an outcome, not cancellation of capture/writing. Stop drains ordered
+recognition and all enabled speaker-label work. Cancellation drains accepted writer
+blocks; explicit user discard then deletes temporary work, while unexpected owner
+interruption preserves it. A single emergency block slot retains the
+block that detects writer-queue overflow, then capture stops and the writer drains.
+
+Audio is approximately **115 MB per hour**, split into hourly PCM16 WAV parts.
+Recovery metadata is written before the first sample and survives process death.
+Live history-off successes are deleted. Temporary dialogs retain their sources
+through retries until explicit dismissal; saved recovery audio expires normally.
+Encoded shared inputs are copied once without owning/deleting the sender's original.
+Persisted discard markers prevent resurrection after a crash during deletion.
+
+`RecordingHistory` and `TranscriptHistory` have independent data and policies.
+`RetentionIndex` orders only eligible unpinned metadata; candidate checks are O(1)
+after index updates and do not scan file contents. Manual saves pin stable item/
+attempt IDs. Unpin starts a new reference time, and Immediate unpins carry a
+persisted launch-token hold. `HistoryCleanupCoordinator` releases those holds only
+at user entry, coalesces IO requests and never simulates app close. `JobScheduler`
+uses separate audio/text jobs for finite durations, preserving unchanged schedules.
+Temporary and pinned items are absent from the expiration index. Audio reader
+leases can derive a reader after expiry becomes due without authorizing new readers.
+
+`TranscriptionDialogModel` retains source ownership and per-attempt results across
+activity recreation. Transcript-origin viewers never own their linked audio.
+Completed attempts can be copied into independent no-backup text history; cached
+working text and granted export snapshots keep their separate cleanup lifetimes.
+`DialogAudioActions` owns private imports and bounded URI/file exports. The shared
+`AudioPlaybackController` uses Main-thread owner tokens, read leases, audio focus,
+coalesced native seeks and O(1) hourly-part timeline addressing. Playback updates
+only its own UI state and stops polling while paused.
+
+`WaveformHistory` calculates energy only for newly captured samples, accumulates
+100 ms audio-time buckets in a 64-point ring. A provisional newest point uses the
+already-accumulated current bucket, so higher refresh rates do not wait for a
+100 ms cut. Immutable snapshots are reused until new PCM arrives and rebuilt only
+at publication. `CaptureMetrics` publishes exact cumulative counters at the
+configured visual cadence (1/2/5/10/20/30/60/90/200 Hz; default 60), with immediate
+control/error states. Hz-scaled monotonic deadlines avoid fractional-period drift
+and skip obsolete slots rather than queuing catch-up work. `VisualRefreshRate`
+centralizes defaults, validation and timer intervals across presentation surfaces.
+File percentage and preview updates use latest-value state and one presentation
+owner, rather than allocating a UI coroutine for every decoder callback.
 
 Long-session handling uses bounded audio queues, chunked decoding, cancellation,
 and recoverable completed transcripts. Temporary text files support long

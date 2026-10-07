@@ -177,7 +177,7 @@ class TextInjectionService : AccessibilityService() {
                 accessibilityButtonController.unregisterAccessibilityButtonCallback(callback)
             }
         }
-        microphoneSession?.cancel()
+        microphoneSession?.cancel(discard = false)
         microphoneSession = null
         hideCapturePanel()
         serviceScope.cancel()

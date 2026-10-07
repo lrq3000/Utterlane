@@ -135,7 +135,13 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
             CapturePhase.CANCELLED -> R.string.stream_cancelled
         })
         details.text = if (showStatistics) snapshot.modelName + "\n" + RecognitionStatusText.backlog(context, snapshot) else snapshot.modelName
-        recognition.text = if (showStatistics) RecognitionStatusText.activity(context, snapshot.recognition) else ""
+        recognition.text = when {
+            snapshot.recognitionFailure != null -> context.getString(if (capturing) R.string.recording_recognition_unavailable else R.string.recording_processing_unavailable)
+            snapshot.modelPreparing && capturing -> context.getString(R.string.recording_model_loading)
+            snapshot.modelPreparing && snapshot.phase == CapturePhase.PROCESSING -> context.getString(R.string.recording_model_loading_saved)
+            showStatistics -> RecognitionStatusText.activity(context, snapshot.recognition)
+            else -> ""
+        }
         recognition.visibility = if (recognition.text.isEmpty()) View.GONE else View.VISIBLE
         signal.visibility = if (capturing && snapshot.signal in listOf(CaptureSignal.LOW, CaptureSignal.NO_FRAMES, CaptureSignal.BLOCKED)) View.VISIBLE else View.GONE
         signal.text = context.getString(when (snapshot.signal) {
@@ -159,7 +165,7 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
 /** The whole waveform is a native accessible Button. Only actual PCM levels drive its bars. */
 private class WaveformButton(context: Context) : Button(context) {
     var levels = FloatArray(64)
-        set(value) { field = value; invalidate() }
+        set(value) { if (field !== value) { field = value; invalidate() } }
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; strokeCap = Paint.Cap.ROUND }
     init {
         applyPalette(NativeBrandStyle.palette(context))

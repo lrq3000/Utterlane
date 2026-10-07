@@ -10,5 +10,8 @@ class MicrophoneSessionFactory(private val capture: () -> AudioCapture = { Audio
         onComplete: (TranscriptStore?, SessionFailure?) -> Unit,
         onCaptureEnded: () -> Unit = {}, onWarning: (String) -> Unit = {}, onReady: () -> Unit = {},
         onSessionClosed: () -> Unit = {}): MicrophoneSession =
-        MicrophoneSession(context, scope, onText, onComplete, onCaptureEnded, onWarning, onReady, capture(), onSessionClosed)
+        MicrophoneSession(context, scope, onText, { store, failure ->
+            try { onComplete(store, failure) }
+            finally { failure?.recoveryId?.let { io.github.lrq3000.utterlane.history.RecordingRecovery.open(context, it) } }
+        }, onCaptureEnded, onWarning, onReady, capture(), onSessionClosed)
 }
