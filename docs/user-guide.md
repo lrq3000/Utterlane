@@ -222,11 +222,35 @@ Pauses, the selected model, and device speed affect how soon results appear.
 The recording panel provides a waveform, low/no-signal feedback, processing
 progress, and an estimated remaining time after stopping.
 
-Microphone history defaults to **one-hour retention**, so saved audio is available
-for recovery, replay, sharing, or retranscription. You can delete recordings,
-disable history, or change retention from one hour to forever. Existing retention
-choices, including disabled history, are preserved. Recordings use approximately **115 MB per hour**.
-Android can delay background cleanup while asleep or force-stopped.
+Under **Audio and transcript histories**, configure the two histories independently:
+
+- **Automatically save microphone audio:** on by default, with one-hour retention.
+  Existing automatic-history opt-outs are preserved.
+- **Automatically save completed transcripts:** off by default, with **24-hour**
+  retention selected. Every completed re-transcription creates a new text entry,
+  even when the audio and model are unchanged. Earlier results are not overwritten.
+- **Delete unpinned entries after:** a separate duration for each history, ranging
+  from Immediate to Forever. Turning automatic saving off does not prevent manual saves.
+
+Audio uses approximately **115 MB per hour** for microphone PCM; saved text is
+independent and remains usable after its source audio expires. Deleting a text
+entry does not delete audio, and deleting audio does not delete saved text.
+
+### Pins and manual saves
+
+Manual saving to history **pins the item forever**, without duplicating an already
+saved source/attempt. Both histories show an outline pin for normal entries and a
+filled accent-colored pin for permanent entries. Tap the pin to toggle it.
+Unpinning starts a fresh retention countdown **from the time of unpinning**, not
+the original date. Under Immediate retention, the item waits until the next genuine
+user-facing app launch and is skipped by background cleanup; repinning cancels that
+pending expiration. Pinned entries can still be explicitly deleted.
+
+Pruning uses metadata at startup and scheduled background intervals matching each
+finite retention setting. Opening/closing ordinary dialogs or refreshing lists
+does not scan and prune history. Forever has no periodic expiration job. Android
+can delay jobs while asleep or force-stopped, so a deadline is eligibility for the
+next cleanup opportunity rather than an exact deletion time.
 
 Capture starts while the selected model loads in the background. The panel shows
 recording and model loading separately. Microphone audio is buffered in private
@@ -235,12 +259,38 @@ enabled speaker labeling continue incrementally; a slower device can catch up
 after you tap Stop. Speaker labeling is never automatically disabled for speed.
 
 A model-loading or recognition failure leaves capture running. After stopping,
-open **Recordings** or **Recover unfinished recordings** in Settings to retry,
-share/export, or delete the saved audio. **Choose transcription model** opens the
-model settings if you need a smaller model. Unfinished audio survives restarts and
-automatic history cleanup, including with **No history** selected. Successful
-temporary recordings are deleted; successful retries follow the current history
-setting. Cancelling processing preserves unfinished audio for the same recovery.
+recovery opens the same transcription dialog used for shared audio. Settings and
+recording-specific notifications also provide access. **Choose transcription model**
+opens the actual picker, with the same audio available when you return.
+
+Explicit Cancel/Discard deletes temporary work; unexpected interruption preserves
+it for recovery. Closing a temporary dialog discards its working audio, including
+after a failed or successful retry, so use **Save audio** first if you want to keep
+it. Closing a saved-history entry leaves it in history. Saved recovery audio expires
+normally unless pinned. Text already inserted, exported or saved in transcript
+history is independent of the temporary audio's lifetime.
+
+### One transcription dialog
+
+Shared audio, history and recovery use the same actions:
+
+- **Re-transcribe:** use the same model, or choose another model and retry.
+- **Save audio:** save to history (pinned forever), share with another app, or save
+  to a device/document-provider destination. Multipart recordings use a chosen folder.
+- **Copy / Share transcript / Keep transcript forever:** operate on text separately
+  from audio, with manual text saving available even when automatic text history is off.
+- **Close**, and **Delete recording/transcript** or **Discard** according to ownership.
+
+Temporary private copies of shared audio support retries and playback; discarding
+them never deletes the original file supplied by the sending app. A cancelled
+destination picker or failed save does not falsely report that a copy was saved.
+
+Press **Play** to reveal Pause/Resume, Stop playback, a seek bar, and elapsed/total
+time. Seeking while paused keeps playback paused; Stop or reaching the end resets
+and collapses the player. Hourly audio parts appear as one timeline. Playback is
+local and independent of recognition, pauses on focus/headphone/background changes,
+and uses the visual-refresh preference for position updates. A transcript whose
+source expired remains readable; audio-dependent actions explain its absence.
 
 If the microphone or storage itself fails, recording stops with an error and the
 successfully saved portion remains available. Storage-writer overload drains its

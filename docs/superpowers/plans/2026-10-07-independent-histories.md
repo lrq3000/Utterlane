@@ -6,6 +6,10 @@
 
 ## Final requirements (supersede the earlier recovery lifetime)
 
+Implementation and focused verification are complete. See
+[the QA record](../../qa/independent-histories.md) for executed checks and their
+limits, and the branch's incremental commits for milestone boundaries.
+
 - Explicit Cancel/Discard/temporary-dialog Close deletes temporary work. A crash
   preserves unfinished sessions; persist deletion intent so a crash during
   deletion cannot resurrect discarded input. Never delete a sender's source file.

@@ -11,8 +11,9 @@ Utterlane is a voice-to-text application maintained by Stephen Karl Larroque tha
 **We do not collect any personal data.**
 
 - Audio and text are processed locally and are not automatically uploaded
-- Microphone audio is buffered in private local files during processing, including when history is disabled. Successful recordings follow your history setting (one hour by default); unfinished recordings remain available for recovery until successfully retried or explicitly deleted
-- Transcription uses temporary local text files for bounded-memory display, recovery, and export
+- Microphone audio is buffered in private local files during processing, including when automatic audio history is disabled. Automatic microphone history defaults to one-hour retention; audio and transcript history settings are independent
+- Transcript history is off by default, with 24-hour retention selected when enabled. Each completed transcription attempt is a separate text entry; deleting or expiring audio does not delete its saved transcripts
+- Transcription uses temporary local text files for bounded-memory display, recovery, and export. Explicit dismissal discards temporary work; unexpected interruption preserves it for recovery
 - No usage analytics or remote metrics reporting
 - No account required
 - No advertisements
@@ -89,16 +90,18 @@ If you enable the optional Android accessibility service, Utterlane accesses the
 
 ## Data Storage
 
-Utterlane processes and stores application data locally. Android may back up eligible settings and files according to your system configuration; microphone history is explicitly excluded:
+Utterlane processes and stores application data locally. Android may back up eligible settings and files according to your system configuration; audio and transcript histories are excluded:
 - Speech recognition model stored in app's private storage
 - User preferences stored locally
 - Word correction rules stored locally
 - Microphone audio is buffered in private files excluded from Android cloud backup and device transfer. Processing reads this same audio incrementally, so a slow or unavailable model does not require keeping the whole recording in RAM. No shared-storage permission is needed for this buffering
-- Completed-recording retention defaults to one hour and is configurable from No history to Forever. With No history, successful recordings are deleted when active readers finish. Existing choices are preserved and imported/shared audio is not duplicated
-- Failed, cancelled, and interrupted microphone recordings are shown as unfinished recordings in Settings, including with No history selected. Automatic history cleanup does not delete them. You can retry, export, or explicitly delete them; a successful retry resolves recovery and applies your current history setting
-- Successful delivered/dismissed transcripts are removed once active readers finish. Recoverable temporary transcripts expire after seven days, with best-effort scheduled and startup cleanup
+- Audio and transcript histories have separate automatic-save switches and retention periods, including Immediate and Forever. Existing audio opt-out choices are migrated to automatic saving off
+- Manual history saving pins an item indefinitely, even when automatic saving is disabled. Pins are visible and reversible. Unpinning starts a fresh retention countdown; under Immediate retention, the item is protected from background pruning until a new genuine user-facing launch. Explicit deletion still removes pinned items
+- Shared/opened audio is copied once into private working storage to support reliable retries, saving and playback. The sender's original file is never deleted. Successful live temporary recordings are deleted; a shared/recovery dialog keeps its working audio through retry until explicitly closed or discarded. Manually saved copies survive dismissal
+- Explicit Cancel/Discard deletes temporary working data. Crash/interruption leftovers remain recoverable. Saved history awaiting recovery expires normally unless pinned; temporary crash recovery is separate from that history-retention policy
+- Saved transcripts live in Android's private no-backup directory. Temporary delivered/dismissed text is removed when owners release it; leftover temporary text has seven-day best-effort cleanup. Saved transcript history is not governed by that cache lifetime
 - User-requested audio and text export snapshots remain temporarily available for the receiving app and expire after one day. These copies are separate from recording-history retention
-- Android may defer background deletion while asleep or force-stopped. Active capture, playback, transcription, and export readers are protected from cleanup
+- Cleanup is requested at genuine user entry and on system-scheduled intervals matching each finite history-retention setting, not on simulated app close or ordinary list refresh. Android may defer jobs while asleep or force-stopped. Deadlines determine eligibility rather than guaranteeing an exact deletion instant. Active capture, playback, transcription, and export readers are protected until their leases finish
 
 ## Children's Privacy
 

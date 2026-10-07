@@ -44,3 +44,9 @@ of the model-deletion confirmation UI and newer APK workflow.
 See [native onboarding verification](onboarding.md) for setup/replay, model
 recommendations, permissions, real inference, sample sharing, folder monitoring,
 and the isolated QA application identity.
+
+See [independent histories and transcription dialog verification](independent-histories.md)
+for capture during loading, explicit discard versus crash recovery, independent
+audio/text retention, pins and launch grace, repeated native transcription, audio
+saving, and playback/seek controls. These checks use the isolated `.recordingfirst`
+identity and include the adapted parallel-capture native fixture.

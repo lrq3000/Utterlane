@@ -105,15 +105,36 @@ through a bounded writer queue, independent of inference speed. Its disk-backed
 backlog is also used with history disabled. The processor follows a conflated
 saved-sample watermark using a lease-protected sequential WAV reader. Inference
 failure is an outcome, not cancellation of capture/writing. Stop drains ordered
-recognition and all enabled speaker-label work; Cancel drains the accepted writer
-tail and preserves unfinished audio. A single emergency block slot retains the
+recognition and all enabled speaker-label work. Cancellation drains accepted writer
+blocks; explicit user discard then deletes temporary work, while unexpected owner
+interruption preserves it. A single emergency block slot retains the
 block that detects writer-queue overflow, then capture stops and the writer drains.
 
 Audio is approximately **115 MB per hour**, split into hourly PCM16 WAV parts.
 Recovery metadata is written before the first sample and survives process death.
-History-off successes are deleted; unresolved recordings are exempt from pruning
-until successful retry or explicit deletion. Completed-recording retention ranges
-from one hour to forever; Android can delay background cleanup.
+Live history-off successes are deleted. Temporary dialogs retain their sources
+through retries until explicit dismissal; saved recovery audio expires normally.
+Encoded shared inputs are copied once without owning/deleting the sender's original.
+Persisted discard markers prevent resurrection after a crash during deletion.
+
+`RecordingHistory` and `TranscriptHistory` have independent data and policies.
+`RetentionIndex` orders only eligible unpinned metadata; candidate checks are O(1)
+after index updates and do not scan file contents. Manual saves pin stable item/
+attempt IDs. Unpin starts a new reference time, and Immediate unpins carry a
+persisted launch-token hold. `HistoryCleanupCoordinator` releases those holds only
+at user entry, coalesces IO requests and never simulates app close. `JobScheduler`
+uses separate audio/text jobs for finite durations, preserving unchanged schedules.
+Temporary and pinned items are absent from the expiration index. Audio reader
+leases can derive a reader after expiry becomes due without authorizing new readers.
+
+`TranscriptionDialogModel` retains source ownership and per-attempt results across
+activity recreation. Transcript-origin viewers never own their linked audio.
+Completed attempts can be copied into independent no-backup text history; cached
+working text and granted export snapshots keep their separate cleanup lifetimes.
+`DialogAudioActions` owns private imports and bounded URI/file exports. The shared
+`AudioPlaybackController` uses Main-thread owner tokens, read leases, audio focus,
+coalesced native seeks and O(1) hourly-part timeline addressing. Playback updates
+only its own UI state and stops polling while paused.
 
 `WaveformHistory` calculates energy only for newly captured samples, accumulates
 100 ms audio-time buckets in a 64-point ring and reuses immutable published arrays
