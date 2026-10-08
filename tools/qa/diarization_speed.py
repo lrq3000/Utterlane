@@ -32,6 +32,8 @@ class DiarizationSpeedRun:
             "fixture": self.args.fixture, "tag": self.args.tag,
             "repeats": str(self.args.repeats), "speakers": "0",
             "native_attention": self.args.attention,
+            "diarization": str(self.args.diarization == "on").lower(),
+            "realtime": str(self.args.realtime).lower(),
         }
         if self.args.asr_source_tag:
             arguments["asr_source_tag"] = self.args.asr_source_tag
@@ -58,7 +60,19 @@ class DiarizationSpeedRun:
         subprocess.run(self.adb + ["pull", remote, str(self.args.output)], check=True, capture_output=True)
         report = self.summarize()
         self.save("analysis.json", report)
-        print(json.dumps(report, ensure_ascii=True, allow_nan=False), flush=True)
+        # Full evidence is always saved. The optional compact view keeps long
+        # parameter sweeps readable without dumping every unchanged preference.
+        displayed = report
+        if self.args.compact:
+            displayed = {key: report[key] for key in (
+                "tag", "diarization", "elapsed_ms", "first_text_ms", "asr_audio_seconds",
+                "stage_totals_ms", "chunk_count", "chunk_p95_ms")}
+            displayed["word_errors"] = report["text"]
+            if report["capture"]:
+                displayed["capture"] = {key: value for key, value in report["capture"].items() if key != "backlog_trace"}
+            if report["diarization"]:
+                displayed["speakers"] = report["speakers"]
+        print(json.dumps(displayed, ensure_ascii=True, allow_nan=False), flush=True)
 
     def save(self, name, value):
         (self.directory / name).write_text(json.dumps(value, indent=2, ensure_ascii=True, allow_nan=False) + "\n", encoding="utf-8")
@@ -86,6 +100,12 @@ class DiarizationSpeedRun:
             "audio_seconds": summary["samples"] / 16000,
             "options": summary["options"], "native_attention": summary.get("native_attention", "default"),
             "asr_source_tag": summary.get("asr_source_tag"),
+            "diarization": summary["diarization"],
+            "realtime": summary.get("realtime", False), "capture": summary.get("capture"),
+            "first_text_ms": summary.get("first_text_ms"),
+            "first_text_with_setup_ms": summary.get("first_text_with_setup_ms"),
+            "last_text_ms": summary.get("last_text_ms"), "model_setup_ms": summary.get("model_setup_ms"),
+            "asr_audio_seconds": sum(event.get("audio_ms", 0) for event in events if event["stage"] == "asr") / 1000,
             "elapsed_ms": summary["elapsed_ms"], "stage_totals_ms": totals,
             "native_forwards": summary["native_forwards"], "native_stage_ms": summary.get("native_stage_ms"),
             "chunk_count": len(chunks), "chunk_p50_ms": elapsed[math.ceil(len(elapsed) * .5) - 1],
@@ -114,9 +134,24 @@ class DiarizationSpeedReport:
         rows = []
         for _, report in sorted(observations, key=lambda item: item[0]):
             options = report["options"]
+            diarization = report.get("diarization", True)
+            capture = report.get("capture") or {}
             rows.append({
                 "tag": report["tag"], "fixture": report["fixture"], "repeats": report["repeats"],
+                "diarization": diarization,
+                "realtime": report.get("realtime", False),
+                "capture_ms": capture.get("capture_elapsed_ms"),
+                "backlog_at_stop_audio_ms": capture.get("backlog_at_stop_audio_ms"),
+                "catchup_after_stop_ms": capture.get("catchup_after_stop_ms"),
+                "max_backlog_audio_ms": capture.get("max_backlog_audio_ms"),
+                "max_capture_lateness_ms": capture.get("max_capture_lateness_ms"),
                 "asr_source_tag": report.get("asr_source_tag"),
+                "asr_threads": options["asr_threads"], "window_s": options["asr_window_seconds"],
+                "minimum_s": options["asr_min_seconds"], "left_s": options["asr_left_context_seconds"],
+                "right_s": options["asr_right_context_seconds"], "silence_ms": options["silence_duration_ms"],
+                "asr_audio_s": report.get("asr_audio_seconds"),
+                "first_text_ms": report.get("first_text_ms"),
+                "first_text_with_setup_ms": report.get("first_text_with_setup_ms"),
                 "batch": options["diarization_batch"], "threads": options["diarization_threads"],
                 "cache": options["native_cache_frames"], "fifo": options["native_fifo_frames"],
                 "update": options["native_update_frames"], "attention": report["native_attention"],
@@ -127,9 +162,11 @@ class DiarizationSpeedReport:
                 "chunk_p50_s": report["chunk_p50_ms"] / 1000,
                 "chunk_p95_s": report["chunk_p95_ms"] / 1000,
                 "warm_rtf": report["warm_rtf"],
-                "turns": report["turns"]["candidate_turn_count"],
-                "unknown_words": report["speakers"]["unknown_words"],
-                "matched_speaker_accuracy": report["speakers"]["matched_word_accuracy"],
+                # Plain ASR intentionally has no speaker labels; reporting its
+                # unlabelled words as diarization failures would be misleading.
+                "turns": report["turns"]["candidate_turn_count"] if diarization else None,
+                "unknown_words": report["speakers"]["unknown_words"] if diarization else None,
+                "matched_speaker_accuracy": report["speakers"]["matched_word_accuracy"] if diarization else None,
                 "wer": report["text"]["wer"],
                 "tail_deletions": report["text"]["trailing_reference_deletions"],
             })
@@ -151,6 +188,9 @@ def main():
     parser.add_argument("--fixture", choices=("test-1-speaker-french", "test-2-speakers-french-3-turns"), default="test-2-speakers-french-3-turns")
     parser.add_argument("--repeats", type=int, choices=range(1, 9), default=1)
     parser.add_argument("--attention", choices=("default", "flash", "manual"), default="default")
+    parser.add_argument("--diarization", choices=("on", "off"), default="on")
+    parser.add_argument("--realtime", action="store_true", help="Pace independent capture through RecordingPipeline; one fixture, at most 30 seconds")
+    parser.add_argument("--compact", action="store_true", help="Print headline metrics; retain the full local JSON report")
     parser.add_argument("--asr-source-tag", help="Reuse PCM-checked ASR evidence; elapsed time then excludes neural ASR")
     parser.add_argument("--option", action="append", default=[])
     parser.add_argument("--output", type=Path, default=Path("qa-artifacts/diarization-speed"))
@@ -164,6 +204,10 @@ def main():
         return
     if not args.serial or not args.tag:
         parser.error("--serial and --tag are required for a benchmark run")
+    if args.diarization == "off" and args.asr_source_tag:
+        parser.error("ASR-only benchmarks must run neural ASR rather than replay its evidence")
+    if args.realtime and (args.repeats != 1 or args.asr_source_tag):
+        parser.error("Real-time trials require one fresh recording, without ASR evidence replay")
     for tag in (args.tag, args.asr_source_tag):
         if tag is not None and not re.fullmatch(r"[a-zA-Z0-9_-]+", tag):
             parser.error("Run/source tags must contain only letters, digits, underscores or hyphens")

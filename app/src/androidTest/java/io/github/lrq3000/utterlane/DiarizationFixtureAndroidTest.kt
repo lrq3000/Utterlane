@@ -20,6 +20,9 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.atomic.AtomicLong
+import io.github.lrq3000.utterlane.history.HistoryRetention
+import io.github.lrq3000.utterlane.history.RecordingHistory
 
 /** Local acoustic replay, including raw timing/posterior evidence, never bundled private audio. */
 @RunWith(AndroidJUnit4::class)
@@ -92,6 +95,7 @@ class DiarizationFixtureAndroidTest {
         val count = args.getString("speakers", "0").toInt().also { require(it in 0..8) }
         val enabled = args.getString("diarization", "true").toBooleanStrict()
         val repeats = args.getString("repeats", "1").toInt().also { require(it in 1..8) }
+        val realtime = args.getString("realtime", "false").toBooleanStrict()
         val sourceTag = args.getString("asr_source_tag")?.also {
             require(it.matches(Regex("[a-zA-Z0-9_-]+")) && it != tag)
         }
@@ -104,6 +108,22 @@ class DiarizationFixtureAndroidTest {
         val options = RuntimeOptions.parseDraft(RuntimeOptions().toMap() + overrides).let {
             requireNotNull(it.options) { it.errors.toString() }
         }
+        val completedSamples = AtomicLong()
+        val capture = if (realtime) {
+            require(repeats == 1 && sourceTag == null) { "Real-time trials require one fresh <=30-second recording" }
+            // Decode before the timed capture, avoiding codec load masquerading
+            // as a slower microphone. Storage is explicitly capped at 30 s.
+            val pieces = mutableListOf<ShortArray>()
+            var length = 0
+            AudioDecoder(app).decode("/sdcard/Download/diarization-qa/$fixture.m4a", { pcm ->
+                require(length + pcm.size <= 30 * 16000) { "Real-time fixture exceeds 30 seconds" }
+                pieces += pcm; length += pcm.size
+            })
+            val pcm = ShortArray(length)
+            var offset = 0
+            for (piece in pieces) { piece.copyInto(pcm, offset); offset += piece.size }
+            RealtimeFixtureCapture(pcm, options.captureBlockMs * 16, completedSamples::get)
+        } else null
         val directory = File(app.getExternalFilesDir(null), "diarization-runs/$tag").apply { mkdirs() }
         val performance = File(directory, "$fixture.performance.jsonl").apply { writeText("") }
         val words = File(directory, "$fixture.words.jsonl").apply { writeText("") }
@@ -116,6 +136,8 @@ class DiarizationFixtureAndroidTest {
         var owned = 0L
         var fed = 0L
         var nativeCalls = 0
+        var firstTextAt = 0L
+        var lastTextAt = 0L
         fun timing(stage: String, start: Long, samples: Long? = null) {
             performance.appendText(JSONObject().apply {
                 put("recording", fixture); put("run_id", tag); put("stage", stage)
@@ -180,7 +202,13 @@ class DiarizationFixtureAndroidTest {
         }
         val processor = if (enabled) DiarizedWindowProcessor(backend, observed, count, options = options) else null
         val store = TranscriptStore(File(app.cacheDir, "fixture-${System.nanoTime()}.txt"))
-        val session = TranscriptionSession(store, StreamingCorrections(emptyList()), {}, decode = { window ->
+        val session = TranscriptionSession(store, StreamingCorrections(emptyList()), { text ->
+            if (text.isNotBlank()) {
+                val now = SystemClock.elapsedRealtime()
+                if (firstTextAt == 0L) firstTextAt = now
+                lastTextAt = now
+            }
+        }, decode = { window ->
             words.appendText(JSONObject().put("window", windowIndex).put("start", window.startSample).put("owned_start", window.ownedStart).put("owned_end", window.ownedEnd).toString() + "\n")
             val result = backend.transcribeWindow(window.samples)
             WindowText.select(result.tokens, result.timestamps, window)
@@ -191,6 +219,7 @@ class DiarizationFixtureAndroidTest {
                 put("elapsed_ms", ms); put("audio_ms", (end - owned) / 16.0); put("audio_end_ms", end / 16.0)
             }.toString() + "\n")
             owned = end; windowIndex++
+            completedSamples.set(end)
         }, decodeSpeakers = processor?.let { p -> { window ->
             words.appendText(JSONObject().put("window", windowIndex).put("start", window.startSample).put("owned_start", window.ownedStart).put("owned_end", window.ownedEnd).toString() + "\n")
             p.process(window)
@@ -198,24 +227,56 @@ class DiarizationFixtureAndroidTest {
         val started = SystemClock.elapsedRealtime()
         var accepted = 0L
         try {
-            repeat(repeats) {
-                AudioDecoder(app).decode("/sdcard/Download/diarization-qa/$fixture.m4a", { pcm ->
-                    // Replay the same fixed-size capture packets for On/Off; the
-                    // native inference schedule is separate from packet transport.
-                    var at = 0
-                    while (at < pcm.size) {
-                        val stop = minOf(at + 1600, pcm.size)
-                        session.accept(pcm.copyOfRange(at, stop)); accepted += stop - at; at = stop
-                    }
-                })
+            if (capture != null) {
+                val root = File(app.cacheDir, "realtime-$tag")
+                val history = RecordingHistory(root)
+                val recording = history.begin(HistoryRetention.NONE)
+                var succeeded = false
+                try {
+                    // Reuse the real capture/writer/inference isolation and
+                    // disk backlog. Models are already warm for this sweep.
+                    val result = RecordingPipeline(capture, history, recording, options).run(
+                        prepare = {}, accept = { session.accept(it) }, finish = { session.finish() })
+                    assertNull(result.captureError); assertNull(result.storageError); assertNull(result.processingError)
+                    accepted = capture.capturedSamples.toLong()
+                    assertEquals(capture.sampleCount.toLong(), accepted)
+                    assertEquals(accepted, recording.writtenSamples)
+                    assertTrue("Capture exceeded 30 seconds", capture.stoppedAt - capture.startedAt <= 30000)
+                    succeeded = true
+                } finally {
+                    recording.finish(!succeeded)
+                    if (succeeded) root.delete()
+                }
+            } else {
+                repeat(repeats) {
+                    AudioDecoder(app).decode("/sdcard/Download/diarization-qa/$fixture.m4a", { pcm ->
+                        // Replay the same fixed-size capture packets for On/Off; the
+                        // native inference schedule is separate from packet transport.
+                        var at = 0
+                        while (at < pcm.size) {
+                            val stop = minOf(at + 1600, pcm.size)
+                            session.accept(pcm.copyOfRange(at, stop)); accepted += stop - at; at = stop
+                        }
+                    })
+                }
+                session.finish()
             }
-            session.finish()
+            val finishedAt = SystemClock.elapsedRealtime()
+            val timingOrigin = capture?.startedAt ?: started
             recorded?.requireConsumed()
             File(directory, "${fixture}_transcript_$tag.txt").writeText(store.file.readText())
             File(directory, "$fixture.summary.json").writeText(JSONObject().apply {
                 put("options", JSONObject(options.toMap())); put("diarization", enabled); put("speakers", count)
                 put("samples", accepted); put("processed_samples", owned); put("fed_to_speakers", fed)
-                put("native_forwards", nativeCalls); put("elapsed_ms", SystemClock.elapsedRealtime() - started)
+                put("native_forwards", nativeCalls); put("elapsed_ms", finishedAt - timingOrigin)
+                // Real-time mode starts its clock at actual capture dispatch;
+                // file mode measures publication during unpaced processing.
+                put("realtime", realtime)
+                put("capture", capture?.report(finishedAt) ?: JSONObject.NULL)
+                put("first_text_ms", if (firstTextAt == 0L) JSONObject.NULL else firstTextAt - timingOrigin)
+                put("first_text_with_setup_ms", if (firstTextAt == 0L) JSONObject.NULL else firstTextAt - load)
+                put("last_text_ms", if (lastTextAt == 0L) JSONObject.NULL else lastTextAt - timingOrigin)
+                put("model_setup_ms", timingOrigin - load)
                 put("native_attention", attention)
                 put("asr_source_tag", sourceTag ?: JSONObject.NULL)
                 put("native_stage_ms", JSONObject(nativeStageNanos.mapValues { it.value / 1_000_000.0 }))
