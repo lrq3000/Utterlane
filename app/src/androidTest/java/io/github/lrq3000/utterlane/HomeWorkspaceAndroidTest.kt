@@ -148,6 +148,24 @@ class HomeWorkspaceAndroidTest {
             assertArrayEquals(original.readBytes(), audio.part(0).readBytes())
             original.delete()
             assertTrue("Imported working audio must not depend on the picker source", audio.part(0).isFile)
+            // Exercise the real MicrophoneSession allocation/finalizer path, not
+            // a BUSY rejection. The ID exists before this recorder throws, but
+            // no onStarted signal, samples or useful result follow it.
+            instrumentation.uiAutomation.grantRuntimePermission(app.packageName, "android.permission.RECORD_AUDIO")
+            val priorStore = result.result.store
+            val priorText = priorStore?.file?.readText()
+            app.microphoneSessions = MicrophoneSessionFactory { FailingOpenCapture() }
+            instrumentation.runOnMainSync { app.homeController.record() }
+            val failedCapture = withTimeout(120000) { app.homeController.state.first {
+                !it.busy && it.message == FailingOpenCapture.MESSAGE
+            } }
+            assertSame("An empty failed attempt must retain the prior result owner", result.model, failedCapture.model)
+            assertEquals(audio.id, failedCapture.result.audio?.id)
+            assertTrue(audio.part(0).isFile)
+            if (priorStore != null) {
+                assertSame(priorStore, failedCapture.result.store)
+                assertEquals(priorText, priorStore.file.readText())
+            }
             instrumentation.runOnMainSync { app.homeController.dismiss() }
             withTimeout(10000) { app.homeController.state.first { it.model == null } }
         } finally {
@@ -171,5 +189,13 @@ class HomeWorkspaceAndroidTest {
             }
         }
         override fun stop() { stopped.set(true) }
+    }
+
+    private class FailingOpenCapture : AudioCapture {
+        companion object { const val MESSAGE = "Home QA recorder-open failure" }
+        override fun startRecording(onSamples: (ShortArray) -> Unit, shouldContinue: () -> Boolean) {
+            error(MESSAGE)
+        }
+        override fun stop() = Unit
     }
 }

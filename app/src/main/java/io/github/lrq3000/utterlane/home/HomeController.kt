@@ -170,6 +170,7 @@ class HomeController(private val app: UtterlaneApp) {
         private var delivered = false
         private var sourceLease: Closeable? = null
         private var rawStore: TranscriptStore? = null
+        private val completion = HomeCaptureCompletion<CaptureResult>(events::result, ::reject)
 
         override fun start() { requestService(microphone = true) }
         fun begin() {
@@ -183,9 +184,8 @@ class HomeController(private val app: UtterlaneApp) {
                     }
                 }, onComplete = { store, failure ->
                     delivered = true
-                    if (failure?.kind == SessionFailure.Kind.BUSY || (session?.audioId == null && store == null)) {
-                        reject(failure?.message ?: app.getString(R.string.toast_recording_error))
-                    } else events.result(CaptureResult(this, store, failure))
+                    if (failure?.kind == SessionFailure.Kind.BUSY) reject(failure.message)
+                    else deliverResult(store, failure)
                 }, onCaptureEnded = { events.captureEnded() },
                 onWarning = { if (captureDriver === this) showMessage(it) },
                 onReady = {
@@ -200,12 +200,11 @@ class HomeController(private val app: UtterlaneApp) {
                     journal.capture(id, rawStore, session?.metrics?.state?.value)
                 }, onSessionClosed = {
                     observer?.cancel()
-                    if (!delivered && session?.audioId != null) {
+                    if (!delivered) {
                         // Cancellation preserves input but omits onComplete. Adopt
                         // its partial workspace too, so explicit Next can later
                         // acknowledge it instead of leaking temporary ownership.
-                        events.result(CaptureResult(this, rawStore,
-                            SessionFailure(SessionFailure.Kind.AUDIO, app.getString(R.string.stream_cancelled))))
+                        deliverResult(rawStore, SessionFailure(SessionFailure.Kind.AUDIO, app.getString(R.string.stream_cancelled)))
                     }
                     ended = true
                     events.closed()
@@ -221,6 +220,15 @@ class HomeController(private val app: UtterlaneApp) {
             created.start()
         }
         override fun stop() { session?.stop() }
+        private fun deliverResult(store: TranscriptStore?, failure: SessionFailure?) {
+            val audio = session?.audioId?.let { runCatching { app.recordingHistory.get(it) }.getOrNull() }
+            if (!completion.deliver(CaptureResult(this, store, failure), audio, store?.preview().orEmpty(),
+                    failure?.message ?: app.getString(R.string.toast_recording_error))) {
+                // Model preparation can create an empty text store even when the
+                // recorder never opens. No result owner will consume that store.
+                store?.let { scope.launch(Dispatchers.IO) { it.dispose() } }
+            }
+        }
         override fun interrupt() {
             if (session == null) { ended = true; events.closed(); captureDriver = null }
             else session?.cancel(discard = false)
