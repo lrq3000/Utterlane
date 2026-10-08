@@ -69,6 +69,14 @@ row with a square audio-file action on the right. The row has no background or
 border. The text determines the row and button height, so the action scales
 naturally with the text-size control.
 
+D's Record wordmark is larger and centered, with equal side space reserving the
+settings gear's position. Its history samples have no assigned titles: audio rows
+use the neutral type label **Audio recording**, and transcript rows preview the
+first nonblank text line, ellipsized when necessary. Opening an entry still shows
+the complete sample text. Metadata remains in date → recorded time → duration →
+optional speaker labels → optional pin order; only pinned entries show the small
+pin icon. New D demo sessions start untitled and unpinned.
+
 Internally this is the **load audio file button** (`loadAudioFileButton` and the
 `load-audio-file` action). That name describes local file loading, not transfer to
 a server; it is not an additional visible button label. D's empty-state hint says

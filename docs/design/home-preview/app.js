@@ -17,7 +17,7 @@ class PreviewApp {
     this.concept = Object.hasOwn(CONCEPTS, requested) ? requested : 'focus';
     this.preferences = new Preferences();
     this.previewPreferences = new PreviewPreferences();
-    this.session = new DemoSession(this.preferences);
+    this.session = new DemoSession(this.preferences, { untitledHistory: this.concept === 'blue-notebook' });
     // Restore before observing: preview() passes through intermediate phases,
     // which must not overwrite the phase selected for comparison.
     this.session.preview(this.previewPreferences.values.state);
@@ -123,7 +123,20 @@ class PreviewApp {
   }
   history() {
     const audio = this.route === 'audio';
-    return `${brandHeader(true, audio ? 'Audio history' : 'Transcript history')}<div class="route-content"><p class="route-intro">${audio ? 'Your recordings, ready to revisit.' : 'Your words, ready when you need them.'}</p><p class="section-label">Sample library · this preview only</p><div class="settings-group">${this.session.history.map(entry => `<button class="history-entry" data-action="entry" data-id="${entry.id}">${icon(audio ? 'audio' : 'document')}<span><strong>${escapeHtml(entry.title)}</strong><small>${escapeHtml(entry.date)} · ${duration(entry.seconds)}${entry.labels ? ' · Speaker labels' : ''}</small></span>${icon('arrow')}</button>`).join('')}</div><p class="route-note">Demo sessions appear here after finishing. The sample library resets on reload; actual history follows your retention settings.</p></div>`;
+    return `${brandHeader(true, audio ? 'Audio history' : 'Transcript history')}<div class="route-content"><p class="route-intro">${audio ? 'Your recordings, ready to revisit.' : 'Your words, ready when you need them.'}</p><p class="section-label">Sample library · this preview only</p><div class="settings-group">${this.session.history.map(entry => this.historyEntry(entry)).join('')}</div><p class="route-note">Demo sessions appear here after finishing. The sample library resets on reload; actual history follows your retention settings.</p></div>`;
+  }
+  historyEntryLabel(entry, { preview = false } = {}) {
+    if (entry.title) return entry.title;
+    if (this.route === 'audio') return 'Audio recording';
+    // Use the first nonblank line as a preview, never as a newly assigned title.
+    // Matching stops at its line ending rather than splitting the whole transcript.
+    return preview ? (entry.text.match(/\S[^\r\n]*/)?.[0] ?? 'Empty transcript') : 'Transcript';
+  }
+  historyEntry(entry) {
+    const pinned = this.concept === 'blue-notebook' && entry.pinned
+      ? `<span class="history-pin" role="img" aria-label="Pinned" title="Pinned">${icon('pin')}</span>` : '';
+    const label = escapeHtml(this.historyEntryLabel(entry, { preview: true }));
+    return `<button class="history-entry" data-action="entry" data-id="${entry.id}">${icon(this.route === 'audio' ? 'audio' : 'document')}<span><strong>${label}</strong><small>${escapeHtml(entry.date)} · ${duration(entry.seconds)}${entry.labels ? ' · Speaker labels' : ''}${pinned}</small></span>${icon('arrow')}</button>`;
   }
   render() {
     this.root.innerHTML = this.route === 'home' ? this.home() : this.route === 'settings' ? this.settings() : this.history();
@@ -207,7 +220,7 @@ class PreviewApp {
         const entry = this.session.history.find(item => item.id === target.dataset.id);
         if (!entry) return;
         this.transferText = entry.text;
-        this.openSheet(escapeHtml(entry.title), `<p>${this.route === 'audio' ? 'Sample recording detail · audio playback is not included in this design study.' : 'Saved sample transcript'}</p><p class="sample-text">${escapeHtml(entry.text)}</p>${this.sheetAction('copy-transfer', 'copy', 'Copy transcript')}${this.sheetAction('download', 'download', 'Export text')}`);
+        this.openSheet(escapeHtml(this.historyEntryLabel(entry)), `<p>${this.route === 'audio' ? 'Sample recording detail · audio playback is not included in this design study.' : 'Saved sample transcript'}</p><p class="sample-text">${escapeHtml(entry.text)}</p>${this.sheetAction('copy-transfer', 'copy', 'Copy transcript')}${this.sheetAction('download', 'download', 'Export text')}`);
         break;
       }
       case 'copy-transfer': this.copy(this.transferText); break;
