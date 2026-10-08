@@ -304,6 +304,7 @@ class HomeController(private val app: UtterlaneApp) {
         private var metadata = input.metadata ?: TranscriptMetadata()
         private var wasRunning = false
         private var previousStore: TranscriptStore? = null
+        private val descriptor = HomeResultDescriptor(input)
         fun observe() {
             observer = scope.launch { model.state.collect { result ->
                 if (slot !== this@ResultOwner) return@collect
@@ -330,10 +331,10 @@ class HomeController(private val app: UtterlaneApp) {
                 if (!result.running) previousStore = result.store
                 wasRunning = result.running
                 val saved = Bundle().also(model::saveInstanceState)
-                journal.write(input.copy(uri = null, path = null, automatic = false,
+                journal.write(descriptor.update(input.copy(uri = null, path = null, automatic = false,
                     audioId = saved.getString("owned_audio"), transcriptId = saved.getString("saved_text"),
                     transcriptPath = saved.getString("working_text"), modelName = saved.getString("result_model").orEmpty(),
-                    modelId = saved.getString("result_model_id"), metadata = metadata))
+                    modelId = saved.getString("result_model_id"), metadata = metadata), importing = result.importing))
             } }
         }
         fun preserve() { model.state.value.store?.keepForRecovery() }
