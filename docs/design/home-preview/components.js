@@ -64,13 +64,14 @@ export class TranscriptPanel {
 }
 
 export class WaveformControl {
+  static privacyMessage = 'Audio recording and processing only happens on your device.';
   static render() {
     return `<div class="recording-control"><button class="waveform" data-action="record" aria-label="Start recording">
       <span class="waveform-top"><span id="capture-status">${icon('mic')}Ready to record</span><span class="elapsed" id="elapsed">00:00</span></span>
       <svg class="waveform-chart" viewBox="0 0 320 52" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="26" x2="320" y2="26"/><g>${Array.from({ length: 64 }, (_, index) => `<rect x="${index * 5 + 1}" y="25" width="2.5" height="2" rx="1.25"/>`).join('')}</g></svg>
       <span class="finishing-progress" hidden><span class="progress-label"><span>Finalizing your words</span><strong id="progress-percent">0%</strong></span><span class="progress-track"><span id="progress-fill"></span></span></span>
       <span class="waveform-cta" id="waveform-cta">${icon('mic')}Tap to record</span>
-    </button><p class="capture-note" id="capture-note">${icon('lock')}Only on your device. Always.</p></div>`;
+    </button><p class="capture-note" id="capture-note">${icon('lock')}${WaveformControl.privacyMessage}</p></div>`;
   }
   static update(session) {
     const button = document.querySelector('.waveform');
@@ -87,7 +88,7 @@ export class WaveformControl {
     document.querySelector('#progress-fill').style.width = `${session.progress}%`;
     document.querySelector('#progress-percent').textContent = `${session.progress}%`;
     document.querySelector('#waveform-cta').innerHTML = phase === 'processing' ? `About ${session.remainingSeconds} ${session.remainingSeconds === 1 ? 'second' : 'seconds'} left` : `${icon(phase === 'recording' ? 'stop' : phase === 'complete' ? 'plus' : 'mic')}${({ ready: 'Tap to record', recording: 'Tap to stop', complete: 'New recording' })[phase]}`;
-    document.querySelector('#capture-note').innerHTML = phase === 'complete' ? `${icon('check')}Previous result kept in demo history` : phase === 'processing' ? `${icon('lock')}Finishing locally · example estimate` : `${icon('lock')}Only on your device. Always.`;
+    document.querySelector('#capture-note').innerHTML = phase === 'complete' ? `${icon('check')}Previous result kept in demo history` : phase === 'processing' ? `${icon('lock')}Finishing locally · example estimate` : `${icon('lock')}${WaveformControl.privacyMessage}`;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     // Fixed 64-bar cost, independent of recording duration. These deterministic
     // sample levels are solely a mockup; native bars must keep using actual PCM.

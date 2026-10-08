@@ -90,7 +90,7 @@ class PreviewApp {
   intro(title, subtitle) {
     return `<div class="home-intro"><div><h1>${title}</h1><p>${subtitle}</p></div></div>`;
   }
-  importButton() { return `<button class="text-button" data-action="import">${icon('upload')}Transcribe an audio file</button>`; }
+  importButton() { return `<button class="text-button import-button" data-action="import">${icon('upload')}Or transcribe an audio file</button>`; }
   home() {
     const transcript = TranscriptPanel.render();
     const speakers = SpeakerToggle.render(this.preferences);
