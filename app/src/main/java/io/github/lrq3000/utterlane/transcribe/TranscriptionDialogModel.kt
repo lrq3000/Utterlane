@@ -110,9 +110,16 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                 withContext(Dispatchers.IO) { refreshAudio() }
                 mutable.update { it.copy(importing = false) }
                 if (input.automatic && ownedAudioId != null) transcribe()
-                else if (mutable.value.audio?.needsRecovery == true) mutable.update {
-                    it.copy(message = if (it.audio?.failureKind == "MODEL") app.getString(R.string.dialog_model_failed)
-                        else it.audio?.failureMessage ?: app.getString(R.string.dialog_recovery_info))
+                else mutable.value.audio?.takeIf {
+                    // Recovery protection also owns successful temporary results;
+                    // only a real failure/interruption warrants recovery wording.
+                    it.needsRecovery && (it.status == "failed" || it.status == "interrupted" ||
+                        it.failureKind != null || it.failureMessage != null)
+                }?.let { recovery ->
+                    mutable.update {
+                        it.copy(message = if (recovery.failureKind == "MODEL") app.getString(R.string.dialog_model_failed)
+                            else recovery.failureMessage ?: app.getString(R.string.dialog_recovery_info))
+                    }
                 }
             } catch (e: CancellationException) { throw e
             } catch (e: Exception) { showError(e)
@@ -297,20 +304,21 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         check(!state.value.running) { "Wait for the current attempt to finish" }
         val store = checkNotNull(currentStore) { "There is no transcript to save" }
         check(!TranscriptSource.read(store.file).discarded) { "Transcript was deleted" }
-        val existing = app.transcriptHistory.find(mutable.value.transcriptId)
-        if (existing == null && !pinned) {
-            // A stale Unpin choice must never save a replacement for an entry
-            // removed elsewhere while the popup was open.
-            mutable.update { it.copy(transcriptId = null, transcriptPinned = false) }
-            return
-        }
-        val saved = if (existing != null) {
-            if (existing.retention.pinned != pinned)
-                app.transcriptHistory.setPinned(existing.id, pinned, app.settingsRepository.transcriptHistoryRetention.first(), app.historyCleanup.launchToken)
-            app.transcriptHistory.get(existing.id)
-        } else resultMetadata.save(app.transcriptHistory, store.file, chosenModel, ownedAudioId, pinned = true, modelId = resultModelId)
-        store.attachSource(TranscriptSource(ownedAudioId, saved.id, chosenModel, resultModelId))
-        mutable.update { it.copy(transcriptId = saved.id, transcriptPinned = saved.retention.pinned) }
+        val existing = mutable.value.transcriptId
+        val saved = existing?.let {
+            app.transcriptHistory.setPinnedIfPresent(it, pinned, app.settingsRepository.transcriptHistoryRetention.first(), app.historyCleanup.launchToken)
+        } ?: if (pinned) {
+            // Working text has an independent lifetime. Explicit Keep authorizes
+            // a fresh copy after expiry/history cleanup, never reuse of an old ID.
+            // Confirmed discard of this working source is still authoritative.
+            // Automatic saves still use their stable attempt ID for deduplication.
+            val metadata = resultMetadata
+            app.transcriptHistory.save(store.file, chosenModel, ownedAudioId, pinned = true,
+                attempt = java.util.UUID.randomUUID().toString(), modelId = resultModelId,
+                created = metadata.created, durationMs = metadata.durationMs, speakerLabels = metadata.speakerLabels)
+        } else null
+        if (saved != null) store.attachSource(TranscriptSource(ownedAudioId, saved.id, chosenModel, resultModelId))
+        mutable.update { it.copy(transcriptId = saved?.id, transcriptPinned = saved?.retention?.pinned == true) }
     }
 
     fun shareAudio(launch: (android.content.Intent) -> Unit) = saveAction(successMessage = null) {
