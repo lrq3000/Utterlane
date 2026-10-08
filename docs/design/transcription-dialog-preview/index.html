@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="data:,">
+  <title>Utterlane · Transcription dialog design study</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="preview.js" defer></script>
+</head>
+<body>
+  <header class="studio-header">
+    <a class="studio-name" href="./">Utterlane <span>/ Design study</span></a>
+    <span class="prototype-note">Browser mockups · Sample content</span>
+  </header>
+  <main>
+    <section class="intro" aria-labelledby="study-title">
+      <div>
+        <h1 id="study-title">More room for your words.</h1>
+        <p>Three ways to make the transcript the focus. Familiar actions, quieter controls.</p>
+      </div>
+      <div class="appearance" role="group" aria-label="Preview appearance">
+        <button data-theme="light" aria-pressed="true">Light</button>
+        <button data-theme="dark" aria-pressed="false">Dark</button>
+      </div>
+    </section>
+
+    <section class="review-controls" aria-label="Design review controls">
+      <div class="view-options" role="group" aria-label="Designs to display">
+        <button data-view="all" aria-pressed="true">Compare all</button>
+        <button data-view="a" aria-pressed="false">A</button>
+        <button data-view="b" aria-pressed="false">B</button>
+        <button data-view="c" aria-pressed="false">C</button>
+      </div>
+      <div class="review-settings">
+        <label>Phone <select id="phone-width"><option value="392">392 px</option><option value="360">360 px</option><option value="320">320 px</option></select></label>
+        <label>Text <select id="text-size"><option value="16">100%</option><option value="20">125%</option><option value="24">150%</option></select></label>
+        <label>State <select id="preview-state"><option value="ready">Complete</option><option value="running">Transcribing</option><option value="recovery">Recovery</option><option value="text-only">Text only</option><option value="temporary">Temporary audio</option></select></label>
+        <label class="stats-toggle"><input id="show-stats" type="checkbox"> Stats</label>
+        <button class="reset" id="reset">Reset</button>
+      </div>
+    </section>
+
+    <section class="gallery" aria-label="Three transcription dialog proposals"></section>
+
+    <footer class="studio-footer">
+      <p><strong>Try it:</strong> scroll the transcript, pin it, tap the icons, or open the menus. Select A, B, or C above for a full-size view.</p>
+      <p>Outline at rest. Filled when pinned. Delete stays explicit. All device actions are simulated.</p>
+    </footer>
+  </main>
+</body>
+</html>

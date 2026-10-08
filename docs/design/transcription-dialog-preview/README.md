@@ -74,3 +74,36 @@ Use the review controls to change appearance, phone width, text size, and state.
 Scroll inside the transcript, tap the pin, open audio/retranscription menus, and
 try the close/reopen interaction. Functional Android implementation follows only
 after selection and design approval.
+
+## Browser review record
+
+Reviewed in Chrome through browser-controller on 2026-10-08:
+
+- All three complete designs inspected together; individual view restores full
+  size. Comparison scales the entire phone, preserving its internal geometry.
+- Light/dark palette, consistent outline icons, Material pin states, thin document
+  boundary, visible scrollbar, typography, and labeled deletion inspected.
+- Desktop viewport: 1150 × 791. Phone canvases: 392 and 320 pixels wide. A separate
+  360 × 780 iframe viewport verified responsive page stacking without horizontal
+  overflow. Transcript text checked at 100% and 150%.
+- Fixed a review finding: B's narrow layout now gives actions a second row while
+  keeping the sole close icon at the top right. Visible controls remained within
+  the phone bounds at 320 pixels.
+- Scroll changed the transcript position by 300 pixels without moving the dialog.
+  Paging replaced the content, reset scrolling, updated boundary-button states,
+  and preserved the pin state. Other proposals retained independent pin states.
+- Play/pause/stop and simulated seek checked; setting the range to 84 seconds
+  produced `01:24 / 02:48`. Pointer dragging could not be verified because the
+  automation drag call timed out; input-driven seek feedback was verified.
+- Both menus, model-choice feedback, copy/share feedback, close/reopen, keyboard
+  Escape for menus, and the 48 × 48 unscaled icon targets checked.
+- Processing with optional stats, recovery, text-only, and temporary-audio
+  information checked. Audio-dependent actions disable in text-only state;
+  pin/retranscribe disable while processing.
+- Fresh page load had no console messages. HTML, CSS, and JavaScript returned
+  HTTP 200 locally; the final page has no external requests or missing favicon.
+- `node --check docs/design/transcription-dialog-preview/preview.js` and
+  `git diff --check` passed.
+
+The three layouts are proposals for selection, not an approved native redesign.
+No Android runtime behavior is established by this browser-only review.

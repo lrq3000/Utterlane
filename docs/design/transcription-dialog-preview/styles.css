@@ -1,0 +1,218 @@
+/* Shared Blue harmony tokens keep the proposals comparable: layout is the
+   experiment, not three unrelated brands. No external font requests are needed. */
+:root {
+  color-scheme: light;
+  --canvas: #f1f5fb;
+  --surface: #ffffff;
+  --ink: #15263f;
+  --muted: #617088;
+  --blue: #155ecc;
+  --tonal: #eaf1ff;
+  --line: #e5eaf3;
+  --document-line: #a8bad2;
+  --document: #fcfdff;
+  --track: #e5ecf5;
+  --thumb: #617fA8;
+  --red: #b3261e;
+  --scrim: #ccd5e3;
+  --shadow: 0 10px 32px #1b365517, 0 2px 7px #1b365509;
+  --phone-width: 392px;
+  --transcript-size: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  color: var(--ink);
+  background: var(--canvas);
+  font-synthesis: none;
+}
+:root[data-appearance="dark"] {
+  color-scheme: dark;
+  --canvas: #0e1727;
+  --surface: #182438;
+  --ink: #e9effc;
+  --muted: #adbad0;
+  --blue: #a4c7ff;
+  --tonal: #233954;
+  --line: #29374d;
+  --document-line: #607691;
+  --document: #142034;
+  --track: #2a3a51;
+  --thumb: #95b8e3;
+  --red: #f2b8b5;
+  --scrim: #0b1322;
+  --shadow: 0 12px 36px #00000035, 0 2px 7px #00000025;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, select, input { font: inherit; }
+button, select { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
+button:disabled { cursor: default; opacity: .35; }
+button, a, select, input, [tabindex] { outline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--blue); }
+button { color: inherit; }
+[hidden] { display: none !important; }
+.studio-header { max-width: 1384px; margin: auto; padding: 20px 28px 16px; display: flex; justify-content: space-between; align-items: center; }
+.studio-name { font-size: 16px; font-weight: 700; color: var(--ink); text-decoration: none; letter-spacing: -.3px; }
+.studio-name span { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 10px; letter-spacing: 0; }
+.prototype-note { font-size: 12px; color: var(--muted); }
+main { max-width: 1384px; margin: auto; padding: 0 28px 28px; }
+.intro { display: flex; justify-content: space-between; gap: 24px; align-items: center; padding: 12px 0 22px; }
+h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.2; font-weight: 600; margin: 0 0 9px; }
+.intro p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.appearance, .view-options { display: flex; align-items: center; gap: 3px; }
+.appearance { border: 1px solid var(--line); background: var(--surface); border-radius: 11px; padding: 4px; }
+.appearance button, .view-options button { border: 0; border-radius: 7px; background: transparent; color: var(--muted); min-height: 34px; padding: 0 14px; font-size: 13px; font-weight: 600; }
+.appearance button[aria-pressed="true"], .view-options button[aria-pressed="true"] { background: var(--tonal); color: var(--blue); }
+.review-controls { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 11px 0; display: flex; gap: 16px; justify-content: space-between; align-items: center; }
+.review-settings { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.review-settings label { display: flex; gap: 7px; align-items: center; color: var(--muted); font-size: 12px; }
+.review-settings select { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 7px; padding: 7px 5px; font-size: 12px; }
+.stats-toggle { cursor: pointer; }
+.stats-toggle input { accent-color: var(--blue); }
+.reset { border: 0; background: transparent; padding: 10px 4px; font-size: 12px; color: var(--muted); }
+.gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; padding-top: 28px; align-items: start; }
+.proposal { min-width: 0; }
+.proposal-heading { display: flex; align-items: center; gap: 10px; max-width: var(--phone-width); margin: 0 auto 15px; }
+.letter { width: 29px; height: 29px; display: grid; place-items: center; border: 1px solid var(--document-line); border-radius: 8px; font-size: 12px; font-weight: 700; }
+.proposal-heading h2 { font-size: 17px; font-weight: 600; letter-spacing: -.4px; margin: 0; }
+.recommendation { margin-left: auto; color: var(--blue); font-size: 11px; font-weight: 600; }
+.phone { width: var(--phone-width); height: 760px; zoom: var(--preview-scale, 1); margin: auto; position: relative; display: flex; flex-direction: column; background: var(--scrim); border: 1px solid var(--document-line); border-radius: 32px; overflow: hidden; box-shadow: var(--shadow); container: phone / inline-size; }
+.system-bar { flex: 0 0 29px; display: flex; justify-content: space-between; align-items: center; padding: 0 23px; font-size: 11px; font-weight: 650; color: var(--ink); }
+.system-icons { display: flex; align-items: center; gap: 5px; }
+.system-icons svg { width: 14px; height: 14px; }
+.screen { position: relative; flex: 1; min-height: 0; display: flex; padding: 15px 11px 9px; }
+.app-context { position: absolute; inset: 12px 18px; font-size: 12px; color: var(--muted); opacity: .5; }
+.gesture-bar { height: 18px; display: grid; place-items: center; }
+.gesture-bar::after { content: ""; width: 98px; height: 4px; border-radius: 4px; background: var(--ink); opacity: .65; }
+.dialog { position: relative; z-index: 1; width: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 24px; padding: 8px 12px 4px; box-shadow: var(--shadow); }
+.dialog-heading { display: flex; align-items: center; flex: 0 0 auto; min-height: 52px; }
+.dialog-heading h3 { font-size: 22px; font-weight: 600; line-height: 28px; letter-spacing: -.6px; margin: 0; flex: 1; padding-left: 3px; }
+.icon-button { width: 48px; height: 48px; padding: 12px; border: 0; flex: 0 0 48px; display: inline-flex; align-items: center; justify-content: center; background: transparent; color: var(--blue); border-radius: 12px; position: relative; }
+.icon { display: block; width: 24px; height: 24px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.icon-button:hover:not(:disabled), .icon-button:focus-visible { background: var(--tonal); }
+.icon-button.close { color: var(--ink); margin-right: -6px; }
+.icon-button.pin[aria-pressed="true"] .icon { fill: currentColor; }
+.icon-button.pin .icon { stroke: none; }
+/* Keep icon-only controls visually quiet; names appear on hover/focus and are
+   always available to assistive technology. Tooltips never consume reading space. */
+.icon-button::after { content: attr(aria-label); position: absolute; z-index: 10; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); color: var(--surface); background: var(--ink); border-radius: 6px; padding: 7px 9px; font-size: 11px; font-weight: 500; line-height: 1.3; white-space: nowrap; pointer-events: none; opacity: 0; }
+.icon-button:hover::after, .icon-button:focus-visible::after { opacity: 1; transition: opacity .1s .35s; }
+.dialog-heading .icon-button::after { top: calc(100% + 4px); bottom: auto; }
+.close::after { left: auto; right: 0; transform: none; }
+.status { padding: 0 3px 8px; font-size: 11px; color: var(--muted); line-height: 1.45; }
+.status-line { display: flex; gap: 6px; align-items: center; }
+.status-line > .icon { width: 13px; height: 13px; stroke-width: 2; }
+.status .notice { margin: 7px 0 0; }
+.progress { height: 3px; background: var(--tonal); border-radius: 3px; margin: 8px 0 2px; overflow: hidden; }
+.progress > span { display: block; height: 100%; width: 68%; background: var(--blue); }
+.stats { padding-top: 4px; font-variant-numeric: tabular-nums; }
+.recovery-action { background: transparent; border: 0; color: var(--blue); display: block; min-height: 40px; padding: 4px 0; text-align: left; font-weight: 600; font-size: 12px; }
+.audio-strip { display: flex; align-items: center; flex: 0 0 auto; min-height: 65px; gap: 0; border-top: 1px solid var(--line); }
+.audio-strip .icon-button { padding: 13px; }
+.audio-strip .icon { width: 22px; height: 22px; }
+.seek-group { flex: 1; min-width: 35px; padding: 0 6px 0 1px; }
+.seek-group input { display: block; width: 100%; margin: 0; height: 24px; accent-color: var(--blue); cursor: pointer; }
+.seek-group input { appearance: none; -webkit-appearance: none; background: transparent; }
+.seek-group input::-webkit-slider-runnable-track { height: 3px; border-radius: 3px; background: var(--document-line); }
+.seek-group input::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: 11px; height: 11px; margin-top: -4px; border: 0; border-radius: 50%; background: var(--blue); }
+.seek-group input::-moz-range-track { height: 3px; border-radius: 3px; background: var(--document-line); }
+.seek-group input::-moz-range-thumb { width: 11px; height: 11px; border: 0; border-radius: 50%; background: var(--blue); }
+.seek-group input:disabled { opacity: .35; cursor: default; }
+.seek-time { font-size: 10px; font-variant-numeric: tabular-nums; color: var(--muted); display: block; text-align: center; white-space: nowrap; }
+.audio-strip .tools { display: flex; border-left: 1px solid var(--line); margin-left: 4px; }
+.tool-holder { position: relative; display: flex; }
+.reading-layout { display: flex; gap: 4px; min-height: 0; flex: 1; }
+.document { min-height: 0; min-width: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--document-line); border-radius: 14px; background: var(--document); }
+/* Native scrolling preserves selection, wheel/touch, scrollbar dragging, and
+   keyboard behavior. The explicit track remains visible even when idle. */
+.transcript { flex: 1; min-height: 0; overflow-y: scroll; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 15px 13px 12px 16px; margin: 8px 6px 0 0; font-size: var(--transcript-size); line-height: 1.6; color: var(--ink); }
+.transcript::-webkit-scrollbar { width: 8px; }
+.transcript::-webkit-scrollbar-track { background: var(--track); border-radius: 8px; }
+.transcript::-webkit-scrollbar-thumb { background: var(--thumb); border-radius: 8px; border: 1px solid var(--track); min-height: 44px; }
+.transcript p { margin: 0 0 18px; }
+.transcript p:last-child { margin-bottom: 4px; }
+.page-bar { display: flex; align-items: center; flex-shrink: 0; justify-content: space-between; padding: 0 4px; height: 49px; border-top: 1px solid var(--line); background: var(--surface); }
+.page-label { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.page-bar .icon-button { color: var(--muted); }
+.page-bar .icon { width: 20px; height: 20px; }
+.transcript-actions { display: flex; align-items: center; }
+.bottom-actions { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; padding-top: 4px; min-height: 57px; }
+.delete { color: var(--red); background: transparent; border: none; border-radius: 8px; padding: 0 10px; height: 48px; font-size: 13px; font-weight: 500; }
+.delete:hover { background: color-mix(in srgb, var(--red) 8%, transparent); }
+.rail { display: none; }
+.menu { position: absolute; z-index: 15; width: 230px; right: 0; top: calc(100% + 3px); background: var(--surface); padding: 7px; border: 1px solid var(--document-line); border-radius: 14px; box-shadow: 0 10px 25px #00000024; }
+.menu p { font-size: 11px; color: var(--muted); margin: 4px 10px 6px; }
+.menu button { width: 100%; min-height: 48px; border: none; background: transparent; color: var(--ink); text-align: left; padding: 10px; border-radius: 7px; font-size: 13px; }
+.menu button:hover, .menu button:focus-visible { background: var(--tonal); }
+.toast { position: absolute; z-index: 20; bottom: 70px; left: 14px; right: 14px; border-radius: 12px; padding: 12px 14px; background: var(--ink); color: var(--surface); font-size: 12px; line-height: 1.5; box-shadow: var(--shadow); pointer-events: none; }
+.closed-state { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 15px; text-align: center; padding: 24px; }
+.closed-state p { color: var(--ink); margin: 0; font-size: 14px; }
+.reopen { background: var(--surface); border: 1px solid var(--document-line); color: var(--blue); border-radius: 12px; padding: 14px 20px; font-size: 14px; }
+.proposal-caption { max-width: var(--phone-width); margin: 18px auto 0; }
+.proposal-caption p { font-size: 13px; line-height: 1.6; color: var(--muted); margin: 0; }
+.proposal-caption strong { font-weight: 600; color: var(--ink); }
+.measurement { font-size: 11px; color: var(--blue); margin: 8px 0 0; }
+
+/* B trades separate action rows for a denser header. Playback and document
+   paging share the same footer area, leaving the largest full-width text region. */
+.proposal[data-concept="b"] .screen { padding: 6px 5px 3px; }
+.proposal[data-concept="b"] .dialog { padding: 6px 8px 0; border-radius: 21px; }
+.proposal[data-concept="b"] .dialog-heading h3 { font-size: 19px; letter-spacing: -.5px; }
+.proposal[data-concept="b"] .dialog-heading { flex-wrap: wrap; }
+.proposal[data-concept="b"] .header-actions { display: flex; margin-left: auto; }
+.proposal[data-concept="b"] .header-actions .close { margin-right: -4px; }
+.proposal[data-concept="b"] .document { border-radius: 10px; }
+.proposal[data-concept="b"] .audio-strip { border: 0; }
+.proposal[data-concept="b"] .page-bar { background: transparent; border: 0; padding: 0; }
+.proposal[data-concept="b"] .page-navigation { display: flex; align-items: center; }
+.proposal[data-concept="b"] .menu { top: auto; bottom: calc(100% + 3px); }
+@container phone (max-width: 355px) {
+  /* On narrow phones, allow the transcript actions a second row but keep the
+     only dismissal control anchored in the top-right corner. */
+  .proposal[data-concept="b"] .dialog-heading { display: grid; grid-template-columns: 1fr 48px; }
+  .proposal[data-concept="b"] .header-actions { display: contents; }
+  .proposal[data-concept="b"] .header-actions .close { grid-row: 1; grid-column: 2; }
+  .proposal[data-concept="b"] .header-actions .transcript-actions { grid-row: 2; grid-column: 1 / -1; justify-content: flex-end; }
+}
+
+/* C makes a small document workspace: full-height text with a vertical rail.
+   The rail remains outside the transcript border and its scrollable viewport. */
+.proposal[data-concept="c"] .dialog { padding-right: 6px; }
+.proposal[data-concept="c"] .dialog-heading, .proposal[data-concept="c"] .status { padding-right: 6px; }
+.proposal[data-concept="c"] .rail { display: flex; flex: 0 0 48px; flex-direction: column; align-items: center; padding-top: 2px; gap: 6px; }
+.proposal[data-concept="c"] .rail::after { content: ""; width: 18px; height: 1px; background: var(--line); margin: 4px 0; }
+.proposal[data-concept="c"] .rail .icon-button::after { left: auto; right: calc(100% + 3px); top: 50%; bottom: auto; transform: translateY(-50%); }
+.proposal[data-concept="c"] .document { border-radius: 10px; }
+.proposal[data-concept="c"] .transcript { padding-left: 12px; padding-right: 9px; line-height: 1.65; }
+.proposal[data-concept="c"] .audio-strip { margin-right: 6px; }
+.proposal[data-concept="c"] .bottom-actions { justify-content: space-between; min-height: 49px; padding-top: 0; padding-right: 6px; }
+.proposal[data-concept="c"] .page-navigation { display: flex; align-items: center; }
+.studio-footer { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
+.studio-footer p { font-size: 12px; color: var(--muted); line-height: 1.6; margin: 0 0 5px; }
+.studio-footer strong { color: var(--ink); font-weight: 600; }
+.gallery[data-view]:not([data-view="all"]) { grid-template-columns: minmax(0, 1fr); }
+.gallery[data-view]:not([data-view="all"]) .proposal { width: min(100%, var(--phone-width)); margin: auto; }
+@media (max-width: 1120px) {
+  .gallery { gap: 16px; }
+  .review-controls { align-items: flex-start; flex-wrap: wrap; }
+  main { padding-right: 18px; padding-left: 18px; }
+  .recommendation { font-size: 10px; }
+}
+@media (max-width: 980px) {
+  .gallery { grid-template-columns: 1fr; gap: 36px; }
+  .proposal-heading, .proposal-caption { max-width: var(--phone-width); }
+  .review-settings { gap: 12px; }
+}
+@media (max-width: 480px) {
+  main { padding: 0 10px 20px; }
+  .studio-header { padding: 18px 16px; }
+  .prototype-note { display: none; }
+  .intro { padding: 10px 6px 20px; gap: 12px; flex-wrap: wrap; }
+  .intro h1 { letter-spacing: -.7px; }
+  .review-controls { padding: 10px 6px; }
+  .review-settings { gap: 10px; }
+  .proposal-heading, .proposal-caption { padding: 0 4px; }
+  .phone { border-radius: 26px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+}
