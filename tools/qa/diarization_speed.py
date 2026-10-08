@@ -32,6 +32,8 @@ class DiarizationSpeedRun:
             "repeats": str(self.args.repeats), "speakers": "0",
             "native_attention": self.args.attention,
         }
+        if self.args.asr_source_tag:
+            arguments["asr_source_tag"] = self.args.asr_source_tag
         for option in self.args.option:
             key, separator, value = option.partition("=")
             if not separator or not re.fullmatch(r"[a-z_]+", key) or not re.fullmatch(r"[a-zA-Z0-9_.-]+", value):
@@ -81,6 +83,7 @@ class DiarizationSpeedRun:
             "tag": self.args.tag, "fixture": name, "repeats": self.args.repeats,
             "audio_seconds": summary["samples"] / 16000,
             "options": summary["options"], "native_attention": summary.get("native_attention", "default"),
+            "asr_source_tag": summary.get("asr_source_tag"),
             "elapsed_ms": summary["elapsed_ms"], "stage_totals_ms": totals,
             "native_forwards": summary["native_forwards"], "native_stage_ms": summary.get("native_stage_ms"),
             "chunk_count": len(chunks), "chunk_p50_ms": elapsed[math.ceil(len(elapsed) * .5) - 1],
@@ -101,12 +104,16 @@ def main():
     parser.add_argument("--fixture", choices=("test-1-speaker-french", "test-2-speakers-french-3-turns"), default="test-2-speakers-french-3-turns")
     parser.add_argument("--repeats", type=int, choices=range(1, 9), default=1)
     parser.add_argument("--attention", choices=("default", "flash", "manual"), default="default")
+    parser.add_argument("--asr-source-tag", help="Reuse PCM-checked ASR evidence; elapsed time then excludes neural ASR")
     parser.add_argument("--option", action="append", default=[])
     parser.add_argument("--output", type=Path, default=Path("qa-artifacts/diarization-speed"))
     parser.add_argument("--references", type=Path, default=Path("test_material/streaming_diarization_accuracy"))
     parser.add_argument("--plain-baseline", type=Path)
     parser.add_argument("--timeout", type=int, default=1200)
     args = parser.parse_args()
+    for tag in (args.tag, args.asr_source_tag):
+        if tag is not None and not re.fullmatch(r"[a-zA-Z0-9_-]+", tag):
+            parser.error("Run/source tags must contain only letters, digits, underscores or hyphens")
     for value in (args.tag, args.package, args.serial):
         if not re.fullmatch(r"[a-zA-Z0-9_.:-]+", value):
             parser.error("Tag, package, and serial must be safe identifiers")

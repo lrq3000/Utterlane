@@ -92,6 +92,12 @@ class DiarizationFixtureAndroidTest {
         val count = args.getString("speakers", "0").toInt().also { require(it in 0..8) }
         val enabled = args.getString("diarization", "true").toBooleanStrict()
         val repeats = args.getString("repeats", "1").toInt().also { require(it in 1..8) }
+        val sourceTag = args.getString("asr_source_tag")?.also {
+            require(it.matches(Regex("[a-zA-Z0-9_-]+")) && it != tag)
+        }
+        val recorded = sourceTag?.let {
+            RecordedAsr(File(app.getExternalFilesDir(null), "diarization-runs/$it/$fixture.words.jsonl"))
+        }
         val overrides = args.keySet().filter { it.startsWith("option_") }.associate {
             it.removePrefix("option_") to requireNotNull(args.getString(it))
         }
@@ -121,21 +127,21 @@ class DiarizationFixtureAndroidTest {
         }
         val load = SystemClock.elapsedRealtime()
         val modelPath = "/sdcard/Download/parakeet-qa/parakeet-ultra-q8_0.gguf"
-        val native = CrispParakeetBackend(modelPath, options.asrThreads)
-        timing("model_load", load)
-        val warmup = SystemClock.elapsedRealtime()
-        native.transcribeWindow(ShortArray(16000))
-        timing("model_warmup", warmup)
+        val native: RecognitionBackend = recorded ?: CrispParakeetBackend(modelPath, options.asrThreads)
+        if (recorded == null) {
+            timing("model_load", load)
+            val warmup = SystemClock.elapsedRealtime()
+            native.transcribeWindow(ShortArray(16000))
+            timing("model_warmup", warmup)
+        }
         val backend = object : RecognitionBackend by native {
             override fun transcribeWindow(samples: ShortArray): WindowResult {
                 val start = SystemClock.elapsedRealtime()
                 return native.transcribeWindow(samples).also { result ->
-                    timing("asr", start, samples.size.toLong())
+                    timing(if (recorded == null) "asr" else "asr_evidence", start, samples.size.toLong())
                     words.appendText(JSONObject().apply {
                         put("window", windowIndex); put("samples", samples.size)
-                        val pcm = ByteBuffer.allocate(samples.size * 2).order(ByteOrder.LITTLE_ENDIAN)
-                        pcm.asShortBuffer().put(samples)
-                        put("pcm_sha256", java.security.MessageDigest.getInstance("SHA-256").digest(pcm.array()).joinToString("") { "%02x".format(it) })
+                        put("pcm_sha256", pcmSha256(samples))
                         put("tokens", JSONArray(result.tokens.toList())); put("starts", JSONArray(result.timestamps.toList()))
                         put("ends", JSONArray(result.ends.toList()))
                     }.toString() + "\n")
@@ -204,12 +210,14 @@ class DiarizationFixtureAndroidTest {
                 })
             }
             session.finish()
+            recorded?.requireConsumed()
             File(directory, "${fixture}_transcript_$tag.txt").writeText(store.file.readText())
             File(directory, "$fixture.summary.json").writeText(JSONObject().apply {
                 put("options", JSONObject(options.toMap())); put("diarization", enabled); put("speakers", count)
                 put("samples", accepted); put("processed_samples", owned); put("fed_to_speakers", fed)
                 put("native_forwards", nativeCalls); put("elapsed_ms", SystemClock.elapsedRealtime() - started)
                 put("native_attention", attention)
+                put("asr_source_tag", sourceTag ?: JSONObject.NULL)
                 put("native_stage_ms", JSONObject(nativeStageNanos.mapValues { it.value / 1_000_000.0 }))
                 put("native_forward_ms", JSONArray(forwardMillis))
             }.toString(2))
@@ -217,5 +225,41 @@ class DiarizationFixtureAndroidTest {
             if (enabled && count != 1) { assertEquals(accepted, fed); assertTrue(nativeCalls > 0) }
             android.util.Log.i("DiarizationFixture", "$fixture $tag: samples=$accepted forwards=$nativeCalls elapsed=${SystemClock.elapsedRealtime() - started}ms")
         } finally { session.close(); processor?.close(); native.close(); frames.close(); store.dispose() }
+    }
+
+    /** Recompute native speakers while holding real ASR words and windows fixed.
+     * This is a diarization microbenchmark, never an end-to-end speed result.
+     * PCM hashes make a changed fixture, cut, or replay length fail visibly.
+     */
+    private class RecordedAsr(file: File) : RecognitionBackend {
+        private val windows: Iterator<JSONObject>
+        init {
+            require(file.length() in 1..10_000_000) { "Missing or oversized ASR evidence" }
+            windows = file.useLines { lines -> lines.filter { it.isNotBlank() }
+                .map { JSONObject(it) }.filter { it.has("tokens") }.toList() }.iterator()
+        }
+        override fun transcribeWindow(samples: ShortArray): WindowResult {
+            check(windows.hasNext()) { "ASR evidence exhausted before the audio" }
+            val window = windows.next()
+            check(window.getInt("samples") == samples.size && window.getString("pcm_sha256") == pcmSha256(samples)) {
+                "ASR evidence PCM differs from this window"
+            }
+            val tokens = window.getJSONArray("tokens")
+            val starts = window.getJSONArray("starts")
+            val ends = window.getJSONArray("ends")
+            return WindowResult(Array(tokens.length()) { tokens.getString(it) },
+                FloatArray(starts.length()) { starts.getDouble(it).toFloat() },
+                ends = FloatArray(ends.length()) { ends.getDouble(it).toFloat() })
+        }
+        fun requireConsumed() { check(!windows.hasNext()) { "ASR evidence outlasted the audio" } }
+        override fun close() {}
+    }
+
+    companion object {
+        private fun pcmSha256(samples: ShortArray): String {
+            val pcm = ByteBuffer.allocate(samples.size * 2).order(ByteOrder.LITTLE_ENDIAN)
+            pcm.asShortBuffer().put(samples)
+            return java.security.MessageDigest.getInstance("SHA-256").digest(pcm.array()).joinToString("") { "%02x".format(it) }
+        }
     }
 }
