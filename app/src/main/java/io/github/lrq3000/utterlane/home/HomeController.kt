@@ -30,6 +30,10 @@ internal data class HomeState(
 ) {
     val busy get() = capture.active || preparing || result.running || result.importing || result.saving || result.closing
     val canStop get() = capture.phase in setOf(HomeCapturePhase.STARTING, HomeCapturePhase.RECORDING, HomeCapturePhase.STOPPING)
+
+    // Loading/retrying owned audio never opens the microphone. Scope a denial to
+    // the earlier capture attempt, so later file errors retain Retry/model actions.
+    fun prepareFileOperation(): HomeState = copy(preparing = true, message = null, permissionDenied = false)
 }
 
 /**
@@ -74,7 +78,7 @@ class HomeController(private val app: UtterlaneApp) {
     fun load(uri: Uri) {
         if (captureOwner.state.value.active || state.value.busy) return
         pendingFile = uri
-        mutable.update { it.copy(preparing = true, message = null) }
+        mutable.update { it.prepareFileOperation() }
         try { requestService(microphone = false) }
         catch (error: Exception) {
             pendingFile = null
@@ -86,7 +90,7 @@ class HomeController(private val app: UtterlaneApp) {
     fun retry() {
         if (state.value.busy || slot == null) return
         pendingRetry = true
-        mutable.update { it.copy(preparing = true, message = null) }
+        mutable.update { it.prepareFileOperation() }
         try { requestService(microphone = false) }
         catch (error: Exception) { pendingRetry = false; mutable.update { it.copy(preparing = false) }; showError(error) }
     }
