@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.net.Uri
 import androidx.core.app.NotificationCompat
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
@@ -25,11 +26,13 @@ class HomeSessionService : Service() {
     private var token: String? = null
     private var observer: Job? = null
     private var expectedStop = false
+    private var stopAction: PendingIntent? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val requested = intent?.getStringExtra(TOKEN)
         if (intent?.action == STOP) {
-            requested?.let(controller::stopCapture)
+            if (controller.ownsService(requested)) controller.stopCapture(requested!!)
+            else if (token == null) stopSelf(startId)
             return START_NOT_STICKY
         }
         if (!controller.ownsService(requested)) {
@@ -49,10 +52,13 @@ class HomeSessionService : Service() {
             observer?.cancel()
             observer = scope.launch {
                 controller.state.collect { state ->
-                    if (!state.busy) {
+                    if (controller.ownsService(requested) && !state.busy) {
                         expectedStop = true
                         stopForeground(STOP_FOREGROUND_REMOVE)
-                        stopSelf(startId)
+                        // Notification Stop delivers another onStartCommand and
+                        // advances startId. Using the original capture startId
+                        // here would leave an idle service alive indefinitely.
+                        stopSelf()
                     }
                 }
             }
@@ -65,21 +71,25 @@ class HomeSessionService : Service() {
     }
 
     private fun notification(token: String, microphone: Boolean): android.app.Notification {
-        val launch = packageManager.getLaunchIntentForPackage(packageName)!!
-            .putExtra(io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true)
+        val launch = HomeActivity.intent(this, HomeDestination.RECORD, internal = true)
         val back = PendingIntent.getActivity(this, NOTIFICATION, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        stopAction?.cancel()
+        stopAction = if (microphone) PendingIntent.getService(this, NOTIFICATION,
+            Intent(this, HomeSessionService::class.java).setAction(STOP).putExtra(TOKEN, token)
+                // PendingIntent identity excludes extras. A token in data prevents
+                // an old notification action being retargeted to a later capture.
+                .setData(Uri.parse("utterlane://home/stop/$token")),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE) else null
         return NotificationCompat.Builder(this, UtterlaneApp.NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_utterlane_notification)
             .setContentTitle(getString(R.string.home_notification_title))
             .setContentText(getString(if (microphone) R.string.home_notification_recording else R.string.home_notification_processing))
             .setContentIntent(back).setOngoing(true).setOnlyAlertOnce(true)
-            .apply { if (microphone) addAction(0, getString(R.string.home_stop), PendingIntent.getService(
-                this@HomeSessionService, NOTIFICATION,
-                Intent(this@HomeSessionService, HomeSessionService::class.java).setAction(STOP).putExtra(TOKEN, token),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)) }
+            .apply { stopAction?.let { addAction(0, getString(R.string.home_stop), it) } }
             .build()
     }
     override fun onDestroy() {
+        stopAction?.cancel()
         token?.let { controller.serviceDestroyed(it, expectedStop) }
         scope.cancel()
         super.onDestroy()

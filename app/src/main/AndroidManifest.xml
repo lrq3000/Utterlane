@@ -31,10 +31,11 @@
         <service android:name=".asr.RecognitionWorkerService"
             android:exported="false" android:process=":recognition" />
 
-        <!-- Main Settings Activity -->
+        <!-- Post-onboarding launcher. Explicit legacy Settings intents still work. -->
         <activity
-            android:name=".settings.SettingsActivity"
+            android:name=".home.HomeActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:label="@string/app_name"
             android:theme="@style/Theme.Utterlane">
             <intent-filter>
@@ -42,6 +43,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity android:name=".settings.SettingsActivity" android:exported="true"
+            android:parentActivityName=".home.HomeActivity" android:theme="@style/Theme.Utterlane" />
 
         <!-- Full-screen audio/text browsers share one internal, localized Activity. -->
         <activity android:name=".history.HistoryActivity"

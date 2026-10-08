@@ -92,8 +92,12 @@ class OnboardingActivity : LocalizedActivity() {
             }
             LaunchedEffect(state.finished, state.exit) {
                 if (state.finished) {
-                    startActivity(Intent(this@OnboardingActivity, SettingsActivity::class.java)
-                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                    val target = if (intent.getBooleanExtra(EXTRA_REPLAY, false)) {
+                        Intent(this@OnboardingActivity, SettingsActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            .putExtra(io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true)
+                    } else io.github.lrq3000.utterlane.home.HomeActivity.intent(this@OnboardingActivity)
+                    startActivity(target)
                     finish()
                 } else if (state.exit) finish()
             }
