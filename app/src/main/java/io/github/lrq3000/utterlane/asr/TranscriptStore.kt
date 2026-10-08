@@ -9,27 +9,48 @@ class TranscriptStore(val file: File) {
     companion object {
         const val PREVIEW_LIMIT = 8000
         const val TRANSFER_LIMIT = 64000
+        fun deleteArtifacts(file: File) {
+            CacheArtifacts.deleteWhenReleased(file)
+            CacheArtifacts.deleteWhenReleased(TranscriptSource.metadata(file))
+        }
+        fun prune(directory: File, maximumAgeMs: Long) = CacheArtifacts.prune(directory, maximumAgeMs,
+            includeDirectories = false, referenceTime = TranscriptSource::retentionReference)
     }
     private var tail = ""
     var segments = 0
         private set
     private val owner: Closeable
+    @Volatile var bytes: Long = file.length()
+        private set
+    @Volatile var source: TranscriptSource = TranscriptSource.read(file)
+        private set
 
     init {
         if (!file.exists()) check(file.createNewFile()) { "Cannot create transcript" }
         // Recovery reconstructs only the bounded final page, not the full text.
         tail = page((file.length() - PREVIEW_LIMIT).coerceAtLeast(0))
-        owner = CacheArtifacts.acquire(file)
+        owner = acquire()
     }
 
-    fun acquire(): Closeable = CacheArtifacts.acquire(file)
-    fun dispose() { CacheArtifacts.deleteWhenReleased(file); owner.close() }
+    fun acquire(): Closeable {
+        val text = CacheArtifacts.acquire(file)
+        val metadata = try { CacheArtifacts.acquire(TranscriptSource.metadata(file)) }
+            catch (error: Exception) { text.close(); throw error }
+        return Closeable { try { text.close() } finally { metadata.close() } }
+    }
+    fun dispose() { deleteArtifacts(file); owner.close() }
     fun keepForRecovery() = owner.close()
+
+    @Synchronized fun attachSource(value: TranscriptSource) {
+        value.write(file)
+        source = value
+    }
 
     @Synchronized fun append(text: String) {
         if (text.isBlank()) return
         val delta = (if (file.length() == 0L) "" else if (text.startsWith('\n')) "\n" else " ") + text.trim()
         file.appendText(delta, Charsets.UTF_8)
+        bytes = file.length() // Publish only after a complete UTF-8 append.
         tail = (tail + delta).takeLast(PREVIEW_LIMIT).let { if (it.firstOrNull()?.isLowSurrogate() == true) it.drop(1) else it }
         segments++
     }

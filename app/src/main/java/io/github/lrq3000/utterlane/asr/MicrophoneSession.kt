@@ -98,6 +98,8 @@ class MicrophoneSession(
                         session = app.recognizerManager.createSession(captureOptions, onProcessed = metrics::processed) { delta ->
                             if (!cancelled) withContext(Dispatchers.Main) { onText(delta, session!!.store) }
                         }
+                        session!!.store.attachSource(TranscriptSource(saved.entry.id,
+                            modelName = app.modelManager.selected.value.name, modelId = app.modelManager.selected.value.id))
                         phase = SessionFailure.Kind.INFERENCE
                         metrics.preparing(false)
                         metrics.model(app.modelManager.selected.value.name)
@@ -107,8 +109,9 @@ class MicrophoneSession(
                         val complete = checkNotNull(session)
                         complete.finish()
                         if (saveTranscripts && textRetention != io.github.lrq3000.utterlane.history.HistoryRetention.NONE && complete.store.segments > 0) {
-                            app.transcriptHistory.save(complete.store.file, metrics.state.value.modelName, saved.entry.id,
+                            val text = app.transcriptHistory.save(complete.store.file, metrics.state.value.modelName, saved.entry.id,
                                 modelId = app.modelManager.selected.value.id)
+                            complete.store.attachSource(complete.store.source.copy(transcriptId = text.id))
                         }
                     },
                     onSamples = { metrics.samples(it, true) },

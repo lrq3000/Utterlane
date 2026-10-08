@@ -136,7 +136,7 @@ class UtterlaneApp : Application() {
     }
 
     fun cleanupCacheArtifacts() {
-        CacheArtifacts.prune(File(cacheDir, "transcripts"), 7 * 86400000L, includeDirectories = false)
+        io.github.lrq3000.utterlane.asr.TranscriptStore.prune(File(cacheDir, "transcripts"), 7 * 86400000L)
         CacheArtifacts.prune(File(cacheDir, "transcripts/exports"), 86400000L)
         CacheArtifacts.prune(File(cacheDir, "history-exports"), 86400000L)
     }
