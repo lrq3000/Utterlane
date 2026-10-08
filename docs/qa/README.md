@@ -54,3 +54,7 @@ identity and include the adapted parallel-capture native fixture.
 See [full-screen history verification](fullscreen-histories.md) for branded audio/
 transcript pages, continuous keyset paging, scroll restoration and regular-package
 Android checks.
+
+See [Bluetooth input verification](bluetooth-input.md) for input selection, automatic
+preference, capture-worker concurrency, persistent fallback feedback and the remaining
+physical-headset validation scenarios.

@@ -2,4 +2,6 @@
 <resources>
     <item name="recording_done" type="id" />
     <item name="recording_status" type="id" />
+    <item name="recording_input" type="id" />
+    <item name="recording_input_warning" type="id" />
 </resources>

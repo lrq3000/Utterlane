@@ -2,6 +2,29 @@
 <resources>
     <string name="audio_input_fallback_failed">The phone microphone could not resume capture after the external microphone became unavailable.</string>
     <string name="audio_input_phone_unavailable">The phone microphone is unavailable.</string>
+    <string name="audio_input_title">Audio input</string>
+    <string name="audio_input_phone">Phone microphone</string>
+    <string name="audio_input_external">External microphone</string>
+    <string name="audio_input_bluetooth">Bluetooth microphone</string>
+    <string name="audio_input_prefer_bluetooth">Always prefer a Bluetooth microphone</string>
+    <string name="audio_input_prefer_description">Automatically select a connected Bluetooth microphone for the next recording.</string>
+    <string name="audio_input_description">Changes apply to the next recording. Choosing a non-Bluetooth input turns off automatic Bluetooth preference.</string>
+    <string name="audio_input_loading">Checking available inputs…</string>
+    <string name="audio_input_refresh_failed">Could not refresh audio inputs. Try again.</string>
+    <string name="audio_input_selection_gone">That microphone is no longer connected.</string>
+    <string name="audio_input_caption">Input: %1$s</string>
+    <string name="audio_input_caption_previous">Input used: %1$s</string>
+    <string name="audio_input_confirming">Input: Confirming microphone…</string>
+    <string name="audio_input_unconfirmed">Input: Unconfirmed</string>
+    <string name="audio_input_connecting">Input: %1$s · Connecting selected microphone…</string>
+    <string name="audio_input_bt_disconnected">Bluetooth microphone disconnected.</string>
+    <string name="audio_input_bt_unavailable">Bluetooth microphone unavailable.</string>
+    <string name="audio_input_external_unavailable">External microphone unavailable.</string>
+    <string name="audio_input_route_changed">Microphone route changed unexpectedly.</string>
+    <string name="audio_input_switching">%1$s Switching to phone microphone…</string>
+    <string name="audio_input_continuing">%1$s Recording continues using the phone microphone.</string>
+    <string name="audio_input_fallback_previous">%1$s Phone microphone was used as a fallback.</string>
+    <string name="audio_input_fallback_unconfirmed">%1$s Phone microphone fallback could not be confirmed.</string>
     <string name="app_name">Utterlane</string>
     <string name="settings_title">Settings</string>
 

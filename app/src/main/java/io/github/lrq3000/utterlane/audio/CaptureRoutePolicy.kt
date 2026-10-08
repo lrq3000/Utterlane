@@ -52,7 +52,7 @@ class CaptureRoutePolicy(private val target: AudioInput, private val clock: () -
         state = state.copy(connecting = false, fallbackFrom = target, fallbackReason = reason, receivingFallback = false)
     }
 
-    /** Request one reopen after buffered PCM drains, not from a routing callback. */
+    /** Bound the old route's drain before one worker-owned reopen; callbacks never reopen. */
     fun takeReopenRequest(): Boolean {
         if (!isFallback || reopened || clock() - lastFallbackFrames < 1500) return false
         reopened = true
