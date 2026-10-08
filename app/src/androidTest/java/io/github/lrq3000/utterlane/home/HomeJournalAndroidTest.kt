@@ -28,6 +28,12 @@ class HomeJournalAndroidTest {
             assertEquals(original, restored)
             assertFalse(restored.automatic)
             assertNull(restored.uri)
+            // Before async model hydration, saveInstanceState exposes null text
+            // identifiers. Persist that exact checkpoint and recreate the journal
+            // to verify the earlier descriptor still survives process loss.
+            val descriptor = HomeResultDescriptor(restored)
+            HomeJournal(context).write(descriptor.update(restored.copy(transcriptId = null, transcriptPath = null), importing = true))
+            assertEquals(original, HomeJournal(context).restore())
             HomeJournal(context).clear()
             assertNull(HomeJournal(context).restore())
         } finally { base.deleteSharedPreferences(name) }
