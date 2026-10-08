@@ -12,7 +12,6 @@ import io.github.lrq3000.utterlane.asr.AudioCapture
 import io.github.lrq3000.utterlane.asr.CaptureObserver
 import io.github.lrq3000.utterlane.asr.MicrophoneSessionFactory
 import io.github.lrq3000.utterlane.history.HistoryRetention
-import io.github.lrq3000.utterlane.history.WavFile
 import io.github.lrq3000.utterlane.home.HomeActivity
 import io.github.lrq3000.utterlane.home.HomeDestination
 import io.github.lrq3000.utterlane.onboarding.OnboardingRepository
@@ -116,15 +115,16 @@ class HomeWorkspaceAndroidTest {
         }
     }
 
-    @Test fun localFileIsCopiedAndRemainsRecoverableWithoutOpeningAMicrophone() = runBlocking<Unit> {
+    @Test fun localFileFailureRetainsOwnedCopyAndRecoveryAfterMicrophoneDenial() = runBlocking<Unit> {
         assertTrue("Run on the parent-owned isolated QA identity", app.packageName.endsWith(".dhome"))
         ui.prepare()
         val onboarding = OnboardingRepository(app)
         val previousOnboarding = onboarding.progress.first()
         val oldFactory = app.microphoneSessions
         val original = File.createTempFile("home-import-", ".wav", app.cacheDir)
-        val bytes = ShortArray(1600) { 321 }
-        WavFile(original).use { it.append(bytes) }
+        // Owned copying succeeds, but decoding this deliberately invalid WAV
+        // must fail regardless of which recognition model the QA app installed.
+        original.writeBytes(byteArrayOf(1, 2, 3, 4))
         var home: Activity? = null
         var id: String? = null
         try {
@@ -133,8 +133,15 @@ class HomeWorkspaceAndroidTest {
             ui.node("home_screen").recycle()
             assertNull("Use an empty Home workspace", app.homeController.state.value.model)
             app.microphoneSessions = MicrophoneSessionFactory { error("File loading must not open a microphone") }
-            instrumentation.runOnMainSync { app.homeController.load(Uri.fromFile(original)) }
+            instrumentation.runOnMainSync {
+                app.homeController.microphoneDenied()
+                assertTrue(app.homeController.state.value.permissionDenied)
+                app.homeController.load(Uri.fromFile(original))
+                assertFalse(app.homeController.state.value.permissionDenied)
+            }
             val result = withTimeout(120000) { app.homeController.state.first { it.model != null && !it.busy } }
+            assertFalse("File errors must offer file recovery rather than microphone settings", result.permissionDenied)
+            assertNotNull(result.result.message)
             val audio = checkNotNull(result.result.audio)
             id = audio.id
             assertNotEquals(original.canonicalPath, audio.part(0).canonicalPath)
