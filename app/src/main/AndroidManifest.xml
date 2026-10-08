@@ -53,6 +53,12 @@
             android:exported="false" android:theme="@style/Theme.Utterlane" />
 
         <!-- Floating Mic Service -->
+        <service android:name=".home.HomeSessionService" android:exported="false"
+            android:foregroundServiceType="microphone|specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Finishes user-requested local audio transcription while the user navigates or backgrounds Home; stops after completion." />
+        </service>
+
         <service
             android:name=".service.FloatingMicService"
             android:exported="false"

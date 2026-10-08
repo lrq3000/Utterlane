@@ -381,4 +381,9 @@
     <string name="history_yesterday">Yesterday</string>
     <string name="history_under_second">&lt;1 s</string>
     <string name="history_recovery_item">Recording awaiting recovery</string>
+    <!-- Blue Notebook Home; translate together once native integration is stable. -->
+    <string name="home_notification_title">Utterlane · New transcript</string>
+    <string name="home_notification_recording">Recording or finishing locally. Tap to return to your transcript.</string>
+    <string name="home_notification_processing">Processing audio on your device. Tap to return.</string>
+    <string name="home_stop">Stop recording</string>
 </resources>
