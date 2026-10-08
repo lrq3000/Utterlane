@@ -29,7 +29,7 @@ class AudioRecorder : AudioCapture {
     private var observer: CaptureObserver? = null
     private var platformCallback: android.media.AudioManager.AudioRecordingCallback? = null
     private var route: AndroidCaptureRoute? = null
-    @Volatile private var silenced = false
+    private val silencing = CaptureSilencing { observer?.onSilenced(it) }
     private var continueCapture: () -> Boolean = { false }
     override fun setObserver(observer: CaptureObserver) { this.observer = observer }
 
@@ -60,6 +60,7 @@ class AudioRecorder : AudioCapture {
             loop.run(
                 read = { block ->
                     val record = checkNotNull(audioRecord)
+                    val silenced = silencing.poll()
                     route?.beforeRead(record, silenced)
                     if (!continueCapture()) 0 else {
                         val count = record.read(block, 0, block.size, AudioRecord.READ_NON_BLOCKING)
@@ -92,7 +93,6 @@ class AudioRecorder : AudioCapture {
     @SuppressLint("MissingPermission")
     private fun openRecorder(bufferSize: Int): Boolean {
         if (!continueCapture()) return false
-        silenced = false
         audioRecord = AudioRecord(
             MediaRecorder.AudioSource.MIC,
             SAMPLE_RATE,
@@ -109,19 +109,18 @@ class AudioRecorder : AudioCapture {
         }
 
         val record = checkNotNull(audioRecord)
+        val invalidateConfiguration = silencing.opened {
+            if (android.os.Build.VERSION.SDK_INT >= 29) record.activeRecordingConfiguration?.isClientSilenced else false
+        }
         if (!continueCapture()) return false
         route?.attach(record)
 
         if (android.os.Build.VERSION.SDK_INT >= 29) {
             val callback = object : android.media.AudioManager.AudioRecordingCallback() {
                 override fun onRecordingConfigChanged(configs: MutableList<android.media.AudioRecordingConfiguration>) {
-                    // A queued callback from a released recorder must not update
-                    // a replacement recorder's silencing/route state.
-                    if (audioRecord !== record) return
-                    configs.firstOrNull { it.clientAudioSessionId == record.audioSessionId }?.let {
-                        silenced = it.isClientSilenced
-                        observer?.onSilenced(silenced)
-                    }
+                    // Only the capture worker queries/publishes configuration.
+                    // This signal remains bound to this recorder after release.
+                    invalidateConfiguration()
                 }
             }
             platformCallback = callback
@@ -130,10 +129,7 @@ class AudioRecorder : AudioCapture {
         if (!continueCapture()) return false
         record.startRecording()
         route?.started()
-        if (android.os.Build.VERSION.SDK_INT >= 29) record.activeRecordingConfiguration?.let {
-            silenced = it.isClientSilenced
-            observer?.onSilenced(silenced)
-        }
+        silencing.poll()
         return true
     }
 
