@@ -47,6 +47,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     private var resultModelId: String? = input.modelId
     private var lastRequestedModelId: String? = input.modelId
     @Volatile private var resultMetadata = input.metadata ?: TranscriptMetadata()
+    /** Snapshot for a retained owner/journal; it survives disappearance of audio. */
+    val metadata: TranscriptMetadata get() = resultMetadata
     var metrics = CaptureMetrics()
         private set
 
@@ -171,7 +173,13 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                             }
                         }
                         session = app.recognizerManager.createSession(options, onProcessed = metrics::processed) {
-                            latestPreview = checkNotNull(session).store.preview()
+                            val current = checkNotNull(session)
+                            // A checkpoint taken while processing must describe
+                            // already-committed labels, including partial results.
+                            if (current.hasSpeakerLabels && !resultMetadata.speakerLabels) {
+                                resultMetadata = resultMetadata.copy(speakerLabels = true)
+                            }
+                            latestPreview = current.store.preview()
                         }
                         val created = checkNotNull(session)
                         chosenModel = app.modelManager.selected.value.name
@@ -334,6 +342,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         out.putBoolean("text_origin", input.transcriptOrigin)
         out.putString("result_model", chosenModel)
         out.putString("result_model_id", resultModelId)
+        resultMetadata.writeToBundle(out)
     }
     override fun onCleared() {
         // Unexpected owner destruction preserves disk-backed input and useful

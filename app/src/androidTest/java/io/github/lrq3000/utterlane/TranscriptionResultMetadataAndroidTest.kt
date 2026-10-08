@@ -1,5 +1,7 @@
 package io.github.lrq3000.utterlane
 
+import android.os.Bundle
+import android.os.Parcel
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -18,6 +20,65 @@ import org.junit.runner.RunWith
 class TranscriptionResultMetadataAndroidTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val app get() = instrumentation.targetContext.applicationContext as UtterlaneApp
+
+    @Test fun cacheOnlyResultMetadataIsWrittenToSavedState() = runBlocking {
+        val source = workingText()
+        val savedState = Bundle()
+        var savedId: String? = null
+        try {
+            DialogOwner(DialogInput(audioId = "missing-fixture-audio", transcriptPath = source.absolutePath,
+                modelName = "Fixture model", metadata = metadata)).use { owner ->
+                owner.ready()
+                assertNull(owner.model.state.value.audio)
+                instrumentation.runOnMainSync { owner.model.saveInstanceState(savedState) }
+                assertEquals(source.canonicalPath, savedState.getString("working_text"))
+                val savedMetadata = savedState.getBundle("result_metadata")
+                assertNotNull("Cache-only results need metadata even when source audio is gone", savedMetadata)
+                assertEquals(metadata.created, savedMetadata!!.getLong("created"))
+                assertEquals(metadata.durationMs, savedMetadata.getLong("durationMs"))
+                assertEquals(metadata.speakerLabels, savedMetadata.getBoolean("speakerLabels"))
+            }
+            // Drop the old ViewModel owner and cross the Bundle parcel boundary;
+            // no source audio or saved text entry can supply missing metadata.
+            val restoredState = parcel(savedState)
+            DialogOwner(DialogInput(audioId = restoredState.getString("owned_audio"),
+                transcriptPath = restoredState.getString("working_text"), modelName = restoredState.getString("result_model").orEmpty(),
+                metadata = TranscriptMetadata.fromBundle(restoredState))).use { owner ->
+                owner.ready()
+                assertEquals(metadata, owner.model.metadata)
+                owner.pin(true)
+                savedId = owner.model.state.value.transcriptId
+                val saved = app.transcriptHistory.get(checkNotNull(savedId))
+                assertEquals(metadata, TranscriptMetadata(saved))
+                assertEquals("Fixture model", saved.model)
+                assertEquals("missing-fixture-audio", saved.audioId)
+                assertEquals(source.readText(), saved.file.readText())
+            }
+        } finally { savedId?.let(app.transcriptHistory::delete); source.delete() }
+    }
+
+    @Test fun metadataCodecPreservesUnknownAndEpochTimestamps() {
+        val state = Bundle()
+        for (snapshot in listOf(metadata, TranscriptMetadata(), TranscriptMetadata(created = 0))) {
+            snapshot.writeToBundle(state)
+            assertEquals(snapshot, TranscriptMetadata.fromBundle(parcel(state)))
+        }
+        assertNull(TranscriptMetadata.fromBundle(null))
+        assertNull(TranscriptMetadata.fromBundle(Bundle()))
+    }
+
+    @Test fun legacyCacheOnlyStateStillRestoresWithoutInventingMetadata() = runBlocking {
+        val source = workingText()
+        val oldState = Bundle().apply { putString("working_text", source.absolutePath) }
+        try {
+            DialogOwner(DialogInput(transcriptPath = oldState.getString("working_text"),
+                metadata = TranscriptMetadata.fromBundle(oldState))).use { owner ->
+                owner.ready()
+                assertEquals(TranscriptMetadata(), owner.model.metadata)
+                assertEquals(source.readText(), owner.model.state.value.preview)
+            }
+        } finally { source.delete() }
+    }
 
     @Test fun successfulTemporaryResultDoesNotReportInterruption() = runBlocking {
         val recording = app.recordingHistory.begin(HistoryRetention.NONE, keepUntilDismissed = true)
@@ -109,6 +170,15 @@ class TranscriptionResultMetadataAndroidTest {
 
     private fun workingText(): File = File.createTempFile("result-metadata-", ".txt",
         File(app.cacheDir, "transcripts").apply { mkdirs() }).apply { writeText("Speaker 1: fixture words") }
+
+    private fun parcel(bundle: Bundle): Bundle {
+        val parcel = Parcel.obtain()
+        return try {
+            parcel.writeBundle(bundle)
+            parcel.setDataPosition(0)
+            checkNotNull(parcel.readBundle(javaClass.classLoader))
+        } finally { parcel.recycle() }
+    }
 
     private inner class DialogOwner(input: DialogInput) : Closeable {
         private val owners = ViewModelStore()
