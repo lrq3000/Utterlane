@@ -72,7 +72,8 @@ class DiarizationSpeedRun:
             totals[event["stage"]] = totals.get(event["stage"], 0) + event["elapsed_ms"]
         chunks = [event for event in events if event["stage"] == "chunk"]
         # Compare identical audio ranges across cache configurations, rather than
-        # the runner's option-dependent warm flag. EOF remains in total time.
+        # the runner's option-dependent warm flag. A final-window EOF drain is
+        # included in its chunk time; this is not a drain-exclusive RTF.
         warm = [event for event in chunks if event["audio_end_ms"] - event["audio_ms"] >= 60000]
         quality = FixtureRunner().run(
             self.args.references,

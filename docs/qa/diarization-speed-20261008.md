@@ -71,8 +71,10 @@ forward times and per-window timings are retained separately.
 Warm comparisons use only whole chunks starting at or after **60 seconds of
 audio**, independently of the context settings. There are just five such chunks
 per long run. p95 is nearest-rank over fourteen total chunks, not a statistically
-precise device-wide latency estimate. EOF work is included in speaker totals but
-has no new-audio duration and therefore is excluded from duration-weighted RTF.
+precise device-wide latency estimate. EOF draining is included in speaker totals
+and, when performed inside the final audio window (as in these runs), in that
+chunk's duration and warm RTF. A separate zero-input finish call outside a window
+would not enter the chunk RTF; this study does not isolate drain-only cost.
 
 ## Measured results
 
