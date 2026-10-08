@@ -163,21 +163,17 @@ h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.
    compact footer, leaving the largest full-width text region. */
 .proposal[data-concept="b"] .screen { padding: 6px 5px 3px; }
 .proposal[data-concept="b"] .dialog { padding: 6px 8px 0; border-radius: 21px; }
-.proposal[data-concept="b"] .dialog-heading h3 { font-size: 19px; letter-spacing: -.5px; }
-.proposal[data-concept="b"] .dialog-heading { flex-wrap: wrap; }
-.proposal[data-concept="b"] .header-actions { display: flex; margin-left: auto; }
+/* Keep one row and full 48 px icon targets by fitting the title into the rest.
+   The preview measures the actual title glyphs to shrink its font only as needed. */
+.proposal[data-concept="b"] .dialog-heading h3 { font-size: 19px; letter-spacing: -.5px; min-width: 0; padding-left: 0; margin-right: 6px; overflow: hidden; white-space: nowrap; }
+.proposal[data-concept="b"] .dialog-heading h3 span { display: inline-block; }
+.proposal[data-concept="b"] .dialog-heading { flex-wrap: nowrap; }
+.proposal[data-concept="b"] .header-actions { display: flex; flex: 0 0 auto; }
 .proposal[data-concept="b"] .dialog-heading > .close { margin-left: -4px; margin-right: 0; }
 .proposal[data-concept="b"] .document { border-radius: 10px; }
 .proposal[data-concept="b"] .audio-strip { border: 0; }
 .proposal[data-concept="b"] .menu { top: auto; bottom: calc(100% + 3px); }
 @container phone (max-width: 355px) {
-  /* On narrow phones, allow the transcript actions a second row but keep the
-     only dismissal control anchored in the top-left corner. */
-  .proposal[data-concept="b"] .dialog-heading { display: grid; grid-template-columns: 48px 1fr; }
-  .proposal[data-concept="b"] .dialog-heading > .close { grid-row: 1; grid-column: 1; }
-  .proposal[data-concept="b"] .dialog-heading h3 { grid-row: 1; grid-column: 2; }
-  .proposal[data-concept="b"] .header-actions { display: contents; }
-  .proposal[data-concept="b"] .header-actions .transcript-actions { grid-row: 2; grid-column: 1 / -1; justify-content: flex-end; }
   /* When Stop is visible, preserve all 48 px targets on the same action row.
      Only the seek slider moves below it on the narrowest phone. */
   .audio-strip:has(.stop:not([hidden])) { flex-wrap: wrap; }

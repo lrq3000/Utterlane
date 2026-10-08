@@ -89,7 +89,7 @@ class DialogPreview {
   transcriptActions() {
     const button = PreviewIcons.button.bind(PreviewIcons);
     return `<div class="transcript-actions" role="group" aria-label="Transcript actions">
-      ${button("pin", this.pinned ? "Transcript kept forever" : "Keep transcript forever", this.pinned ? "pinned" : "pin", `aria-pressed="${this.pinned}" ${this.running ? "disabled" : ""}`)}
+      ${button("pin", this.pinned ? "Unpin transcript" : "Keep transcript forever", this.pinned ? "pinned" : "pin", `aria-pressed="${this.pinned}" ${this.running ? "disabled" : ""}`)}
       ${button("copy", "Copy transcript")}${button("share", "Share transcript")}
     </div>`;
   }
@@ -155,7 +155,7 @@ class DialogPreview {
     // Separate dismissal from transcript actions: the title sits between Back
     // and B's pin/copy/share tools, reducing accidental exits while using them.
     const back = PreviewIcons.button("close", "Go back", "back");
-    const heading = `<header class="dialog-heading">${back}<h3 id="${id}-title">Transcription</h3>${id === "b" ? `<div class="header-actions">${this.transcriptActions()}</div>` : ""}</header>`;
+    const heading = `<header class="dialog-heading">${back}<h3 id="${id}-title"><span>Transcription</span></h3>${id === "b" ? `<div class="header-actions">${this.transcriptActions()}</div>` : ""}</header>`;
     // Each concept reuses the same components and action controller. Only their
     // order/placement changes, so a visual variation cannot silently omit a tool.
     const contents = id === "b"
@@ -177,8 +177,22 @@ class DialogPreview {
   measure() {
     const transcript = this.root.querySelector(".transcript");
     if (!this.root.hidden && !this.closed) {
+      this.fitHeading();
       this.root.querySelector(".measurement").textContent = `${Math.round(transcript.clientWidth)} × ${Math.round(transcript.clientHeight)} px reading viewport`;
     }
+  }
+
+  fitHeading() {
+    if (this.concept.id !== "b") return;
+    const title = this.root.querySelector(".dialog-heading h3");
+    // Reset to the CSS maximum so widening the phone restores normal type size.
+    // Both bounds include comparison zoom, which cancels out in their ratio.
+    // This is constant work on layout changes, not a per-frame fitting loop.
+    title.style.fontSize = "";
+    const maximumSize = parseFloat(getComputedStyle(title).fontSize);
+    const available = title.getBoundingClientRect().width;
+    const textWidth = title.firstElementChild.getBoundingClientRect().width;
+    if (textWidth > available) title.style.fontSize = `${maximumSize * available / textWidth}px`;
   }
 
   time(seconds) { return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`; }
@@ -280,12 +294,11 @@ class DialogPreview {
     if (["retry", "save"].includes(action)) { this.openMenu(action); return; }
     this.closeMenu(Boolean(button.closest(".menu")));
     if (action === "pin") {
-      if (this.pinned) { this.notify("Already kept forever · Preview only"); return; }
-      this.pinned = true;
-      button.innerHTML = PreviewIcons.render("pinned");
-      button.setAttribute("aria-pressed", "true");
-      button.setAttribute("aria-label", "Transcript kept forever");
-      this.notify("Transcript kept forever · Preview only");
+      this.pinned = !this.pinned;
+      button.innerHTML = PreviewIcons.render(this.pinned ? "pinned" : "pin");
+      button.setAttribute("aria-pressed", String(this.pinned));
+      button.setAttribute("aria-label", this.pinned ? "Unpin transcript" : "Keep transcript forever");
+      this.notify(this.pinned ? "Transcript kept forever · Preview only" : "Transcript unpinned · Preview only");
     } else if (action === "play") {
       this.playing = !this.playing;
       this.playbackActive = true;

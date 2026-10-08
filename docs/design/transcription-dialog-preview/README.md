@@ -19,8 +19,11 @@ name, tooltip, and at least a 48-pixel interactive target. A red outline trash i
 sits at the far right of the audio-control row, after retranscribe and download;
 a top-left back arrow is the sole dismissal control in each open dialog.
 This follow-up revision separates dismissal from pin/copy/share, particularly in
-B's header, to reduce accidental exits. The title separates Back from these tools;
-on narrow phones, B's tools occupy a second row while Back stays at the top left.
+B's header, to reduce accidental exits. The title separates Back from these tools.
+Back, the title, and all three actions stay vertically centered on one header row,
+including at 320 pixels. The title's actual rendered width determines its font
+size, shrinking below the normal 19 pixels only as needed while preserving the
+48-pixel icon targets. Widening the phone restores the normal title size.
 The transcript fills remaining vertical space instead of being capped at 300 dp.
 Its persistent, high-contrast scrollbar must reflect and control actual scrolling.
 The latest revision removes page controls and page counts: the entire sample is
@@ -47,17 +50,19 @@ Checked against `TranscriptionDialog.kt`, `AudioPlaybackControls.kt`, and
 | Retranscribe using same model / choose another model | Circular-arrow icon opens the two existing choices |
 | Save audio to history / share audio / save to device | Audio-save icon opens the three existing choices |
 | Copy and share transcript | Outline copy and share icons; preview-only feedback |
-| Keep transcript forever | Outline pin becomes filled after saving |
+| Pin / unpin transcript | First tap fills the pin; second tap restores its outline |
 | Read the complete transcript | Continuous scrolling; pagination controls removed at the user's request |
 | Delete transcript / delete audio / discard | Red trash icon on the audio row, followed by source-specific confirmation |
 | Progress, retention, recovery information | Preview state selector and compact inline status |
 | Optional processing statistics | Separate review toggle; rendered only while processing |
 | Transcript without retained audio | Text-only preview; audio-dependent controls are disabled |
 
-The current native save-transcript action pins but does not toggle unpinning.
-The mockup therefore keeps the pin filled after saving; clicking it again reports
-that it is already retained. Reset preview restores the initial state. A native
-unpin action would be a separate functional decision, not an implicit redesign.
+The user explicitly requested reversible pinning in revision 4. All three mockups
+now toggle between pinned and unpinned on successive taps, updating the icon,
+tooltip, accessible pressed state, and feedback. Unpinning does not delete the
+sample transcript or change the audio-history status. Native implementation will
+need to connect both transitions to the transcript's retention setting; the
+baseline dialog's save action only pins.
 
 ## Artifact plan and verification
 
@@ -107,9 +112,9 @@ Reviewed in Chrome through browser-controller on 2026-10-08:
 - Initial review fixed B's narrow layout by giving actions a second row while
   keeping dismissal in the header. The subsequent user-requested revision replaces
   the top-right cross with a top-left back arrow in all three concepts.
-- Follow-up review verified Back precedes the title in all three layouts at 392
+- Revision 2 review verified Back precedes the title in all three layouts at 392
   and 320 pixels, with 48 × 48 targets and separate transcript actions. At 320
-  pixels, B's actions occupy the second row and all visible controls fit inside
+  pixels, B's actions occupied a second row and all visible controls fit inside
   each phone. Back/reopen was exercised in B and restored focus to Go back.
 - Initial review checked scrolling and pagination. Revision 3 replaces pagination
   with continuous scrolling and preserves all 11 sample paragraphs, including the
@@ -141,6 +146,14 @@ Revision 3 was additionally checked in light and dark appearance:
   verified. Text-only disables playback while retaining an enabled trash icon.
 - Keyboard Tab stays between confirmation choices, and Escape cancels and restores
   focus without deleting.
+
+Revision 4 review verified B's header at 320, 360, and 392 pixels. It remains one
+52-pixel-high row with all four icon targets at 48 × 48, the title vertically
+centered, and its full text fitting between the controls. The title used about
+17.4-pixel type at 320 pixels and returned to 19 pixels when widened. Successive
+pin taps in B switched the pressed state from false to true to false, changed the
+filled icon back to its outline, and updated the tooltip and feedback. All 11
+transcript paragraphs and the audio-saved status remained present after unpinning.
 
 The three layouts are proposals for selection, not an approved native redesign.
 No Android runtime behavior is established by this browser-only review.
