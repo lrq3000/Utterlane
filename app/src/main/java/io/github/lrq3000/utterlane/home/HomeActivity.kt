@@ -33,7 +33,7 @@ import io.github.lrq3000.utterlane.ui.theme.UtterlaneTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-class HomeActivity : LocalizedActivity() {
+open class HomeActivity : LocalizedActivity() {
     companion object {
         const val EXTRA_DESTINATION = "home_destination"
         fun intent(context: Context, destination: HomeDestination = HomeDestination.RECORD, internal: Boolean = true): Intent =
@@ -42,6 +42,11 @@ class HomeActivity : LocalizedActivity() {
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .apply { if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
     }
+    /** A legacy history entry uses this same retained workspace, but returns to
+     * its caller on Back. It is not a launcher/onboarding or service-restore entry.
+     * Subclasses only supply the initial tab; all capture and picker UI is shared. */
+    protected open val historyEntryDestination: HomeDestination? get() = null
+
     private val app get() = application as UtterlaneApp
     private var destination by mutableStateOf(HomeDestination.RECORD)
     private val microphonePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -58,7 +63,14 @@ class HomeActivity : LocalizedActivity() {
         super.onCreate(savedInstanceState)
         app.historyCleanup.userEntry(intent, savedInstanceState)
         destination = parseDestination(savedInstanceState?.getString(EXTRA_DESTINATION)
-            ?: intent.getStringExtra(EXTRA_DESTINATION)) ?: HomeDestination.RECORD
+            ?: intent.getStringExtra(EXTRA_DESTINATION)) ?: historyEntryDestination ?: HomeDestination.RECORD
+        if (historyEntryDestination != null) {
+            // Browsing retained work must remain available without initializing
+            // onboarding or waiting for model setup. App initialization owns the
+            // persisted model selection; the shared Record UI observes it normally.
+            showHome()
+            return
+        }
         lifecycleScope.launch {
             app.modelManager.initializeSelection()
             val configured = app.settingsRepository.hasSavedSettings.first() || app.modelManager.isModelReady()
@@ -81,20 +93,22 @@ class HomeActivity : LocalizedActivity() {
             val dark = when (theme) { SettingsRepository.THEME_DARK -> true; SettingsRepository.THEME_LIGHT -> false; else -> isSystemInDarkTheme() }
             UtterlaneTheme(dark) {
                 val tabs = rememberSaveableStateHolder()
-                BackHandler(destination != HomeDestination.RECORD) { destination = HomeDestination.RECORD }
+                BackHandler(historyEntryDestination != null || destination != HomeDestination.RECORD, onBack = ::backFromWorkspace)
                 Scaffold(modifier = Modifier.semantics { testTagsAsResourceId = true },
                     containerColor = MaterialTheme.colorScheme.background,
                     // History already owns a header. The parent can replace it
                     // with HomeHeader without creating a second top bar here.
-                    topBar = { if (destination == HomeDestination.RECORD) HomeHeader(onSettings = ::openSettings) },
+                    topBar = { if (destination == HomeDestination.RECORD) HomeHeader(
+                        onBack = if (historyEntryDestination != null) ::backFromWorkspace else null,
+                        onSettings = ::openSettings) },
                     bottomBar = { HomeNavigationBar(destination, { destination = it }) }) { padding ->
                     Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
                         tabs.SaveableStateProvider(destination.name) {
                             when (destination) {
                                 HomeDestination.RECORD -> HomeScreen(app.homeController, ::record,
                                     onLoad = { audioPicker.launch(arrayOf("audio/*")) }, onSettings = ::openSettings)
-                                HomeDestination.AUDIO -> HistoryScreen(audio, false) { destination = HomeDestination.RECORD }
-                                HomeDestination.TRANSCRIPTS -> HistoryScreen(text, true) { destination = HomeDestination.RECORD }
+                                HomeDestination.AUDIO -> HistoryScreen(audio, false, ::backFromWorkspace)
+                                HomeDestination.TRANSCRIPTS -> HistoryScreen(text, true, ::backFromWorkspace)
                             }
                         }
                     }
@@ -111,12 +125,25 @@ class HomeActivity : LocalizedActivity() {
     private fun openSettings() = startActivity(Intent(this, SettingsActivity::class.java)
         .putExtra(HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true))
 
-    override fun onResume() { super.onResume(); AppEntryServices.restore(this) }
+    private fun backFromWorkspace() {
+        if (historyEntryDestination == null) destination = HomeDestination.RECORD
+        else {
+            // Settings remains below a legacy history entry. A root notification
+            // entry instead returns to Home without creating a retention launch.
+            if (isTaskRoot) startActivity(HomeActivity.intent(this))
+            finish()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (historyEntryDestination == null) AppEntryServices.restore(this)
+    }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         app.historyCleanup.userEntry(intent, null)
-        parseDestination(intent.getStringExtra(EXTRA_DESTINATION))?.let { destination = it }
+        (parseDestination(intent.getStringExtra(EXTRA_DESTINATION)) ?: historyEntryDestination)?.let { destination = it }
     }
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString(EXTRA_DESTINATION, destination.name)
