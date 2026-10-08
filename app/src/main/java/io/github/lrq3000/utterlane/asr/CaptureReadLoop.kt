@@ -17,7 +17,8 @@ internal class CaptureReadLoop(
     fun resumeAfterSleep() { wakeRequested.set(true) }
 
     fun run(read: (ShortArray) -> Int, reopen: () -> Unit, onSamples: (ShortArray) -> Unit,
-        shouldContinue: () -> Boolean, canRecover: () -> Boolean = { true }) {
+        shouldContinue: () -> Boolean, canRecover: () -> Boolean = { true },
+        routeRecoveryRequested: () -> Boolean = { false }) {
         val buffer = ShortArray(buffers.blockSamples)
         var recoveryDeadline: Long? = null
         var restarted = false
@@ -50,6 +51,16 @@ internal class CaptureReadLoop(
                 }
                 count < 0 -> error("AudioRecord read error: $count")
                 else -> {
+                    // A route loss must recover even with the screen off. Only
+                    // reopen after all readable PCM has been delivered; callbacks
+                    // never release native resources and Stop always wins.
+                    if (routeRecoveryRequested()) {
+                        if (!shouldContinue()) break
+                        reopen()
+                        recoveryDeadline = null
+                        restarted = false
+                        continue
+                    }
                     val deadline = recoveryDeadline
                     if (deadline != null && clock() >= deadline) {
                         if (!canRecover()) {

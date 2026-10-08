@@ -90,6 +90,7 @@ class MicrophoneSession(
                         launch(Dispatchers.Main) { if (!cancelled) onReady() }
                     }
                     override fun onSilenced(silenced: Boolean) { metrics.silenced(silenced) }
+                    override fun onInputChanged(state: io.github.lrq3000.utterlane.audio.CaptureInputState) { metrics.input(state) }
                 })
                 ticker = launch { while (isActive) { metrics.tick(); delay(metrics.visualRefreshIntervalMillis()) } }
                 val result = RecordingPipeline(recorder, app.recordingHistory, saved, captureOptions).run(
