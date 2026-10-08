@@ -235,13 +235,10 @@ class TranscriptionDialogDAndroidTest {
     @Test fun dLayoutKeepsActionsInTheirRowsAndPinReallyToggles() = runBlocking {
         Fixture().use { fixture ->
             fixture.open(transcript = true)
-            ui.awaitChecked("dialog_pin", true)
-            ui.click("dialog_pin")
+            pinChoice("pin_choice_transcript", "Unpin transcript")
             await { !app.transcriptHistory.get(fixture.first.id).retention.pinned }
-            ui.awaitChecked("dialog_pin", false)
-            ui.click("dialog_pin")
+            pinChoice("pin_choice_transcript", "Pin transcript")
             await { app.transcriptHistory.get(fixture.first.id).retention.pinned }
-            ui.awaitChecked("dialog_pin", true)
             val back = bounds("dialog_back")
             val delete = bounds("dialog_delete")
             val pin = bounds("dialog_pin")
@@ -251,6 +248,81 @@ class TranscriptionDialogDAndroidTest {
             assertTrue("Bottom actions share a row", kotlin.math.abs(pin.centerY() - copy.centerY()) <= 2)
             ui.screenshot("transcription-dialog-d")
         }
+    }
+
+    @Test fun pinMenuSupportsIndependentAndCombinedRetention() = runBlocking {
+        Fixture().use { fixture ->
+            fixture.open(transcript = true)
+            pinChoice("pin_choice_both", "Unpin both")
+            await { !app.recordingHistory.get(fixture.recording.id).pinned && !app.transcriptHistory.get(fixture.first.id).retention.pinned }
+            assertTrue("Pin scope is the displayed transcript, not sibling versions", app.transcriptHistory.get(fixture.second.id).retention.pinned)
+            pinChoice("pin_choice_audio", "Pin audio recording")
+            await { app.recordingHistory.get(fixture.recording.id).pinned }
+            assertFalse(app.transcriptHistory.get(fixture.first.id).retention.pinned)
+            pinChoice("pin_choice_both", "Pin both")
+            await { app.transcriptHistory.get(fixture.first.id).retention.pinned }
+            pinChoice("pin_choice_transcript", "Unpin transcript")
+            await { !app.transcriptHistory.get(fixture.first.id).retention.pinned }
+            assertTrue(app.recordingHistory.get(fixture.recording.id).pinned)
+            ui.click("dialog_pin")
+            ui.textNode("Unpin audio recording").recycle()
+            ui.textNode("Pin transcript").recycle()
+            ui.screenshot("transcription-dialog-d-pin-menu")
+        }
+    }
+
+    @Test fun pinMenuOnlyOffersAvailableData() = runBlocking {
+        Fixture().use { fixture ->
+            app.recordingHistory.delete(fixture.recording.id)
+            fixture.open(transcript = true)
+            ui.click("dialog_pin")
+            ui.textNode("Unpin transcript").recycle()
+            assertFalse(ui.hasVisibleText("Pin audio recording"))
+            assertFalse(ui.hasVisibleText("Unpin audio recording"))
+            assertFalse(ui.hasVisibleText("Pin both"))
+            assertFalse(ui.hasVisibleText("Unpin both"))
+            ui.click("pin_choice_transcript")
+            await { !app.transcriptHistory.get(fixture.first.id).retention.pinned }
+        }
+        Fixture().use { fixture ->
+            app.transcriptHistory.delete(fixture.first.id); app.transcriptHistory.delete(fixture.second.id)
+            fixture.open(transcript = false)
+            ui.click("dialog_pin")
+            ui.textNode("Unpin audio recording").recycle()
+            assertFalse(ui.hasVisibleText("Pin transcript"))
+            assertFalse(ui.hasVisibleText("Unpin transcript"))
+            assertFalse(ui.hasVisibleText("Unpin both"))
+            ui.click("pin_choice_audio")
+            await { !app.recordingHistory.get(fixture.recording.id).pinned }
+        }
+    }
+
+    @Test fun unpinningARemovedTranscriptDoesNotCreateANewSavedVersion() = runBlocking {
+        Fixture().use { fixture ->
+            val owners = ViewModelStore()
+            lateinit var model: TranscriptionDialogModel
+            instrumentation.runOnMainSync {
+                model = TranscriptionDialogModel(app, DialogInput(transcriptId = fixture.first.id))
+                owners.put("dialog", model)
+            }
+            try {
+                withTimeout(5000) { model.state.first { !it.importing } }
+                app.transcriptHistory.delete(fixture.first.id)
+                instrumentation.runOnMainSync { model.setPinned(DialogPinTarget.TRANSCRIPT, false) }
+                withTimeout(5000) { model.state.first { !it.saving } }
+                assertEquals(setOf(fixture.second.id), app.transcriptHistory.forAudio(fixture.recording.id).map { it.id }.toSet())
+            } finally {
+                instrumentation.runOnMainSync { owners.clear() }
+                app.transcriptHistory.forAudio(fixture.recording.id).forEach { app.transcriptHistory.delete(it.id) }
+            }
+        }
+    }
+
+    private suspend fun pinChoice(id: String, label: String) {
+        await { val node = ui.node("dialog_pin"); try { node.isEnabled } finally { node.recycle() } }
+        ui.click("dialog_pin")
+        ui.textNode(label).recycle()
+        ui.click(id)
     }
 
     @Test fun narrowHeaderKeepsFullTargetsAndRestoresTheLargerTitle() = runBlocking {

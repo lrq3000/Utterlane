@@ -412,4 +412,14 @@
     <string name="dialog_nothing_to_delete">No audio or transcript is available to delete.</string>
     <string name="dialog_deleting">Deleting…</string>
     <string name="dialog_deleted">Deleted.</string>
+    <string name="dialog_pin_options">Pin or unpin audio and transcript</string>
+    <string name="dialog_pin_audio">Pin audio recording</string>
+    <string name="dialog_unpin_audio">Unpin audio recording</string>
+    <string name="dialog_pin_transcript">Pin transcript</string>
+    <string name="dialog_unpin_transcript">Unpin transcript</string>
+    <string name="dialog_pin_both">Pin both</string>
+    <string name="dialog_unpin_both">Unpin both</string>
+    <string name="dialog_pin_audio_state">Audio pinned</string>
+    <string name="dialog_pin_transcript_state">Transcript pinned</string>
+    <string name="dialog_pin_both_state">Audio and transcript pinned</string>
 </resources>

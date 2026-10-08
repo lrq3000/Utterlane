@@ -15,8 +15,14 @@ history work already merged there.
   page buttons, using bounded disk-backed chunks rather than loading whole files.
 - Bottom row: playback and pin/unpin, copy, and transcript share. Preserve playback
   pause/resume/stop/seek, same/other-model retry, and the existing audio export menu.
-- The pin toggles the current transcript's actual persisted retention. Unpinning
-  respects the established retention duration and Immediate next-launch safeguard.
+- The pin opens a popup styled like the retranscription menu. It offers the
+  available audio recording, the currently displayed transcript, or both. Each
+  individual label becomes Pin or Unpin according to its persisted state; the
+  combined action is Pin both unless both are pinned, then Unpin both. Other model
+  versions are never included in pinning scope. A filled icon means at least one
+  available item is pinned, with accessible state identifying which kind.
+- Unpinning respects the established retention duration and Immediate next-launch
+  safeguard. A stale Unpin choice must not create a new saved transcript.
 
 ## Relationships and deletion scope
 

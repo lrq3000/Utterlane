@@ -12,7 +12,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,7 +24,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -135,13 +133,7 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                     TranscriptReader(model, state, Modifier.weight(1f).fillMaxWidth())
                     AudioPlaybackControls(model) {
                         val hasText = state.transcriptBytes > 0
-                        val pinLabel = stringResource(if (state.transcriptPinned) R.string.history_unpin else R.string.dialog_keep_text)
-                        IconToggleButton(checked = state.transcriptPinned, onCheckedChange = { model.toggleTranscriptPin() },
-                            enabled = hasText && !busy && !state.running,
-                            modifier = Modifier.size(48.dp).testTag("dialog_pin").semantics { contentDescription = pinLabel }) {
-                            Icon(if (state.transcriptPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin, null,
-                                tint = MaterialTheme.colorScheme.primary)
-                        }
+                        DialogPinControl(model, state, busy)
                         DialogAction(Icons.Outlined.ContentCopy, stringResource(R.string.transcribe_copy), "dialog_copy", hasText && !state.deleting,
                             onClick = { scope.launch {
                                 val text = withContext(Dispatchers.IO) { state.store?.readForTransfer() }

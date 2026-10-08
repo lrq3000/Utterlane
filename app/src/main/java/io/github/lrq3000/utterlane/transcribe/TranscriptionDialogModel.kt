@@ -30,6 +30,8 @@ data class TranscriptionDialogState(
 data class DialogDeletionRequest(val plan: HistoryDeletionPlan,
     val target: HistoryDeletionTarget? = plan.choices.singleOrNull())
 
+enum class DialogPinTarget { AUDIO, TRANSCRIPT, BOTH }
+
 /**
  * One retained owner for sharing, history and recovery. Android recreation does
  * not acknowledge/discard a session. Only explicit dismiss/delete does that.
@@ -140,7 +142,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     }
 
     fun retry(useCurrentModel: Boolean = false) {
-        if (state.value.running || state.value.importing || state.value.closing || state.value.deleting || operation?.isActive == true) return
+        if (state.value.running || state.value.importing || state.value.saving || state.value.closing || state.value.deleting || operation?.isActive == true) return
         operation = viewModelScope.launch { transcribe(useCurrentModel) }
     }
 
@@ -238,8 +240,13 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     }
 
     fun saveAudioToHistory() = saveAction {
-        val id = checkNotNull(ownedAudioId)
-        app.recordingHistory.setPinned(id, true, app.settingsRepository.audioHistoryRetention.first(), app.historyCleanup.launchToken)
+        persistAudioPin(true)
+    }
+
+    private suspend fun persistAudioPin(pinned: Boolean) {
+        val audio = checkNotNull(linkedHistory.availableAudio(ownedAudioId)) { "Recording is unavailable" }
+        if (audio.pinned != pinned)
+            app.recordingHistory.setPinned(audio.id, pinned, app.settingsRepository.audioHistoryRetention.first(), app.historyCleanup.launchToken)
         refreshAudio()
     }
 
@@ -247,17 +254,34 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         persistTranscriptPin(true)
     }
 
-    fun toggleTranscriptPin() = saveAction(successMessage = null) {
-        persistTranscriptPin(!mutable.value.transcriptPinned)
+    fun setPinned(target: DialogPinTarget, pinned: Boolean) = saveAction(successMessage = null) {
+        // Validate both targets before changing either. Transcript scope is always
+        // the displayed version, even when deletion uses an all-linked scope.
+        if (target != DialogPinTarget.TRANSCRIPT)
+            checkNotNull(linkedHistory.availableAudio(ownedAudioId)) { "Recording is unavailable" }
+        if (target != DialogPinTarget.AUDIO) {
+            check(!state.value.running) { "Wait for the current attempt to finish" }
+            check(currentStore?.bytes?.let { it > 0 } == true) { "There is no transcript to save" }
+            persistTranscriptPin(pinned)
+        }
+        if (target != DialogPinTarget.TRANSCRIPT) persistAudioPin(pinned)
     }
 
     private suspend fun persistTranscriptPin(pinned: Boolean) {
         check(!state.value.running) { "Wait for the current attempt to finish" }
         val store = checkNotNull(currentStore) { "There is no transcript to save" }
-        val existing = app.transcriptHistory.find(mutable.value.transcriptId)?.id
+        check(!TranscriptSource.read(store.file).discarded) { "Transcript was deleted" }
+        val existing = app.transcriptHistory.find(mutable.value.transcriptId)
+        if (existing == null && !pinned) {
+            // A stale Unpin choice must never save a replacement for an entry
+            // removed elsewhere while the popup was open.
+            mutable.update { it.copy(transcriptId = null, transcriptPinned = false) }
+            return
+        }
         val saved = if (existing != null) {
-            app.transcriptHistory.setPinned(existing, pinned, app.settingsRepository.transcriptHistoryRetention.first(), app.historyCleanup.launchToken)
-            app.transcriptHistory.get(existing)
+            if (existing.retention.pinned != pinned)
+                app.transcriptHistory.setPinned(existing.id, pinned, app.settingsRepository.transcriptHistoryRetention.first(), app.historyCleanup.launchToken)
+            app.transcriptHistory.get(existing.id)
         } else app.transcriptHistory.save(store.file, chosenModel, ownedAudioId, pinned = true, modelId = resultModelId)
         store.attachSource(TranscriptSource(ownedAudioId, saved.id, chosenModel, resultModelId))
         mutable.update { it.copy(transcriptId = saved.id, transcriptPinned = saved.retention.pinned) }

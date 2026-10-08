@@ -90,3 +90,21 @@ The full JVM suite passed **315 tests** after these changes, and both new target
 native regression tests passed. The provenance test also simulates a fresh-process
 registry using a copied, tombstoned artifact and verifies cleanup independently of
 the normal cache age.
+
+## Scoped pin submenu
+
+The pin now opens the same Material dropdown component as retranscription. It
+offers available audio/current-transcript/both targets, with Pin or Unpin labels
+matching persisted state. Mixed states offer Pin both; both-pinned offers Unpin
+both. Pinning never includes sibling model versions. The icon is filled when any
+available item is pinned, and its accessible state identifies which kind.
+
+- The menu-absence regression failed before implementation.
+- Independent pin/unpin, mixed-to-both pinning, unpin-both, sibling preservation,
+  and audio-only/text-only menus passed native tests.
+- A stale Unpin after external transcript removal initially created a replacement
+  saved entry. The regression now passes: Unpin does not create saved data.
+- Final scoped-pin batch: **315 JVM tests and 30 Android tests passed**. The Android
+  batch contains 16 D-specific tests plus the same 14 existing regressions.
+- The native submenu screenshot was inspected at
+  `app/build/outputs/transcription-dialog-d-pin-menu.png` (local/ignored).
