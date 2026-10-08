@@ -19,9 +19,10 @@ class TranscriptionSession(
     private val finishSpeakers: (suspend () -> List<SpeechSpan>)? = null
 ) : java.io.Closeable {
     private val speakerText = if (decodeSpeakers != null) SpeakerText(corrections, speakerLabel) else null
-    // The decoder actually used and committed output determine this badge;
-    // a preference alone cannot prove that speaker labeling was available.
-    val hasSpeakerLabels: Boolean get() = speakerText != null && store.segments > 0
+    // Punctuation-only speaker output has no header. This records a committed
+    // label, not decoder availability or formatting that could fail to append.
+    @Volatile var hasSpeakerLabels: Boolean = false
+        private set
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
     private val segmenter = AudioSegmenter(flushPendingOnFinish = decodeSpeakers != null, options = options) { window ->
         if (!mayContinue()) return@AudioSegmenter
@@ -29,7 +30,7 @@ class TranscriptionSession(
         if (decodeSpeakers != null) {
             val spans = decodeSpeakers.invoke(window)
             if (!mayContinue()) return@AudioSegmenter
-            for (text in checkNotNull(speakerText).accept(spans)) emit(text)
+            emit(checkNotNull(speakerText).acceptEmission(spans))
         } else {
             val text = decode(window)
             if (!mayContinue()) return@AudioSegmenter
@@ -59,10 +60,10 @@ class TranscriptionSession(
             if (speakerText != null && finishSpeakers != null) {
                 val spans = finishSpeakers.invoke()
                 if (!mayContinue()) return
-                for (text in speakerText.accept(spans)) emit(text)
+                emit(speakerText.acceptEmission(spans))
                 if (!mayContinue()) return
             }
-            emit(speakerText?.finish() ?: corrections.finish())
+            if (speakerText != null) emit(speakerText.finishEmission()) else emit(corrections.finish())
             if (!mayContinue()) return
             finished = true
         } finally { close() }
@@ -77,9 +78,14 @@ class TranscriptionSession(
         return !closed.get()
     }
 
-    private suspend fun emit(text: String) {
+    private suspend fun emit(emission: SpeakerText.Emission) = emit(emission.text, emission.hasSpeakerLabels)
+
+    private suspend fun emit(text: String, speakerLabels: Boolean = false) {
         if (text.isBlank() || !mayContinue()) return
         store.append(text)
+        // Delivery can fail or close the session after this write. The result
+        // already owns the label, so publish its metadata before the callback.
+        if (speakerLabels) hasSpeakerLabels = true
         if (!mayContinue()) return
         onSegment(text.trimEnd())
     }

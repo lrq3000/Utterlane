@@ -135,6 +135,22 @@ class SpeakerTextTest {
         assertEquals(listOf("again"), formatter.accept(listOf(SpeechSpan("again", -1))))
     }
 
+    @Test fun eachEmissionReportsOnlyTheHeadersItActuallyContains() {
+        val formatter = SpeakerText(StreamingCorrections(emptyList())) { "Voix α" }
+        assertEquals(SpeakerText.Emission("!", false), formatter.acceptEmission(listOf(SpeechSpan("!", 0))))
+        assertEquals(SpeakerText.Emission("Voix α: words", true), formatter.acceptEmission(listOf(SpeechSpan("words", 0))))
+        assertEquals(SpeakerText.Emission("?!", false), formatter.acceptEmission(listOf(SpeechSpan("?!", 1))))
+        assertEquals(SpeakerText.Emission("again", false), formatter.acceptEmission(listOf(SpeechSpan("again", 0))))
+        assertEquals(SpeakerText.Emission("\nVoix α: next", true), formatter.acceptEmission(listOf(SpeechSpan("next", 1))))
+        assertEquals(SpeakerText.Emission("", false), formatter.finishEmission())
+    }
+
+    @Test fun correctionTailReportsItsFirstHeaderOnlyWhenFlushed() {
+        val formatter = formatterFor(listOf(DictionaryManager.ReplacementRule("words", "words")))
+        assertEquals(SpeakerText.Emission("!", false), formatter.acceptEmission(listOf(SpeechSpan("! words", 0))))
+        assertEquals(SpeakerText.Emission("Speaker 1: words", true), formatter.finishEmission())
+    }
+
     @Test fun incomingOpeningPunctuationStaysWithItsWordAndSpeaker() {
         val phrases = listOf("¿Qué tal?", "¡Hola!", "“Quoted.”", "‘Quoted.’", "«Bonjour.»",
             "\"Quoted.\"", "'Quoted.'", "(aside)", "[aside]", "{aside}", "「文」", "(“Quoted.”)")
