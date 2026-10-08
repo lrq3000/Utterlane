@@ -1,0 +1,17 @@
+tag,fixture,repeats,asr_source_tag,batch,threads,cache,fifo,update,attention,audio_s,elapsed_s,speaker_s,asr_s,native_forwards,chunk_p50_s,chunk_p95_s,warm_rtf,turns,unknown_words,matched_speaker_accuracy,wer,tail_deletions
+low16_t4_long_a,test-2-speakers-french-3-turns,2,,16,4,264,264,222,default,93.669375,550.51,212.33,334.974,15,37.636,57.547,5.732525461670842,12,0,1.0,0.03125,0
+native16_t4_a,test-2-speakers-french-3-turns,2,low16_t4_long_a,16,4,264,264,222,default,93.669375,221.185,218.655,0.0,15,15.031,35.515,3.6105914369981784,12,0,1.0,0.03125,0
+native8_t4_a,test-2-speakers-french-3-turns,2,low16_t4_long_a,8,4,264,264,222,default,93.669375,263.098,260.673,0.0,23,15.818,32.686,3.7466290930372255,12,0,1.0,0.03125,0
+native16_t2_a,test-2-speakers-french-3-turns,2,low16_t4_long_a,16,2,264,264,222,default,93.669375,321.001,317.622,0.0,15,23.056,43.128,4.946523248200348,12,0,1.0,0.03125,0
+native16_t4_manual_a,test-2-speakers-french-3-turns,2,low16_t4_long_a,16,4,264,264,222,manual,93.669375,218.297,215.469,0.0,15,15.569,33.552,3.417474828050427,12,0,1.0,0.03125,0
+native16_t4_cache192_a,test-2-speakers-french-3-turns,2,low16_t4_long_a,16,4,192,264,222,default,93.669375,184.399,181.413,0.0,15,12.125,23.803,2.585920705220198,12,0,1.0,0.03125,0
+native16_t4_fifo192_a,test-2-speakers-french-3-turns,2,low16_t4_long_a,16,4,264,192,160,default,93.669375,192.39,189.642,0.0,15,12.911,21.458,2.3354161073436615,12,0,1.0,0.03125,0
+native16_t4_context192_a,test-2-speakers-french-3-turns,2,low16_t4_long_a,16,4,192,192,160,default,93.669375,138.901,136.344,0.0,15,9.989,16.821,1.9321859083437793,12,0,1.0,0.03125,0
+native16_t4_b,test-2-speakers-french-3-turns,2,low16_t4_long_a,16,4,264,264,222,default,93.669375,166.9,164.35,0.0,15,12.134,22.382,2.3746636818937725,12,0,1.0,0.03125,0
+native16_t4_context192_b,test-2-speakers-french-3-turns,2,low16_t4_long_a,16,4,192,192,160,default,93.669375,131.42,128.506,0.0,15,9.208,16.202,1.817657159302274,12,0,1.0,0.03125,0
+native8_t4_b,test-2-speakers-french-3-turns,2,low16_t4_long_a,8,4,264,264,222,default,93.669375,221.473,218.929,0.0,23,12.81,25.947,3.088011527043549,12,0,1.0,0.03125,0
+native16_t4_c,test-2-speakers-french-3-turns,2,low16_t4_long_a,16,4,264,264,222,default,93.669375,148.963,146.951,0.0,15,10.762,20.857,2.121315952632504,12,0,1.0,0.03125,0
+native16_t4_context192_c,test-2-speakers-french-3-turns,2,low16_t4_long_a,16,4,192,192,160,default,93.669375,121.546,119.029,0.0,15,8.686,15.127,1.6596779458375746,12,0,1.0,0.03125,0
+native16_t4_d,test-2-speakers-french-3-turns,2,low16_t4_long_a,16,4,264,264,222,default,93.669375,150.829,148.96,0.0,15,10.843,20.353,2.138220222930859,12,0,1.0,0.03125,0
+full_context192_long,test-2-speakers-french-3-turns,2,,16,4,192,192,160,default,93.669375,347.173,119.783,225.367,15,24.707,33.157,4.014223382824165,12,0,1.0,0.03125,0
+full_context192_single,test-1-speaker-french,1,,16,4,192,192,160,default,25.449125,78.829,23.735,54.477,4,24.051,31.468,,1,0,1.0,0.0,0
