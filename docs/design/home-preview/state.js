@@ -70,14 +70,17 @@ export const SAMPLE_SEGMENTS = [
  * Completion creates an independent history entry before another session starts.
  */
 export class DemoSession extends EventTarget {
-  constructor(preferences) {
+  constructor(preferences, { untitledHistory = false } = {}) {
     super();
     this.preferences = preferences;
+    this.untitledHistory = untitledHistory;
     this.history = [
-      { id: 'sample-1', title: 'A thought for tomorrow', date: 'Today · 09:24', seconds: 42, labels: false, text: 'Make a little room each morning to write down the ideas worth keeping.' },
-      { id: 'sample-2', title: 'A conversation over coffee', date: 'Today · 08:50', seconds: 128, labels: true, text: 'Speaker 1: What if we tried a simpler approach?\n\nSpeaker 2: That sounds good. Let us start with the part people use every day.' },
-      { id: 'sample-3', title: 'Notes from the walk', date: 'Yesterday · 17:16', seconds: 63, labels: false, text: 'Remember to take the longer path next time. There is a quiet place by the river that would be perfect for a break.' },
+      { id: 'sample-1', title: 'A thought for tomorrow', date: 'Today · 09:24', seconds: 42, labels: false, pinned: false, text: 'Make a little room each morning to write down the ideas worth keeping.' },
+      { id: 'sample-2', title: 'A conversation over coffee', date: 'Today · 08:50', seconds: 128, labels: true, pinned: true, text: 'Speaker 1: What if we tried a simpler approach?\n\nSpeaker 2: That sounds good. Let us start with the part people use every day.' },
+      { id: 'sample-3', title: 'Notes from the walk', date: 'Yesterday · 17:16', seconds: 63, labels: false, pinned: true, text: 'Remember to take the longer path next time. There is a quiet place by the river that would be perfect for a break.' },
     ];
+    // D models untitled recordings/results rather than assigning invented names.
+    if (untitledHistory) this.history.forEach(entry => { entry.title = null; });
     this.reset();
   }
   reset() {
@@ -95,6 +98,7 @@ export class DemoSession extends EventTarget {
     clearInterval(this.timer);
     this.phase = 'recording';
     this.started = performance.now();
+    this.recordedAt = new Date();
     this.seconds = 0;
     this.wordCount = 0;
     this.labels = this.preferences.speakerLabels;
@@ -128,8 +132,9 @@ export class DemoSession extends EventTarget {
     this.progress = 100;
     this.wordCount = Math.max(27, this.wordCount);
     this.entry = {
-      id: `demo-${Date.now()}`, title: 'A new thought', date: 'Just now · demo',
-      seconds: this.seconds, labels: this.labels, text: this.text,
+      id: `demo-${Date.now()}`, title: this.untitledHistory ? null : 'A new thought',
+      date: this.untitledHistory ? `Today · ${this.recordedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : 'Just now · demo',
+      seconds: this.seconds, labels: this.labels, pinned: false, text: this.text,
     };
     this.history.unshift(this.entry);
     this.emit();
@@ -140,6 +145,7 @@ export class DemoSession extends EventTarget {
     this.start();
     if (phase === 'recording') return;
     this.seconds = 24;
+    this.recordedAt = new Date(Date.now() - this.seconds * 1000);
     this.wordCount = 80;
     if (phase === 'processing') this.stop();
     else this.complete();
