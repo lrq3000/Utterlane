@@ -178,7 +178,14 @@ button:active:not(:disabled) { filter: brightness(.94); }
 .blue-notebook { --background: #f1f5fb; }
 .blue-notebook[data-theme="dark"] { --background: #0e1727; }
 .blue-notebook .app-header { border-bottom: 0; }
-.blue-notebook .transcript-panel { border: 1px solid var(--border); border-radius: 20px; background: var(--surface); padding: 0 15px; margin-bottom: 12px; }
+/* This is an invisible layout row: the text sets its height and the action uses
+ * that height as its square size. Keep the SVG's intrinsic size text-relative;
+ * percentages create a sizing cycle between the icon and its auto-sized parent. */
+.blue-notebook .home-intro { align-items: stretch; gap: 12px; flex-shrink: 0; margin: 8px 0 12px; }
+.blue-notebook .home-intro > div { min-width: 0; }
+.blue-notebook .home-intro .icon-button { width: auto; height: auto; min-width: 44px; min-height: 44px; aspect-ratio: 1; color: var(--primary); }
+.blue-notebook .home-intro .icon { width: calc(26px * var(--font-scale)); height: calc(26px * var(--font-scale)); }
+.blue-notebook .transcript-panel { border: 1px solid var(--border); border-radius: 20px; background: var(--surface); padding: 0 15px; margin-bottom: 8px; }
 .blue-notebook .transcript-body { padding-top: 12px; }
 .blue-notebook .empty-transcript { align-items: center; justify-content: center; text-align: center; padding-top: 0; }
 .blue-notebook .empty-mark { display: block; }
@@ -187,7 +194,7 @@ button:active:not(:disabled) { filter: brightness(.94); }
 .blue-notebook .transcript-actions .share-button { background: var(--container); }
 .blue-notebook .transcript-actions button:disabled { background: var(--background); }
 .blue-notebook .capture-dock { border-top: 0; background: transparent; padding-top: 0; }
-.blue-notebook .speaker-toggle { border: 1px solid var(--border); border-radius: 16px; background: var(--surface); padding: 12px; margin-bottom: 10px; }
+.blue-notebook .speaker-toggle { margin-bottom: 6px; }
 .blue-notebook .waveform { border-radius: 22px; }
 
 /* C: library strip, a tighter session workspace, and an edge-aligned
