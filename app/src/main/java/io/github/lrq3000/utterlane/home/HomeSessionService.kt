@@ -53,12 +53,18 @@ class HomeSessionService : Service() {
             observer = scope.launch {
                 controller.state.collect { state ->
                     if (controller.ownsService(requested) && !state.busy) {
-                        expectedStop = true
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                        // Notification Stop delivers another onStartCommand and
-                        // advances startId. Using the original capture startId
-                        // here would leave an idle service alive indefinitely.
-                        stopSelf()
+                        HomeServiceIdleStop.recheck(
+                            isIdle = { controller.ownsService(requested) && !controller.state.value.busy },
+                            onIdle = {
+                                expectedStop = true
+                                // A retained detail model can start another retry before
+                                // onDestroy. Stop is no longer attached ownership for it.
+                                controller.serviceStopping(requested)
+                                stopForeground(STOP_FOREGROUND_REMOVE)
+                                // Notification Stop advances startId, so using the
+                                // capture's original ID here would leak an idle service.
+                                stopSelf()
+                            })
                     }
                 }
             }

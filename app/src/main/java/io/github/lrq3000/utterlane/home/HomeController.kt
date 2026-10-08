@@ -50,9 +50,7 @@ class HomeController(private val app: UtterlaneApp) {
     private var slot: ResultOwner? = null
     private var pendingFile: Uri? = null
     private var pendingRetry = false
-    private var serviceToken: String? = null
-    private var serviceAttached = false
-    private var servicePending = false
+    private val service = HomeServiceConnection()
     private val journal = HomeJournal(app)
     private val captureOwner = HomeCaptureOwner<CaptureResult>(
         factory = { events -> CaptureDriver(events).also { captureDriver = it } },
@@ -102,20 +100,20 @@ class HomeController(private val app: UtterlaneApp) {
 
     private fun requestService(microphone: Boolean) {
         val token = UUID.randomUUID().toString()
-        serviceToken = token
-        servicePending = true
+        service.request(token)
         try {
             ContextCompat.startForegroundService(app, Intent(app, HomeSessionService::class.java)
                 .putExtra(HomeSessionService.TOKEN, token).putExtra(HomeSessionService.MICROPHONE, microphone))
-        } catch (error: Exception) { servicePending = false; throw error }
+        } catch (error: Exception) { service.detached(token); throw error }
     }
 
-    internal fun ownsService(token: String?) = token != null && token == serviceToken
+    internal fun ownsService(token: String?) = service.owns(token)
+
+    internal fun serviceStopping(token: String) { service.stopping(token) }
 
     internal fun serviceStarted(token: String) {
         if (!ownsService(token)) return
-        servicePending = false
-        serviceAttached = true
+        service.started(token)
         when {
             pendingFile != null -> {
                 val uri = pendingFile!!; pendingFile = null
@@ -131,7 +129,9 @@ class HomeController(private val app: UtterlaneApp) {
                 HomeRetryHandoff.run(mutable, retry = { model?.retry(useCurrentModel = true) },
                     snapshot = { model?.state?.value ?: mutable.value.result })
             }
-            else -> captureDriver?.begin()
+            // A direct result retry attaches a processing service without a
+            // pendingRetry flag. It is never a new request to open the microphone.
+            else -> if (captureOwner.state.value.active) captureDriver?.begin()
         }
     }
 
@@ -139,7 +139,7 @@ class HomeController(private val app: UtterlaneApp) {
 
     internal fun serviceFailed(token: String, error: Exception) {
         if (!ownsService(token)) return
-        servicePending = false
+        service.detached(token)
         pendingFile = null; pendingRetry = false
         captureDriver?.reject(error.message ?: app.getString(R.string.toast_recording_error))
         mutable.update { it.copy(preparing = false) }
@@ -148,16 +148,12 @@ class HomeController(private val app: UtterlaneApp) {
 
     internal fun serviceDestroyed(token: String, expected: Boolean) {
         if (!ownsService(token)) return
-        serviceAttached = false
+        service.detached(token)
         if (!expected) {
             // Actual service loss must stop microphone ownership, but it is not
             // permission to discard input. MicrophoneSession writes recovery.
             captureOwner.interrupt()
             slot?.preserve()
-        } else if (state.value.result.running && !servicePending) {
-            // A detail-dialog Retry can arrive between stopSelf and onDestroy.
-            // Reestablish foreground ownership for that new user-requested work.
-            try { requestService(microphone = false) } catch (error: Exception) { showError(error) }
         }
     }
 
@@ -315,18 +311,17 @@ class HomeController(private val app: UtterlaneApp) {
         private var audioLease: Closeable? = lease
         private var leasedId: String? = if (lease != null) input.audioId else null
         private var metadata = input.metadata ?: TranscriptMetadata()
-        private var wasRunning = false
         private var previousStore: TranscriptStore? = null
         private val descriptor = HomeResultDescriptor(input)
         fun observe() {
-            observer = scope.launch { model.state.collect { result ->
-                if (slot !== this@ResultOwner) return@collect
-                mutable.update { it.copy(result = result) }
+            observer = HomeResultObserver(scope).observe(mutable, model.state,
+                isCurrent = { slot === this@ResultOwner }, onStarted = {
                 // A retry launched by the reused detailed dialog also receives a
                 // permission-free processing FGS, just like Home's Retry action.
-                if (result.running && !serviceAttached && !servicePending && !state.value.capture.active) {
+                if (service.needsStart && !state.value.capture.active) {
                     try { requestService(microphone = false) } catch (error: Exception) { showError(error) }
                 }
+            }) { result, wasRunning ->
                 if (!result.importing && result.audio?.id != leasedId) {
                     audioLease?.let { lease -> scope.launch(Dispatchers.IO) { lease.close() } }
                     leasedId = result.audio?.id
@@ -342,13 +337,12 @@ class HomeController(private val app: UtterlaneApp) {
                     metadata = savedText?.let(::TranscriptMetadata) ?: audio?.let(::TranscriptMetadata) ?: metadata
                 }
                 if (!result.running) previousStore = result.store
-                wasRunning = result.running
                 val saved = Bundle().also(model::saveInstanceState)
                 journal.write(descriptor.update(input.copy(uri = null, path = null, automatic = false,
                     audioId = saved.getString("owned_audio"), transcriptId = saved.getString("saved_text"),
                     transcriptPath = saved.getString("working_text"), modelName = saved.getString("result_model").orEmpty(),
                     modelId = saved.getString("result_model_id"), metadata = metadata), importing = result.importing))
-            } }
+            }
         }
         fun preserve() { model.state.value.store?.keepForRecovery() }
         fun clear() {
