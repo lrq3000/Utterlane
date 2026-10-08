@@ -13,7 +13,7 @@ class RuntimeOptionsTest {
         assertEquals(4, options.asrThreads)
         assertEquals(4, options.diarizationThreads)
         assertEquals("low_latency", options.diarizationMode)
-        assertEquals(8, options.diarizationBatch)
+        assertEquals(16, options.diarizationBatch)
         assertEquals(1000, options.unknownBridgeMs)
         assertEquals(10.0, options.asrWindowSeconds, 0.0)
         assertEquals(20, options.queueSeconds)

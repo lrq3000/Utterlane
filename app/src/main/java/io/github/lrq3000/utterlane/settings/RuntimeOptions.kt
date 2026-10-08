@@ -10,8 +10,9 @@ data class RuntimeOptions(
     val diarizationThreads: Int = 4,
     val diarizationMode: String = "low_latency",
     // Batch only already-buffered native steps; preserves live ASR cadence.
-    // Acoustic replay reduced 53 native forwards to 8 on the 25 s fixture.
-    val diarizationBatch: Int = 8,
+    // Batch-8 acoustic replay reduced 53 native forwards to 8 on the 25 s fixture.
+    // A cap of 16 can merge a default 10 s window's buffered low-latency steps.
+    val diarizationBatch: Int = 16,
     val speakerThreshold: Float = 0.5f,
     val speakerMargin: Float = 0.08f,
     val speakerConfirmationMs: Int = 200,
