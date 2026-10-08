@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.drawable.RippleDrawable
 import android.view.View
+import android.widget.FrameLayout
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.lrq3000.utterlane.ui.WaveformButton
@@ -72,16 +73,25 @@ class WaveformButtonAndroidTest {
 
     private fun onMain(check: (WaveformButton) -> Unit) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        instrumentation.runOnMainSync { check(WaveformButton(instrumentation.targetContext)) }
+        instrumentation.runOnMainSync {
+            val parent = FrameLayout(instrumentation.targetContext)
+            val button = WaveformButton(parent.context)
+            // TextView consults child LayoutParams when text changes after its
+            // first layout. Host it normally, as RecordingPanel/AndroidView do.
+            parent.addView(button, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            try { check(button) } finally { parent.removeView(button) }
+        }
     }
 
     private fun render(button: WaveformButton): Bitmap {
         val density = button.resources.displayMetrics.density
         val width = (360 * density).toInt()
         val height = (136 * density).toInt()
-        button.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+        val parent = button.parent as FrameLayout
+        parent.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
-        button.layout(0, 0, width, height)
+        parent.layout(0, 0, width, height)
         return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { button.draw(Canvas(it)) }
     }
 
