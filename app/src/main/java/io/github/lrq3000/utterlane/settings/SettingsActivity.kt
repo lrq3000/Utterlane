@@ -63,7 +63,6 @@ import kotlinx.coroutines.launch
 class SettingsActivity : LocalizedActivity() {
 
     private val refreshTrigger = mutableStateOf(0)
-    private val recoveryVisible = mutableStateOf(false)
     private val modelSelectionRequested = mutableStateOf(false)
 
     private val requestPermissionLauncher = registerForActivityResult(
@@ -129,9 +128,12 @@ class SettingsActivity : LocalizedActivity() {
         super.onCreate(savedInstanceState)
         UtterlaneApp.instance.historyCleanup.userEntry(intent, savedInstanceState)
         modelSelectionRequested.value = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS, false)
-        recoveryVisible.value = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_RECOVERY, false)
-        if (recoveryVisible.value || intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS, false)) {
+        val recovery = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_RECOVERY, false)
+        if (recovery || intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS, false)) {
             showSettings()
+            // Keep legacy notification/shortcut intents valid, but do not launch
+            // another child when this underlying Settings Activity is recreated.
+            if (recovery && savedInstanceState == null) openAudioHistory()
             return
         }
 
@@ -187,7 +189,6 @@ class SettingsActivity : LocalizedActivity() {
                     openModelSelection = modelSelectionRequested.value,
                     onModelSelectionOpened = { modelSelectionRequested.value = false; intent.removeExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS) }
                 )
-                if (recoveryVisible.value) io.github.lrq3000.utterlane.history.HistoryDialog { recoveryVisible.value = false }
             }
         }
     }
@@ -237,8 +238,10 @@ class SettingsActivity : LocalizedActivity() {
         setIntent(intent)
         UtterlaneApp.instance.historyCleanup.userEntry(intent, null)
         modelSelectionRequested.value = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS, false)
-        recoveryVisible.value = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_RECOVERY, false)
+        if (intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_RECOVERY, false)) openAudioHistory()
     }
+
+    private fun openAudioHistory() = startActivity(io.github.lrq3000.utterlane.history.HistoryActivity.intent(this))
 
     private fun requestMicPermission() {
         requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)

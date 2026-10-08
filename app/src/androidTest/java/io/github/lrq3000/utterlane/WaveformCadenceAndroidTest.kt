@@ -10,8 +10,7 @@ import android.widget.FrameLayout
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.lrq3000.utterlane.asr.CaptureMetrics
-import io.github.lrq3000.utterlane.history.RecordingRecovery
-import io.github.lrq3000.utterlane.settings.SettingsActivity
+import io.github.lrq3000.utterlane.history.HistoryActivity
 import io.github.lrq3000.utterlane.ui.RecordingPanel
 import kotlinx.coroutines.*
 import org.junit.Test
@@ -31,10 +30,9 @@ class WaveformCadenceAndroidTest {
 
     private fun verify(rate: Int) = runBlocking {
         val context = instrumentation.targetContext
-        // Recovery entry bypasses first-run onboarding in the dedicated QA app.
+        // History provides a normal app window without first-run onboarding.
         // Replace only this test-owned activity's content with the production panel.
-        val activity = instrumentation.startActivitySync(Intent(context, SettingsActivity::class.java)
-            .putExtra(RecordingRecovery.EXTRA_RECOVERY, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val activity = instrumentation.startActivitySync(HistoryActivity.intent(context).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         var now = 0L
         val metrics = CaptureMetrics { now }

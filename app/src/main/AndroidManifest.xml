@@ -43,6 +43,11 @@
             </intent-filter>
         </activity>
 
+        <!-- Full-screen audio/text browsers share one internal, localized Activity. -->
+        <activity android:name=".history.HistoryActivity"
+            android:exported="false" android:parentActivityName=".settings.SettingsActivity"
+            android:theme="@style/Theme.Utterlane" />
+
         <!-- Native first-launch guide; external audio intents keep their own entry point. -->
         <activity android:name=".onboarding.OnboardingActivity"
             android:exported="false" android:theme="@style/Theme.Utterlane" />

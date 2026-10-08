@@ -2,11 +2,9 @@ package io.github.lrq3000.utterlane
 
 import android.app.Activity
 import android.content.Intent
-import android.view.KeyEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.lrq3000.utterlane.history.*
-import io.github.lrq3000.utterlane.settings.SettingsActivity
 import io.github.lrq3000.utterlane.transcribe.TranscribeActivity
 import kotlinx.coroutines.*
 import org.junit.Assert.*
@@ -32,15 +30,11 @@ class HistoryListInteractionAndroidTest {
         val text = app.transcriptHistory.save(textFile, "QA model", pinned = true)
         val id = if (transcripts) text.id else audio.entry.id
         val deletion = app.getString(if (transcripts) R.string.dialog_delete_text else R.string.history_delete)
-        val activity = instrumentation.startActivitySync(Intent(app, SettingsActivity::class.java)
-            .putExtra(RecordingRecovery.EXTRA_RECOVERY, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val activity = instrumentation.startActivitySync(HistoryActivity.intent(app, transcripts)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         val monitor = instrumentation.addMonitor(TranscribeActivity::class.java.name, null, false)
         var detail: Activity? = null
         try {
-            if (transcripts) {
-                instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-                ui.clickText(app.getString(R.string.transcript_history_title))
-            }
             ui.node("history_pin_$id").recycle()
             assertFalse("Deletion must not be exposed by the history listing", ui.hasVisibleText(deletion))
             assertFalse("Opening is the whole entry's action, not another button", ui.hasVisibleText(app.getString(R.string.history_open)))

@@ -50,3 +50,7 @@ for capture during loading, explicit discard versus crash recovery, independent
 audio/text retention, pins and launch grace, repeated native transcription, audio
 saving, and playback/seek controls. These checks use the isolated `.recordingfirst`
 identity and include the adapted parallel-capture native fixture.
+
+See [full-screen history verification](fullscreen-histories.md) for branded audio/
+transcript pages, continuous keyset paging, scroll restoration and regular-package
+Android checks.

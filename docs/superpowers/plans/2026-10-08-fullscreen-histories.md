@@ -74,41 +74,42 @@ update `history/HistoryScreen.kt`, `ui/BrandComponents.kt`,
 `settings/SettingsActivity.kt`, `history/RecordingRecovery.kt`,
 `app/src/main/AndroidManifest.xml`, `app/build.gradle.kts`, and default strings.
 
-- [ ] Add failing Android navigation/geometry assertions against the current dialog.
-- [ ] Add Paging runtime/Compose dependencies pinned to 3.3.6. Configure:
+- [x] Add failing Android navigation/geometry assertions against the current dialog.
+- [x] Add Paging runtime/Compose dependencies pinned to 3.3.6. Configure:
 
   ```kotlin
   PagingConfig(pageSize = 30, initialLoadSize = 30, prefetchDistance = 6,
       maxSize = 90, enablePlaceholders = false)
   ```
 
-- [ ] Implement a keyset PagingSource and a cached ViewModel flow. Invalidate on
+- [x] Implement a keyset PagingSource and a cached ViewModel flow. Invalidate on
   repository revisions; refresh around `closestItemToPosition(anchorPosition)`.
   Read at most 160 transcript characters per row on IO, with a reader lease.
   Propagate cancellation and expose other load failures through Paging retry state.
-- [ ] Extract the existing row/label rendering from its dialog shell. Use stable
+- [x] Extract the existing row/label rendering from its dialog shell. Use stable
   item keys, a retained lazy-list state, automatic append/prepend, accessible date
   headings and loading/error indicators. Preserve the existing retention/pin calls.
-- [ ] Extend `BrandHeader` with optional title and Back action while preserving its
+- [x] Extend `BrandHeader` with optional title and Back action while preserving its
   Settings default. The full-page history uses normal app theme, language and insets.
-- [ ] Register a standard, non-exported history Activity. Route Settings buttons
+- [x] Register a standard, non-exported history Activity. Route Settings buttons
   and legacy recovery navigation to it. Opening history/details marks internal
   navigation; recreation must not reopen another copy or release Immediate holds.
-- [ ] Rename audio-history wording, remove obsolete dialog-heading strings, and
+- [x] Rename audio-history wording, remove obsolete dialog-heading strings, and
   update the user guide. Keep new translations in the release-time batch policy.
-- [ ] Build and run navigation/pin/recovery checks; commit the UI milestone.
+- [x] Build and run navigation/pin/recovery checks; commit the UI milestone with
+  its tests, updated guide and QA record.
 
 ## Task 3: End-to-end verification and delivery
 
-- [ ] Create enough pinned fixture records to cross several pages in both histories.
+- [x] Create enough pinned fixture records to cross several pages in both histories.
   Scroll down beyond 90 rows and back up; verify no omissions/duplicates and bounded
   loaded previews. Open an older record, return, pin/unpin, and recreate the Activity.
-- [ ] Verify full-screen window geometry, header logo, dark/light colors, Back
+- [x] Verify full-screen window geometry, header logo, dark/light colors, Back
   navigation, empty histories, and legacy recovery entry. Record native screenshots
   under ignored build outputs; commit all test source and QA documentation.
-- [ ] Adapt existing history tests to activity navigation. Test-only hosts that
+- [x] Adapt existing history tests to activity navigation. Test-only hosts that
   used the old recovery-dialog shortcut must use an appropriate explicit host.
-- [ ] Run the full JVM suite and standard-package debug app/test builds:
+- [x] Run the full JVM suite and standard-package debug app/test builds:
 
   ```powershell
   .\gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest "-PqaApplicationIdSuffix=" "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q
@@ -116,7 +117,7 @@ update `history/HistoryScreen.kt`, `ui/BrandComponents.kt`,
 
   Resolve the new dependencies once online, then use `--offline` for subsequent
   incremental checks. Avoid clean/forced rebuilds or shared-daemon termination.
-- [ ] Install with `adb -s emulator-5554 install -r`; verify the normal package ID
+- [x] Install with `adb -s emulator-5554 install --no-streaming -r`; verify the normal package ID
   and run focused history, recovery and host-regression instrumentation. Report
   commits, APK location and any remaining subjective visual review for the user.
 
@@ -128,3 +129,13 @@ instead of adding an unbounded UI list or a bespoke pagination lifecycle. The
 repository index keeps later pages efficient; no audio/transcript payload is loaded
 wholesale. Input preservation, independent histories, pins, explicit deletion,
 privacy, and genuine-entry cleanup rules remain requirements of the new navigation.
+
+## Verified implementation adjustment
+
+Recreation initially invalidated the pager to refresh localized date strings, which
+changed the loaded window while restoring its saved list index. Android tests
+reproduced the resulting position jump. Rows now retain locale-independent metadata;
+only the few visible labels are formatted using the current Activity locale. Payload
+reads remain on IO and recreation keeps the same cached page generation. Final
+verification: 300 JVM tests and 18 focused Android tests passed; see
+`docs/qa/fullscreen-histories.md` for evidence and environment notes.

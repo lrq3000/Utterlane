@@ -6,14 +6,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Restore
@@ -26,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
@@ -39,11 +38,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.paging.LoadState
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.transcribe.TranscribeActivity
+import io.github.lrq3000.utterlane.ui.BrandHeader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -74,16 +76,15 @@ fun HistorySettings() {
     val audioRetention by settings.audioHistoryRetention.collectAsStateWithLifecycle(initialValue = HistoryRetention.HOUR)
     val textEnabled by settings.transcriptHistoryEnabled.collectAsStateWithLifecycle(initialValue = true)
     val textRetention by settings.transcriptHistoryRetention.collectAsStateWithLifecycle(initialValue = HistoryRetention.DAY)
-    var browse by remember { mutableStateOf<Boolean?>(null) }
+    val context = LocalContext.current
     HistoryPolicySetting(stringResource(R.string.history_auto_audio), audioEnabled, audioRetention,
         enabled = { scope.launch { settings.setAudioHistoryEnabled(it) } }, duration = { scope.launch { settings.setAudioHistoryRetention(it) } })
     HistoryPolicySetting(stringResource(R.string.history_auto_text), textEnabled, textRetention,
         enabled = { scope.launch { settings.setTranscriptHistoryEnabled(it) } }, duration = { scope.launch { settings.setTranscriptHistoryRetention(it) } })
     Text(stringResource(R.string.history_policy_description), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall)
-    TextButton(onClick = { browse = false }) { Text(stringResource(R.string.history_title)) }
-    TextButton(onClick = { browse = true }) { Text(stringResource(R.string.transcript_history_title)) }
+    TextButton(onClick = { context.startActivity(HistoryActivity.intent(context)) }) { Text(stringResource(R.string.history_title)) }
+    TextButton(onClick = { context.startActivity(HistoryActivity.intent(context, transcripts = true)) }) { Text(stringResource(R.string.transcript_history_title)) }
     TextButton(onClick = { io.github.lrq3000.utterlane.service.TranscriptRecovery.open(app) }) { Text(stringResource(R.string.stream_recover)) }
-    browse?.let { transcripts -> HistoryDialog(transcripts = transcripts) { browse = null } }
 }
 
 @Composable
@@ -106,10 +107,8 @@ private fun HistoryPolicySetting(title: String, selected: Boolean, retention: Hi
     }, confirmButton = { TextButton(onClick = { choose = false }) { Text(stringResource(R.string.transcribe_close)) } })
 }
 
-private data class HistoryRow(val id: String, val day: String, val time: String, val detail: String,
-    val retention: RetentionMark, val model: String? = null, val recovery: Boolean = false, val imported: Boolean = false)
-
-/** Format each bounded page once on IO; the creation date remains independent of unpin time. */
+/** Reuse formatters for visible labels in the current Activity locale. Creation
+ * dates remain independent of unpin time; payload IO stays in the paging source. */
 private class HistoryLabels(private val context: Context) {
     private val locale = context.resources.configuration.locales[0]
     private val zone = ZoneId.systemDefault()
@@ -131,98 +130,91 @@ private class HistoryLabels(private val context: Context) {
     }
 }
 
-/** Both browsers share controls and pagination; only their repository/data labels differ. */
+/** Full-screen B layout, sharing bounded bidirectional paging for both histories. */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun HistoryDialog(transcripts: Boolean = false, onDismiss: () -> Unit) {
+internal fun HistoryScreen(model: HistoryViewModel, transcripts: Boolean, onBack: () -> Unit) {
     val app = UtterlaneApp.instance
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val revision by (if (transcripts) app.transcriptHistory.revision else app.recordingHistory.revision).collectAsStateWithLifecycle()
-    var rows by remember { mutableStateOf(emptyList<HistoryRow>()) }
-    var page by remember { mutableStateOf(0) }
+    val rows = model.pages.collectAsLazyPagingItems()
+    val locale = LocalConfiguration.current.locales.toLanguageTags()
+    val labels = remember(context, locale) { HistoryLabels(context) }
     var message by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
-    LaunchedEffect(page) { listState.scrollToItem(0) }
-    LaunchedEffect(revision, page) {
-        try {
-            rows = withContext(Dispatchers.IO) {
-                val labels = HistoryLabels(context)
-                if (transcripts) app.transcriptHistory.list(page).map { entry ->
-                    val preview = entry.file.reader(Charsets.UTF_8).use { reader ->
-                        val buffer = CharArray(160)
-                        val count = reader.read(buffer)
-                        if (count < 0) "" else String(buffer, 0, count)
-                    }
-                    HistoryRow(entry.id, labels.day(entry.created), labels.time(entry.created), preview, entry.retention, model = entry.model)
-                } else {
-                    app.recordingHistory.initialize()
-                    app.recordingHistory.list(page).map { entry -> HistoryRow(entry.id, labels.day(entry.started), labels.time(entry.started),
-                        labels.duration(entry.durationMs), entry.retention, recovery = entry.needsRecovery, imported = entry.sourceName != null) }
-                }
-            }
-        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-        catch (e: Exception) { message = e.message }
-    }
     fun action(block: suspend () -> Unit) { scope.launch {
         message = null
         try { withContext(Dispatchers.IO) { block() } }
         catch (e: kotlinx.coroutines.CancellationException) { throw e }
-        catch (e: Exception) { message = e.message }
+        catch (e: Exception) { message = e.message ?: context.getString(R.string.history_load_failed) }
     } }
-    val groups = remember(rows) { rows.withIndex().groupBy { it.value.day } }
-    val title = stringResource(if (transcripts) R.string.history_transcripts_heading else R.string.history_recordings_heading)
-    Dialog(onDismissRequest = onDismiss) {
-        // A title close button needs no reserved AlertDialog action/footer area.
-        // Reset inherited tonal elevation so the light surface really stays white,
-        // preserving contrast between the compact alternating rows in both themes.
-        CompositionLocalProvider(LocalAbsoluteTonalElevation provides 0.dp) {
-            Surface(Modifier.widthIn(min = 280.dp, max = 560.dp).fillMaxWidth().semantics {
-                testTagsAsResourceId = true; paneTitle = title
-            }, shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 0.dp, shadowElevation = 6.dp) {
-                Column(Modifier.padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        IconButton(onClick = onDismiss, modifier = Modifier.testTag("history_close")) {
-                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.transcribe_close))
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                    if (rows.isEmpty()) Text(stringResource(if (transcripts) R.string.transcript_history_empty else R.string.history_empty))
-                    LazyColumn(Modifier.heightIn(max = 420.dp).weight(1f, fill = false), state = listState) {
-                        groups.forEach { (day, entries) ->
-                            item(key = "day_$day") {
-                                Text(day, Modifier.padding(start = 12.dp, top = 12.dp, bottom = 6.dp).semantics { heading() },
-                                    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            items(entries, key = { it.value.id }) { indexed ->
-                                val entry = indexed.value
-                                HistoryEntryRow(entry, transcripts, shaded = indexed.index % 2 == 0, onOpen = {
-                                    context.startActivity(Intent(context, TranscribeActivity::class.java)
-                                        .putExtra(if (transcripts) TranscribeActivity.EXTRA_TRANSCRIPT_ID else TranscribeActivity.EXTRA_AUDIO_ID, entry.id)
-                                        .putExtra(HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true))
-                                }, onPin = { pinned -> action {
-                                    // Persisted preferences, not Compose placeholders,
-                                    // decide the Immediate-unpin launch safeguard.
-                                    val duration = if (transcripts) app.settingsRepository.transcriptHistoryRetention.first() else app.settingsRepository.audioHistoryRetention.first()
-                                    if (transcripts) app.transcriptHistory.setPinned(entry.id, pinned, duration, app.historyCleanup.launchToken)
-                                    else app.recordingHistory.setPinned(entry.id, pinned, duration, app.historyCleanup.launchToken)
-                                } })
-                                HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                            }
-                        }
-                    }
-                    // A short page needs neither disabled pagination buttons nor
-                    // their height; long histories retain bounded page navigation.
-                    if (page > 0 || rows.size == 30) Row {
-                        TextButton(enabled = page > 0, onClick = { page-- }) { Text(stringResource(R.string.stream_previous)) }
-                        TextButton(enabled = rows.size == 30, onClick = { page++ }) { Text(stringResource(R.string.stream_next)) }
-                    }
-                }
+    val title = stringResource(if (transcripts) R.string.transcript_history_title else R.string.history_title)
+    Surface(Modifier.fillMaxSize().testTag("history_screen").semantics {
+        testTagsAsResourceId = true; paneTitle = title
+    }, color = MaterialTheme.colorScheme.surface) {
+        Column {
+            BrandHeader(title, onBack)
+            message?.let { Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
+            if (rows.itemCount > 0 && rows.loadState.refresh is LoadState.Error) {
+                HistoryLoadStatus(rows.loadState.refresh, rows::retry)
             }
+            if (rows.itemCount == 0) Box(Modifier.weight(1f).fillMaxWidth().navigationBarsPadding(),
+                contentAlignment = Alignment.Center) {
+                if (rows.loadState.refresh is LoadState.NotLoading) {
+                    Column(Modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(if (transcripts) Icons.Default.Description else Icons.Default.Mic, null,
+                            Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.height(16.dp))
+                        Text(stringResource(if (transcripts) R.string.transcript_history_empty else R.string.history_empty),
+                            style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                    }
+                } else HistoryLoadStatus(rows.loadState.refresh, rows::retry)
+            } else LazyColumn(Modifier.weight(1f).fillMaxWidth().navigationBarsPadding()
+                .padding(horizontal = 16.dp).testTag("history_list"), state = listState,
+                contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)) {
+                item(key = "history_prepend") { HistoryLoadStatus(rows.loadState.prepend, rows::retry) }
+                items(count = rows.itemCount, key = rows.itemKey { it.id }) { index ->
+                    val entry = rows[index] ?: return@items
+                    val day = remember(entry.cursor, labels) { labels.day(entry.cursor.created) }
+                    // Peek avoids prefetching a neighbor merely to draw a heading.
+                    // A dropped leading page can be restored by scrolling upward.
+                    if (index == 0 || rows.peek(index - 1)?.let { labels.day(it.cursor.created) } != day) {
+                        Text(day, Modifier.padding(start = 12.dp, top = 12.dp, bottom = 6.dp).semantics { heading() },
+                            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    HistoryEntryRow(entry, transcripts, labels, shaded = index % 2 == 0, onOpen = {
+                        context.startActivity(Intent(context, TranscribeActivity::class.java)
+                            .putExtra(if (transcripts) TranscribeActivity.EXTRA_TRANSCRIPT_ID else TranscribeActivity.EXTRA_AUDIO_ID, entry.id)
+                            .putExtra(HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true))
+                    }, onPin = { pinned -> action {
+                        // Persisted preferences, not Compose placeholders,
+                        // decide the Immediate-unpin launch safeguard.
+                        val duration = if (transcripts) app.settingsRepository.transcriptHistoryRetention.first() else app.settingsRepository.audioHistoryRetention.first()
+                        if (transcripts) app.transcriptHistory.setPinned(entry.id, pinned, duration, app.historyCleanup.launchToken)
+                        else app.recordingHistory.setPinned(entry.id, pinned, duration, app.historyCleanup.launchToken)
+                    } })
+                    HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                }
+                item(key = "history_append") { HistoryLoadStatus(rows.loadState.append, rows::retry) }
+            }
+        }
+    }
+}
+
+/** Append/prepend failures keep the loaded rows available and provide a retry. */
+@Composable
+private fun HistoryLoadStatus(state: LoadState, retry: () -> Unit) {
+    if (state is LoadState.NotLoading) return
+    Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        if (state is LoadState.Loading) {
+            CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
+            Spacer(Modifier.height(8.dp))
+            Text(stringResource(R.string.history_loading), style = MaterialTheme.typography.bodyMedium)
+        } else if (state is LoadState.Error) {
+            Text(state.error.localizedMessage ?: stringResource(R.string.history_load_failed),
+                color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+            TextButton(onClick = retry) { Text(stringResource(R.string.history_retry)) }
         }
     }
 }
@@ -230,9 +222,11 @@ fun HistoryDialog(transcripts: Boolean = false, onDismiss: () -> Unit) {
 /** Design B: the row is navigation; its pin is a separately consuming toggle. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun HistoryEntryRow(entry: HistoryRow, transcripts: Boolean, shaded: Boolean,
+private fun HistoryEntryRow(entry: HistoryRow, transcripts: Boolean, labels: HistoryLabels, shaded: Boolean,
     onOpen: () -> Unit, onPin: (Boolean) -> Unit) {
     val colors = MaterialTheme.colorScheme
+    val time = remember(entry.cursor, labels) { labels.time(entry.cursor.created) }
+    val detail = remember(entry, transcripts, labels) { if (transcripts) entry.detail else labels.duration(entry.durationMs) }
     Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(RoundedCornerShape(8.dp))
         .background(if (shaded) colors.surfaceVariant.copy(alpha = 0.45f) else Color.Transparent)
         .testTag("history_entry_${entry.id}")
@@ -241,13 +235,13 @@ private fun HistoryEntryRow(entry: HistoryRow, transcripts: Boolean, shaded: Boo
         if (transcripts) {
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(entry.time, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = colors.primary)
+                    Text(time, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = colors.primary)
                     Text(entry.model.orEmpty(), Modifier.weight(1f).padding(start = 8.dp),
                         style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End)
                 }
                 Spacer(Modifier.height(4.dp))
-                Text(entry.detail, style = MaterialTheme.typography.bodyLarge, color = colors.onSurface,
+                Text(detail, style = MaterialTheme.typography.bodyLarge, color = colors.onSurface,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         } else {
@@ -258,9 +252,9 @@ private fun HistoryEntryRow(entry: HistoryRow, transcripts: Boolean, shaded: Boo
             // FlowRow preserves the compact one-line layout normally, but wraps
             // duration below time instead of clipping them at large font scales.
             FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(entry.time, Modifier.padding(end = 8.dp), style = MaterialTheme.typography.titleMedium,
+                Text(time, Modifier.padding(end = 8.dp), style = MaterialTheme.typography.titleMedium,
                     fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = colors.onSurface)
-                Text(entry.detail, style = MaterialTheme.typography.bodyLarge, color = colors.onSurface)
+                Text(detail, style = MaterialTheme.typography.bodyLarge, color = colors.onSurface)
             }
         }
         Spacer(Modifier.width(8.dp))

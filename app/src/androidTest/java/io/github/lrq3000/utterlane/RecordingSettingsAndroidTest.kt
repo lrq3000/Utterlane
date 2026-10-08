@@ -78,16 +78,22 @@ class RecordingSettingsAndroidTest {
         recording.append(ShortArray(1600) { 1000 })
         recording.finish(true)
         var activity: SettingsActivity? = null
+        var history: android.app.Activity? = null
+        val monitor = instrumentation.addMonitor("io.github.lrq3000.utterlane.history.HistoryActivity", null, false)
         try {
             app.settingsRepository.setHistoryRetention(HistoryRetention.NONE)
             app.recordingHistory.prune(HistoryRetention.NONE)
             activity = open(RecordingRecovery.EXTRA_RECOVERY)
+            history = monitor.waitForActivityWithTimeout(5000)
+            assertNotNull("Legacy recovery must route to full-screen audio history", history)
             val pending = ui.node("history_entry_${recording.entry.id}")
             @Suppress("DEPRECATION") pending.recycle()
             assertFalse(ui.hasVisibleText(app.getString(R.string.history_open)))
             ui.screenshot("recording-unfinished-recovery")
             assertTrue(recording.entry.directory.exists())
         } finally {
+            instrumentation.removeMonitor(monitor)
+            history?.let { screen -> instrumentation.runOnMainSync { screen.finish() } }
             activity?.let { screen -> instrumentation.runOnMainSync { screen.finish() } }
             app.recordingHistory.delete(recording.entry.id)
             app.settingsRepository.setHistoryRetention(previous)

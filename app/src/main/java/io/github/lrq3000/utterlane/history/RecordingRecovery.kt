@@ -23,7 +23,7 @@ object RecordingRecovery {
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     fun show(context: Context, id: String? = null) {
-        val target = id?.let { intent(context, it) } ?: Intent(context, SettingsActivity::class.java).putExtra(EXTRA_RECOVERY, true)
+        val target = id?.let { intent(context, it) } ?: HistoryActivity.intent(context, internal = false)
         val pending = PendingIntent.getActivity(context, NOTIFICATION_ID, target,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         try {

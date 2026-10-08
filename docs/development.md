@@ -127,6 +127,18 @@ uses separate audio/text jobs for finite durations, preserving unchanged schedul
 Temporary and pinned items are absent from the expiration index. Audio reader
 leases can derive a reader after expiry becomes due without authorizing new readers.
 
+`HistoryActivity` hosts the full-screen Audio history and Transcript history
+destinations using the same B-style rows and branded header. `HistoryIndex` keeps
+visible metadata in creation-time/ID order, with bidirectional keyset pages in
+O(log n + page size); pins do not change the creation key, and leased deletions leave
+the visible index immediately. `HistoryViewModel` uses AndroidX Paging 3.3.6 with
+30-row pages, six-row prefetch and a 90-row cache target. Source invalidation
+refreshes around the visible anchor, while activity recreation retains the same
+cached window. Only visible date labels use the current UI locale; transcript
+previews are limited to 160 characters and read on IO under a lease. Internal
+history/detail navigation preserves the cleanup launch token. Legacy Settings
+recovery intents route once to the new audio destination.
+
 `TranscriptionDialogModel` retains source ownership and per-attempt results across
 activity recreation. Transcript-origin viewers never own their linked audio.
 Completed attempts can be copied into independent no-backup text history; cached
