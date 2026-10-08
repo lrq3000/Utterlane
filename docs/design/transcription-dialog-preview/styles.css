@@ -165,7 +165,7 @@ h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.
 .proposal[data-concept="b"] .dialog { padding: 6px 8px 0; border-radius: 21px; }
 /* Keep one row and full 48 px icon targets by fitting the title into the rest.
    The preview measures the actual title glyphs to shrink its font only as needed. */
-.proposal[data-concept="b"] .dialog-heading h3 { font-size: 19px; letter-spacing: -.5px; min-width: 0; padding-left: 0; margin-right: 6px; overflow: hidden; white-space: nowrap; }
+.proposal[data-concept="b"] .dialog-heading h3 { font-size: 22px; letter-spacing: -.5px; min-width: 0; padding-left: 0; margin-right: 6px; overflow: hidden; white-space: nowrap; }
 .proposal[data-concept="b"] .dialog-heading h3 span { display: inline-block; }
 .proposal[data-concept="b"] .dialog-heading { flex-wrap: nowrap; }
 .proposal[data-concept="b"] .header-actions { display: flex; flex: 0 0 auto; }

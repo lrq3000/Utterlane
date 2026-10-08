@@ -22,7 +22,7 @@ This follow-up revision separates dismissal from pin/copy/share, particularly in
 B's header, to reduce accidental exits. The title separates Back from these tools.
 Back, the title, and all three actions stay vertically centered on one header row,
 including at 320 pixels. The title's actual rendered width determines its font
-size, shrinking below the normal 19 pixels only as needed while preserving the
+size, shrinking below the normal 22 pixels only as needed while preserving the
 48-pixel icon targets. Widening the phone restores the normal title size.
 The transcript fills remaining vertical space instead of being capped at 300 dp.
 Its persistent, high-contrast scrollbar must reflect and control actual scrolling.
@@ -154,6 +154,11 @@ centered, and its full text fitting between the controls. The title used about
 pin taps in B switched the pressed state from false to true to false, changed the
 filled icon back to its outline, and updated the tooltip and feedback. All 11
 transcript paragraphs and the audio-saved status remained present after unpinning.
+
+Revision 5 raises B's normal title size to 22 pixels, matching A and C. Chrome
+verification measured about 17.2 pixels at 320-pixel phone width and a restored
+22 pixels at 392-pixel width. The complete title fits at both widths, with a
+single 52-pixel header row and unchanged 48-pixel icon targets.
 
 The three layouts are proposals for selection, not an approved native redesign.
 No Android runtime behavior is established by this browser-only review.
