@@ -7,11 +7,16 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.Scaffold
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.settings.LocalizedActivity
-import io.github.lrq3000.utterlane.settings.SettingsActivity
+import io.github.lrq3000.utterlane.home.HomeActivity
+import io.github.lrq3000.utterlane.home.HomeDestination
+import io.github.lrq3000.utterlane.home.HomeNavigationBar
 import io.github.lrq3000.utterlane.settings.SettingsRepository
 import io.github.lrq3000.utterlane.ui.theme.UtterlaneTheme
 
@@ -44,17 +49,30 @@ class HistoryActivity : LocalizedActivity() {
             }
             UtterlaneTheme(dark) {
                 BackHandler(onBack = ::back)
-                HistoryScreen(model, transcripts, ::back)
+                val selected = if (transcripts) HomeDestination.TRANSCRIPTS else HomeDestination.AUDIO
+                Scaffold(bottomBar = {
+                    HomeNavigationBar(selected, onSelect = { destination ->
+                        if (destination != selected) {
+                            startActivity(HomeActivity.intent(this, destination))
+                            finish()
+                        }
+                    })
+                }) { padding ->
+                    // Consume host insets once, just like the embedded Home route.
+                    // The bottom bar stays outside the scrolling list.
+                    Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+                        HistoryScreen(model, transcripts, ::back)
+                    }
+                }
             }
         }
     }
 
     private fun back() {
         if (isTaskRoot) {
-            // A notification may open history without Settings below it. This is
+            // A notification may open history without a parent below it. This is
             // still internal navigation, not another launch/retention boundary.
-            startActivity(Intent(this, SettingsActivity::class.java)
-                .putExtra(HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true))
+            startActivity(HomeActivity.intent(this))
         }
         finish()
     }

@@ -16,21 +16,20 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 internal data class HistoryRow(val cursor: HistoryCursor, val detail: String,
-    val retention: RetentionMark, val model: String? = null, val durationMs: Long = 0,
-    val recovery: Boolean = false, val imported: Boolean = false, val speakerLabels: Boolean = false) {
+    val retention: RetentionMark, val durationMs: Long = 0,
+    val recovery: Boolean = false, val speakerLabels: Boolean = false) {
     val id get() = cursor.id
 
     companion object {
         fun from(entry: TranscriptEntry, preview: String) =
             // Result metadata belongs to this transcript, never to the current
             // speaker setting or a subsequently retranscribed source recording.
-            HistoryRow(entry.cursor, preview, entry.retention, model = entry.model,
+            HistoryRow(entry.cursor, preview, entry.retention,
                 durationMs = entry.durationMs, speakerLabels = entry.speakerLabels)
 
         fun from(entry: HistoryEntry) =
             HistoryRow(entry.cursor, "", entry.retention, durationMs = entry.durationMs,
-                recovery = entry.needsRecovery, imported = entry.sourceName != null,
-                speakerLabels = entry.speakerLabels)
+                recovery = entry.needsRecovery, speakerLabels = entry.speakerLabels)
     }
 }
 
