@@ -80,8 +80,8 @@ button:active:not(:disabled) { filter: brightness(.94); }
 .empty-mark .icon { width: 26px; height: 26px; }
 .empty-transcript h3 { font-size: calc(15px * var(--font-scale)); margin: 0; font-weight: 550; letter-spacing: -.2px; }
 .empty-transcript p { font-size: calc(12px * var(--font-scale)); line-height: 1.65; color: var(--muted); margin: 7px 0 0; }
-.inline-upload-hint { white-space: nowrap; }
-.inline-upload-hint .icon { width: 1em; height: 1em; vertical-align: -.15em; color: var(--primary); }
+.inline-load-audio-file-hint { white-space: nowrap; }
+.inline-load-audio-file-hint .icon { width: 1em; height: 1em; vertical-align: -.15em; color: var(--primary); }
 .transcript-meta { min-height: 29px; display: flex; align-items: center; justify-content: space-between; font-size: calc(10px * var(--font-scale)); color: var(--muted); gap: 5px; }
 .transcript-actions { border-top: 1px solid var(--border); display: flex; gap: 8px; padding: 10px 0; align-items: center; }
 .transcript-actions > button:not(.icon-button) { height: 40px; border: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: calc(12px * var(--font-scale)); font-weight: 600; flex: 1; }
@@ -135,9 +135,9 @@ button:active:not(:disabled) { filter: brightness(.94); }
 .history-nav.tiles .history-link > .icon { width: 19px; height: 19px; }
 .text-button { background: transparent; border: 0; color: var(--primary); display: flex; align-items: center; justify-content: center; gap: 6px; font-size: calc(12px * var(--font-scale)); min-height: 44px; padding: 7px; border-radius: 10px; }
 .text-button .icon { width: 16px; height: 16px; }
-.import-button { font-size: calc(15px * var(--font-scale)); font-weight: 600; }
-.import-button .icon { width: 18px; height: 18px; }
-.import-row { display: flex; justify-content: center; }
+.load-audio-file-button { font-size: calc(15px * var(--font-scale)); font-weight: 600; }
+.load-audio-file-button .icon { width: 18px; height: 18px; }
+.load-audio-file-row { display: flex; justify-content: center; }
 .focus .home-content { gap: 10px; }
 .focus .transcript-body { height: 125px; }
 .focus .history-nav.tiles .history-link { min-height: 76px; }
@@ -216,7 +216,7 @@ button:active:not(:disabled) { filter: brightness(.94); }
 .studio .transcript-body { height: 148px; }
 .studio .speaker-toggle { border-bottom: 1px solid var(--border); border-radius: 0; padding-bottom: 13px; }
 .studio .waveform { border-radius: 13px; }
-.studio .import-row { margin-top: -6px; }
+.studio .load-audio-file-row { margin-top: -6px; }
 .studio .empty-mark { margin-bottom: 13px; }
 
 /* Secondary routes reuse native-style rows and the same preference control. */
