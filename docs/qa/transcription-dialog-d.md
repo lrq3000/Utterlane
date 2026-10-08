@@ -150,3 +150,20 @@ The complete validation batch then passed **316 JVM tests and 33 Android tests**
 (19 D-specific tests plus the same 14 existing regressions). Debug app and test APK
 builds passed. The native producer test controls the actual history-save boundary;
 it does not claim an additional speech-recognition accuracy benchmark.
+
+## Delivery artifact
+
+After the QA-identity tests, the regular debug APK was built with:
+
+```powershell
+.\gradlew.bat :app:assembleDebug "-PqaApplicationIdSuffix=" "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q --offline
+```
+
+`aapt dump badging` verified application ID **`io.github.lrq3000.utterlane`**,
+version **2.1.0**, code **210**, compile SDK **36**. The artifact is
+`app/build/outputs/apk/debug/app-debug.apk` in this worktree. Device verification
+used the isolated `.dialogd` installation described above.
+
+All reported review findings received reproductions and corrections. The final
+read-only follow-up confirmed the source-disposition/publication locking fix and
+found no remaining Critical/Important blocker in that reviewed mechanism.
