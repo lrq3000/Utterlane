@@ -98,9 +98,9 @@ class MicrophoneSession(
                         session = app.recognizerManager.createSession(captureOptions, onProcessed = metrics::processed) { delta ->
                             if (!cancelled) withContext(Dispatchers.Main) { onText(delta, session!!.store) }
                         }
+                        phase = SessionFailure.Kind.INFERENCE
                         session!!.store.attachSource(TranscriptSource(saved.entry.id,
                             modelName = app.modelManager.selected.value.name, modelId = app.modelManager.selected.value.id))
-                        phase = SessionFailure.Kind.INFERENCE
                         metrics.preparing(false)
                         metrics.model(app.modelManager.selected.value.name)
                     },

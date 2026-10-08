@@ -19,11 +19,16 @@ data class DialogInput(val uri: Uri? = null, val path: String? = null, val audio
 
 data class TranscriptionDialogState(
     val audio: HistoryEntry? = null, val store: TranscriptStore? = null, val transcriptId: String? = null,
-    val preview: String = "", val pageOffset: Long? = null, val running: Boolean = false,
+    val preview: String = "", val transcriptBytes: Long = 0, val transcriptPinned: Boolean = false, val running: Boolean = false,
     val importing: Boolean = false, val saving: Boolean = false, val closing: Boolean = false,
     val progress: Int? = null, val message: String? = null, val model: String = "",
-    val capture: CaptureSnapshot = CaptureSnapshot(), val visualRate: Int = VisualRefreshRate.DEFAULT
+    val capture: CaptureSnapshot = CaptureSnapshot(), val visualRate: Int = VisualRefreshRate.DEFAULT,
+    val deletion: DialogDeletionRequest? = null, val checkingDeletion: Boolean = false,
+    val deleting: Boolean = false, val finished: Boolean = false
 )
+
+data class DialogDeletionRequest(val plan: HistoryDeletionPlan,
+    val target: HistoryDeletionTarget? = plan.choices.singleOrNull())
 
 /**
  * One retained owner for sharing, history and recovery. Android recreation does
@@ -34,12 +39,14 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     private val mutable = MutableStateFlow(TranscriptionDialogState(importing = true))
     val state: StateFlow<TranscriptionDialogState> = mutable
     private val audioActions = DialogAudioActions(app)
+    private val linkedHistory = LinkedHistory(app.recordingHistory, app.transcriptHistory)
+    val document = TranscriptPager(viewModelScope)
     private var operation: Job? = null
     private var saving: Job? = null
     @Volatile private var ownedAudioId = input.audioId
     private val temporaryResults = linkedSetOf<File>()
     @Volatile private var currentStore: TranscriptStore? = null
-    private var latestPreview = ""
+    @Volatile private var latestPreview = ""
     private var latestProgress: Int? = null
     private var chosenModel = input.modelName
     private var resultModelId: String? = input.modelId
@@ -52,13 +59,13 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
             metrics.setVisualRefreshRate(rate); mutable.update { it.copy(visualRate = rate) }
         } }
         viewModelScope.launch(Dispatchers.IO) { app.recordingHistory.revision.collect { refreshAudio() } }
+        viewModelScope.launch(Dispatchers.IO) { app.transcriptHistory.revision.collect { refreshTranscript() } }
         operation = viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    val entry = input.transcriptId?.let { id ->
-                        app.transcriptHistory.initialize()
-                        runCatching { app.transcriptHistory.get(id) }.getOrNull()
-                    }
+                    val entry = input.transcriptId?.let(app.transcriptHistory::find)
+                        ?: if (input.transcriptId == null && input.transcriptPath == null && !input.automatic)
+                            latestLinkedTranscript() else null
                     if (entry != null) {
                         ownedAudioId = ownedAudioId ?: entry.audioId
                         chosenModel = entry.model; resultModelId = entry.modelId; lastRequestedModelId = entry.modelId
@@ -76,7 +83,9 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                             entry.file.copyTo(copy, overwrite = true)
                             // Publish the owner on IO before returning across the
                             // cancellable Main-dispatch boundary; dismissal joins it.
-                            exposeStore(TranscriptStore(copy))
+                            val store = TranscriptStore(copy)
+                            store.attachSource(TranscriptSource(entry.audioId, entry.id, entry.model, entry.modelId))
+                            exposeStore(store)
                         }
                     } else if (input.transcriptId != null || input.transcriptPath != null) error("Transcript is unavailable")
                 }
@@ -102,20 +111,36 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     }
 
     private fun refreshAudio() {
-        val audio = ownedAudioId?.let { runCatching { app.recordingHistory.get(it) }.getOrNull() }?.takeUnless { it.status == "discarded" }
+        val audio = linkedHistory.availableAudio(ownedAudioId)
         mutable.update { it.copy(audio = audio) }
+    }
+
+    private fun refreshTranscript() {
+        val entry = app.transcriptHistory.find(mutable.value.transcriptId)
+        mutable.update { it.copy(transcriptPinned = entry?.retention?.pinned == true) }
+    }
+
+    private fun latestLinkedTranscript(): TranscriptEntry? = ownedAudioId?.let { id ->
+        app.transcriptHistory.forAudio(id).filter { it.file.isFile }.maxWithOrNull(compareBy<TranscriptEntry> { it.created }.thenBy { it.id })
     }
 
     private fun exposeStore(store: TranscriptStore) {
         currentStore?.keepForRecovery()
         currentStore = store
         synchronized(temporaryResults) { temporaryResults.add(store.file) }
+        ownedAudioId = ownedAudioId ?: store.source.audioId
+        if (store.source.modelName.isNotBlank()) chosenModel = store.source.modelName
+        resultModelId = store.source.modelId ?: resultModelId
+        lastRequestedModelId = resultModelId ?: lastRequestedModelId
+        val entry = app.transcriptHistory.find(store.source.transcriptId)
         latestPreview = store.preview()
-        mutable.update { it.copy(store = store, preview = latestPreview, pageOffset = null) }
+        document.show(store)
+        mutable.update { it.copy(store = store, preview = latestPreview, transcriptBytes = store.bytes,
+            transcriptId = entry?.id, transcriptPinned = entry?.retention?.pinned == true, model = chosenModel) }
     }
 
     fun retry(useCurrentModel: Boolean = false) {
-        if (state.value.running || state.value.importing || state.value.closing || operation?.isActive == true) return
+        if (state.value.running || state.value.importing || state.value.closing || state.value.deleting || operation?.isActive == true) return
         operation = viewModelScope.launch { transcribe(useCurrentModel) }
     }
 
@@ -151,8 +176,9 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         presenter = viewModelScope.launch {
                             while (isActive) {
                                 metrics.tick()
+                                document.refresh()
                                 mutable.update { old -> old.copy(progress = latestProgress, capture = metrics.state.value,
-                                    preview = if (old.pageOffset == null) latestPreview else old.preview) }
+                                    preview = latestPreview, transcriptBytes = currentStore?.bytes ?: 0) }
                                 delay(VisualRefreshRate.intervalMillis(mutable.value.visualRate))
                             }
                         }
@@ -163,10 +189,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         chosenModel = app.modelManager.selected.value.name
                         resultModelId = app.modelManager.selected.value.id
                         lastRequestedModelId = resultModelId
-                        withContext(Dispatchers.Main) {
-                            exposeStore(created.store)
-                            mutable.update { it.copy(transcriptId = null, model = chosenModel) }
-                        }
+                        created.store.attachSource(TranscriptSource(audioId, modelName = chosenModel, modelId = resultModelId))
+                        exposeStore(created.store)
                         val accept: suspend (ShortArray) -> Unit = { pcm -> metrics.captured(pcm.size); created.accept(pcm) }
                         if (source.sourceName != null) AudioDecoder(app).decode(source.part(0).absolutePath, accept) { latestProgress = it?.coerceIn(0, 99) }
                         else audioLease.reader().use { reader ->
@@ -182,12 +206,14 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         created.finish() // Includes the enabled speaker finisher before saving results.
                         if (retainText && textDuration != HistoryRetention.NONE && created.store.segments > 0) {
                             val saved = app.transcriptHistory.save(created.store.file, chosenModel, audioId, modelId = resultModelId)
+                            created.store.attachSource(created.store.source.copy(transcriptId = saved.id))
                             mutable.update { it.copy(transcriptId = saved.id) }
                         }
                         app.recordingHistory.completeRecovery(audioId, app.settingsRepository.audioHistoryRetention.first())
                         metrics.completed(null)
                         latestPreview = created.store.preview(); latestProgress = 100
-                        mutable.update { it.copy(preview = latestPreview, pageOffset = null, progress = 100, capture = metrics.state.value,
+                        document.refresh()
+                        mutable.update { it.copy(preview = latestPreview, transcriptBytes = created.store.bytes, progress = 100, capture = metrics.state.value,
                             message = if (created.store.segments == 0) app.getString(R.string.toast_no_speech) else null) }
                     }
                 }
@@ -212,14 +238,23 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     }
 
     fun saveTranscriptToHistory() = saveAction {
+        persistTranscriptPin(true)
+    }
+
+    fun toggleTranscriptPin() = saveAction(successMessage = null) {
+        persistTranscriptPin(!mutable.value.transcriptPinned)
+    }
+
+    private suspend fun persistTranscriptPin(pinned: Boolean) {
         check(!state.value.running) { "Wait for the current attempt to finish" }
         val store = checkNotNull(currentStore) { "There is no transcript to save" }
-        val existing = mutable.value.transcriptId
+        val existing = app.transcriptHistory.find(mutable.value.transcriptId)?.id
         val saved = if (existing != null) {
-            app.transcriptHistory.setPinned(existing, true, app.settingsRepository.transcriptHistoryRetention.first(), app.historyCleanup.launchToken)
+            app.transcriptHistory.setPinned(existing, pinned, app.settingsRepository.transcriptHistoryRetention.first(), app.historyCleanup.launchToken)
             app.transcriptHistory.get(existing)
         } else app.transcriptHistory.save(store.file, chosenModel, ownedAudioId, pinned = true, modelId = resultModelId)
-        mutable.update { it.copy(transcriptId = saved.id) }
+        store.attachSource(TranscriptSource(ownedAudioId, saved.id, chosenModel, resultModelId))
+        mutable.update { it.copy(transcriptId = saved.id, transcriptPinned = saved.retention.pinned) }
     }
 
     fun shareAudio(launch: (android.content.Intent) -> Unit) = saveAction(successMessage = null) {
@@ -230,7 +265,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         audioActions.export(checkNotNull(ownedAudioId), destination, directory)
     }
     private fun saveAction(successMessage: Int? = R.string.dialog_audio_action_done, action: suspend () -> Unit) {
-        if (state.value.saving || state.value.closing) return
+        if (state.value.saving || state.value.closing || state.value.deleting) return
         saving = viewModelScope.launch {
             mutable.update { it.copy(saving = true) }
             try {
@@ -243,20 +278,73 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         }
     }
 
-    fun page(previous: Boolean) {
-        val store = currentStore ?: return
+    private fun workingTranscriptId(): String? = currentStore?.takeIf { it.bytes > 0 }?.let {
+        it.source.transcriptId ?: TranscriptHistory.idForAttempt(it.file.name)
+    }
+
+    private fun deletionPlan() = linkedHistory.plan(ownedAudioId, mutable.value.transcriptId,
+        input.transcriptOrigin, workingTranscriptId())
+
+    fun requestDeletion() {
+        if (state.value.importing || state.value.saving || state.value.closing || state.value.deleting || state.value.checkingDeletion) return
+        mutable.update { it.copy(checkingDeletion = true) }
         viewModelScope.launch {
-            val start = if (previous) ((state.value.pageOffset ?: store.file.length()) - 7980).coerceAtLeast(0)
-                else (state.value.pageOffset ?: 0) + 7980
-            val atEnd = start >= store.file.length()
-            val text = withContext(Dispatchers.IO) { if (atEnd) store.preview() else store.page(start) }
-            mutable.update { it.copy(preview = text, pageOffset = if (atEnd) null else start) }
+            try {
+                val plan = withContext(Dispatchers.IO) { deletionPlan() }
+                mutable.update { it.copy(deletion = plan.takeIf { it.choices.isNotEmpty() }?.let(::DialogDeletionRequest),
+                    message = if (plan.choices.isEmpty()) app.getString(R.string.dialog_nothing_to_delete) else it.message) }
+            } catch (e: CancellationException) { throw e
+            } catch (e: Exception) { showError(e)
+            } finally { mutable.update { it.copy(checkingDeletion = false) } }
+        }
+    }
+
+    fun chooseDeletion(target: HistoryDeletionTarget) {
+        mutable.update { old -> old.copy(deletion = old.deletion?.takeIf { target in it.plan.choices }?.copy(target = target)) }
+    }
+    fun cancelDeletion() { mutable.update { it.copy(deletion = null) } }
+    fun dismissDeletionMenu() { mutable.update { if (it.deletion?.target == null) it.copy(deletion = null) else it } }
+
+    fun confirmDeletion() {
+        val request = state.value.deletion ?: return
+        val target = request.target ?: return
+        if (state.value.deleting || state.value.closing) return
+        mutable.update { it.copy(deleting = true, deletion = null) }
+        app.audioPlayback.stop(playbackOwner)
+        app.applicationScope.launch {
+            try {
+                // Confirmation, not the first trash tap, cancels this attempt.
+                // Joining prevents a pending autosave from resurrecting deleted IDs.
+                operation?.cancelAndJoin(); saving?.join()
+                withContext(Dispatchers.IO) {
+                    val fresh = deletionPlan()
+                    val expanded = target != HistoryDeletionTarget.AUDIO && !request.plan.transcriptIds.containsAll(fresh.transcriptIds)
+                    val changedAudio = target != HistoryDeletionTarget.TRANSCRIPTS && fresh.audioId != null && fresh.audioId != request.plan.audioId
+                    if (expanded || changedAudio) {
+                        mutable.update { it.copy(deletion = DialogDeletionRequest(fresh, target.takeIf { it in fresh.choices }),
+                            message = app.getString(R.string.dialog_deletion_changed)) }
+                        return@withContext
+                    }
+                    linkedHistory.delete(request.plan, target)
+                    if (target != HistoryDeletionTarget.AUDIO && workingTranscriptId() in request.plan.transcriptIds) {
+                        document.show(null)
+                        currentStore?.dispose(); currentStore = null; latestPreview = ""
+                        mutable.update { it.copy(store = null, preview = "", transcriptBytes = 0, transcriptId = null, transcriptPinned = false) }
+                    }
+                    if (target != HistoryDeletionTarget.TRANSCRIPTS) ownedAudioId?.let { RecordingRecovery.dismissNotification(app, it) }
+                    refreshAudio(); refreshTranscript()
+                    val empty = deletionPlan().choices.isEmpty()
+                    if (empty) synchronized(temporaryResults) { temporaryResults.toList() }.forEach(TranscriptStore::deleteArtifacts)
+                    mutable.update { it.copy(finished = empty, message = app.getString(R.string.dialog_deleted)) }
+                }
+            } catch (e: Exception) { showError(e)
+            } finally { mutable.update { it.copy(deleting = false) } }
         }
     }
 
     /** Dismissal is an explicit action, never inferred from onStop/onDestroy. */
-    fun dismiss(delete: Boolean = false, done: () -> Unit) {
-        if (state.value.closing) return
+    fun dismiss(done: () -> Unit) {
+        if (state.value.closing || state.value.deleting) return
         mutable.update { it.copy(closing = true) }
         app.audioPlayback.stop(playbackOwner)
         val task = operation
@@ -266,19 +354,17 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                 // Existing export/read leases defer physical deletion, but a
                 // process death must not resurrect explicitly discarded input.
                 withContext(Dispatchers.IO) {
-                    if (input.transcriptOrigin) {
-                        if (delete) mutable.value.transcriptId?.let(app.transcriptHistory::delete)
-                    } else ownedAudioId?.let { if (delete) app.recordingHistory.delete(it) else app.recordingHistory.dismiss(it) }
+                    if (!input.transcriptOrigin) ownedAudioId?.let(app.recordingHistory::dismiss)
                 }
                 task?.cancelAndJoin()
                 saving?.join()
                 withContext(Dispatchers.IO) {
                     // Import completion can race dismissal; ownership was published
                     // on IO before returning so this second pass cannot orphan it.
-                    if (!input.transcriptOrigin) ownedAudioId?.let { if (delete) app.recordingHistory.delete(it) else app.recordingHistory.dismiss(it) }
+                    if (!input.transcriptOrigin) ownedAudioId?.let(app.recordingHistory::dismiss)
                     if (!input.transcriptOrigin) ownedAudioId?.let { RecordingRecovery.dismissNotification(app, it) }
                     currentStore?.dispose(); currentStore = null
-                    synchronized(temporaryResults) { temporaryResults.toList() }.forEach(CacheArtifacts::deleteWhenReleased)
+                    synchronized(temporaryResults) { temporaryResults.toList() }.forEach(TranscriptStore::deleteArtifacts)
                 }
                 done()
             } catch (e: Exception) {

@@ -1,0 +1,70 @@
+# Native dialog D verification
+
+## Environment
+
+- Worktree: `.worktrees/transcription-dialog-native-d`; branch:
+  `feat/transcription-dialog-d`; main baseline: `cff686d`.
+- JDK 21, Android SDK 36, normal incremental Gradle with two workers.
+- LDPlayer API 28, serial `emulator-5554`, isolated QA identity
+  `io.github.lrq3000.utterlane.dialogd`, version 2.1.0 / code 210.
+- The pinned source caches and sherpa AAR are read through local junctions;
+  build outputs and edits belong to this worktree.
+
+## Initial native integration milestone
+
+- **314 JVM tests passed**, including eight new linked-history cases and six
+  Unicode/provenance cases. Tests cover independent audio/text lifetime,
+  single-transcript versus all-linked scopes, exact confirmed IDs, leased deletion,
+  history restart, missing payloads, UTF-8 chunk reconstruction, working-result
+  recovery metadata, and provenance expiry relative to the last text write.
+- **25 Android tests passed** in the final integration batch (22.510 seconds):
+  11 `TranscriptionDialogDAndroidTest`, five `TranscriptionDialogAndroidTest`, four
+  `AudioPlaybackAndroidTest`, three `HistoryPinsAndroidTest`, and two
+  `HistoryListInteractionAndroidTest`.
+- App and instrumentation APK builds passed. Installation used `--no-streaming`
+  and `-r` on the isolated QA identity.
+
+### Reproductions and fixes
+
+- The original dialog failed to expose existing text when opened from audio
+  history. It also failed to restore an unsaved working transcript's audio link.
+  New native tests demonstrated both failures before model integration.
+- The old UI lacked D's pin control and layout. The native control test failed
+  before the new layout was implemented.
+- A 4,000-paragraph transcript exposed a scrollbar seek problem. Paging now
+  supports direct jumps, and seeking waits for the actual loaded chunk rather
+  than using a placeholder's height. The same test reaches the final chunk and
+  returns to the first without page buttons or traversing every intermediate page.
+- Icon labels are attached to the actionable controls themselves. The playback
+  regression waits for the accessible Resume label rather than visible button
+  text, and real playback pause/seek/resume/stop tests pass.
+
+### Deletion and UI evidence
+
+- Transcript-origin deletion removes only the selected version, including when
+  audio is deleted alongside it. Sibling model results remain readable.
+- Recording-origin deletion confirms **all N linked transcripts**, and its help
+  text directs users to Transcript history to remove individual versions.
+- Audio-only and text-only availability skip the choice menu but still require
+  confirmation. Cancel preserves data.
+- Creating a third sibling while a two-result confirmation is open causes a new
+  three-result confirmation; no files are removed on the stale confirmation.
+- Native 320/392 dp window tests verify a single header row, a fitting title, and
+  full 48 dp icon targets. Light and dark screenshots were visually inspected.
+- Local/ignored evidence: `app/build/outputs/transcription-dialog-d.png`,
+  `transcription-dialog-d-320-light.png`, and `transcription-dialog-d-dark.png`.
+
+## Commands
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest "-PqaApplicationIdSuffix=.dialogd" "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q --offline
+adb -s emulator-5554 install --no-streaming -r app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5554 install --no-streaming -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s emulator-5554 shell am instrument -w -e onboardingTimeoutSeconds 20 -e class io.github.lrq3000.utterlane.TranscriptionDialogDAndroidTest,io.github.lrq3000.utterlane.TranscriptionDialogAndroidTest,io.github.lrq3000.utterlane.AudioPlaybackAndroidTest,io.github.lrq3000.utterlane.HistoryPinsAndroidTest,io.github.lrq3000.utterlane.HistoryListInteractionAndroidTest io.github.lrq3000.utterlane.dialogd.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+New strings use English fallback pending the repository's stable release-time
+translation batch. These checks exercise native controls, storage, recovery, and
+playback; they are not new speech-recognition accuracy or device-performance
+benchmarks. The user's subsequent scoped pin-menu request is a separate follow-up
+to this initial integration milestone.
