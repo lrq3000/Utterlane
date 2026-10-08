@@ -33,6 +33,7 @@ internal class OnboardingTestUi {
         @Suppress("DEPRECATION") node.recycle()
     }
     fun textNode(text: String): AccessibilityNodeInfo = awaitNode(text, 150_000) { it.text?.toString() == text }
+    fun descriptionNode(text: String): AccessibilityNodeInfo = awaitNode(text) { it.contentDescription?.toString() == text }
     fun awaitChecked(id: String, checked: Boolean) {
         val node = awaitNode("$id checked=$checked") { it.viewIdResourceName == id && it.isCheckable && it.isChecked == checked }
         @Suppress("DEPRECATION") node.recycle()

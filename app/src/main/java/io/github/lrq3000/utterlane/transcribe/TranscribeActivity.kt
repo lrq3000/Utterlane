@@ -30,6 +30,9 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Keep the platform's dialog dimming, but make its content area available
+        // to the nearly full-height reader instead of the theme's 85% minimum.
+        window.setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT, android.view.WindowManager.LayoutParams.MATCH_PARENT)
         val app = UtterlaneApp.instance
         app.historyCleanup.userEntry(intent, savedInstanceState)
         setFinishOnTouchOutside(false)
@@ -50,7 +53,7 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
             val theme by app.settingsRepository.themeMode.collectAsStateWithLifecycle(initialValue = SettingsRepository.THEME_SYSTEM)
             val dark = when (theme) { SettingsRepository.THEME_DARK -> true; SettingsRepository.THEME_LIGHT -> false; else -> isSystemInDarkTheme() }
             UtterlaneTheme(darkTheme = dark) {
-                TranscriptionDialog(model, onClose = { model.dismiss { finish() } }, onDelete = { model.dismiss(delete = true) { finish() } })
+                TranscriptionDialog(model, onClose = { model.dismiss { finish() } }, onEmpty = { finish() })
             }
         }
     }

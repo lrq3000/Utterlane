@@ -51,7 +51,7 @@ class AudioPlaybackAndroidTest {
             instrumentation.runOnMainSync { app.audioPlayback.seek(playing.owner!!, 2500) }
             val sought = withTimeout(5000) { app.audioPlayback.state.first { !it.preparing && kotlin.math.abs(it.positionMs - 2500) < 300 } }
             assertFalse(sought.playing)
-            ui.textNode(app.getString(R.string.audio_resume)).recycle()
+            ui.descriptionNode(app.getString(R.string.audio_resume)).recycle()
             ui.textNode("0:02 / 0:04").recycle()
             ui.screenshot("transcription-audio-paused-seek")
             ui.click("audio_pause") // Same button is now Resume.

@@ -48,7 +48,7 @@ class HistoryListInteractionAndroidTest {
             ui.click("history_entry_$id")
             detail = monitor.waitForActivityWithTimeout(5000)
             assertNotNull("The entry itself must open the shared dialog", detail)
-            ui.textNode(deletion).recycle()
+            ui.node("dialog_delete").recycle()
         } finally {
             instrumentation.removeMonitor(monitor)
             detail?.let { screen -> instrumentation.runOnMainSync { screen.finish() } }

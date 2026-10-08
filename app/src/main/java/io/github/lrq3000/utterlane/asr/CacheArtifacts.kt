@@ -38,12 +38,14 @@ object CacheArtifacts {
         if (delete) delete(file)
     }
 
-    fun prune(directory: File, maximumAgeMs: Long, now: Long = System.currentTimeMillis(), includeDirectories: Boolean = true) {
+    fun prune(directory: File, maximumAgeMs: Long, now: Long = System.currentTimeMillis(), includeDirectories: Boolean = true,
+        referenceTime: (File) -> Long = { it.lastModified() }) {
         directory.listFiles()?.forEach { file ->
             if (!includeDirectories && file.isDirectory) return@forEach
+            val reference = referenceTime(file)
             val delete = synchronized(states) {
                 val state = states[file.absolutePath]
-                val expired = now >= file.lastModified() && now - file.lastModified() >= maximumAgeMs
+                val expired = now >= reference && now - reference >= maximumAgeMs
                 if ((expired || state?.pendingDelete == true) && (state?.count ?: 0) == 0 && state?.deleting != true) {
                     states.getOrPut(file.absolutePath) { State() }.deleting = true
                     true
