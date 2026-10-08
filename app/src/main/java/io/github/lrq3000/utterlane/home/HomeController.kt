@@ -153,7 +153,8 @@ class HomeController(private val app: UtterlaneApp) {
             // Actual service loss must stop microphone ownership, but it is not
             // permission to discard input. MicrophoneSession writes recovery.
             captureOwner.interrupt()
-            slot?.preserve()
+            // The application still owns any prior result. Service destruction
+            // must not release its text lease while a new empty attempt closes.
         }
     }
 
@@ -162,40 +163,38 @@ class HomeController(private val app: UtterlaneApp) {
     private inner class CaptureDriver(private val events: HomeCaptureOwner.Events<CaptureResult>) : HomeCaptureOwner.Driver {
         private var session: MicrophoneSession? = null
         private var observer: Job? = null
+        private var spoolObserver: Job? = null
         private var ended = false
         private var delivered = false
         private var sourceLease: Closeable? = null
         private var rawStore: TranscriptStore? = null
+        private var inputAccepted = false
+        private val spool = HomeCaptureSpool(app.recordingHistory)
         private val completion = HomeCaptureCompletion<CaptureResult>(events::result, ::reject)
 
         override fun start() { requestService(microphone = true) }
         fun begin() {
             if (session != null || ended) return
             val created = app.microphoneSessions.create(app, scope,
-                onText = { _, store ->
-                    if (captureDriver === this && !ended) {
-                        rawStore = store
-                        mutable.update { it.copy(result = it.result.copy(store = store, preview = store.preview())) }
-                        journal.capture(session?.audioId, store, session?.metrics?.state?.value)
-                    }
-                }, onComplete = { store, failure ->
+                onText = { _, store -> publishInput(store = store) }, onComplete = { store, failure ->
                     delivered = true
                     if (failure?.kind == SessionFailure.Kind.BUSY) reject(failure.message)
                     else deliverResult(store, failure)
                 }, onCaptureEnded = { events.captureEnded() },
                 onWarning = { if (captureDriver === this) showMessage(it) },
                 onReady = {
-                    events.ready()
-                    // Acquire while the session still holds its writer/read lease.
-                    // A scheduled prune cannot physically remove an open source.
-                    val id = session?.audioId
-                    // acquire is an O(1) in-memory index operation. Acquiring
-                    // synchronously prevents close-before-acquire lease leaks.
-                    try { if (id != null) sourceLease = app.recordingHistory.acquire(id) }
-                    catch (error: Exception) { Log.w("Home", "Could not lease source audio", error) }
-                    journal.capture(id, rawStore, session?.metrics?.state?.value)
+                    if (isCurrent()) {
+                        events.ready()
+                        // Lease this attempt while its session holds the writer
+                        // lease, but do not replace the prior recovery descriptor.
+                        // Readiness and even captured metrics can precede PCM IO.
+                        val id = session?.audioId
+                        try { if (id != null && sourceLease == null) sourceLease = app.recordingHistory.acquire(id) }
+                        catch (error: Exception) { Log.w("Home", "Could not lease source audio", error) }
+                    }
                 }, onSessionClosed = {
                     observer?.cancel()
+                    spoolObserver?.cancel()
                     if (!delivered) {
                         // Cancellation preserves input but omits onComplete. Adopt
                         // its partial workspace too, so explicit Next can later
@@ -211,11 +210,39 @@ class HomeController(private val app: UtterlaneApp) {
                 }, keepResultAudio = true, openRecoveryOnFailure = false)
             session = created
             observer = scope.launch { created.metrics.state.collect { metrics ->
-                if (captureDriver === this@CaptureDriver) mutable.update { it.copy(metrics = metrics) }
+                if (!isCurrent()) return@collect
+                mutable.update { it.copy(metrics = metrics) }
             } }
+            spoolObserver = scope.launch {
+                // Metrics can be conflated after the producer pauses. Poll the
+                // writer independently until the first committed sample, with
+                // one constant-size IO probe at a time and no permanent extra job.
+                while (isActive && isCurrent() && !inputAccepted) {
+                    val id = created.audioId
+                    if (id != null && created.metrics.state.value.capturedSamples > 0) {
+                        val published = withContext(Dispatchers.IO) { spool.hasPublishedSamples(id) }
+                        if (published) publishInput(spooledSamples = 1)
+                    }
+                    if (!inputAccepted) delay(created.metrics.visualRefreshIntervalMillis())
+                }
+            }
             created.start()
         }
         override fun stop() { session?.stop() }
+        private fun isCurrent() = captureDriver === this && !ended
+
+        private fun publishInput(spooledSamples: Long = 0, store: TranscriptStore? = rawStore) {
+            if (!isCurrent()) return
+            val preview = store?.preview().orEmpty()
+            if (!events.input(spooledSamples, preview)) return
+            inputAccepted = true
+            rawStore = store
+            if (store != null) mutable.update { it.copy(result = it.result.copy(store = store, preview = preview)) }
+            // Acceptance synchronously retires the old owner before this new
+            // checkpoint is published. Neither empty Ready nor stale IO can erase
+            // the previous descriptor; final completion remains a fallback.
+            journal.capture(session?.audioId, store, session?.metrics?.state?.value)
+        }
         private fun deliverResult(store: TranscriptStore?, failure: SessionFailure?) {
             val audio = session?.audioId?.let { runCatching { app.recordingHistory.get(it) }.getOrNull() }
             if (!completion.deliver(CaptureResult(this, store, failure), audio, store?.preview().orEmpty(),
@@ -230,7 +257,7 @@ class HomeController(private val app: UtterlaneApp) {
             else session?.cancel(discard = false)
         }
         fun reject(message: String) {
-            ended = true; observer?.cancel(); events.rejected(message)
+            ended = true; observer?.cancel(); spoolObserver?.cancel(); events.rejected(message)
             if (captureDriver === this) captureDriver = null
         }
         fun input(store: TranscriptStore?, metadata: TranscriptMetadata) = DialogInput(
@@ -344,7 +371,6 @@ class HomeController(private val app: UtterlaneApp) {
                     modelId = saved.getString("result_model_id"), metadata = metadata), importing = result.importing))
             }
         }
-        fun preserve() { model.state.value.store?.keepForRecovery() }
         fun clear() {
             observer?.cancel()
             audioLease?.let { lease -> scope.launch(Dispatchers.IO) { lease.close() } }

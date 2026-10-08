@@ -14,6 +14,11 @@ import io.github.lrq3000.utterlane.asr.MicrophoneSessionFactory
 import io.github.lrq3000.utterlane.history.HistoryRetention
 import io.github.lrq3000.utterlane.home.HomeActivity
 import io.github.lrq3000.utterlane.home.HomeDestination
+import io.github.lrq3000.utterlane.home.HomeCapturePhase
+import io.github.lrq3000.utterlane.home.HomeJournal
+import io.github.lrq3000.utterlane.home.HomeSessionService
+import io.github.lrq3000.utterlane.home.HomeState
+import io.github.lrq3000.utterlane.transcribe.DialogInput
 import io.github.lrq3000.utterlane.onboarding.OnboardingRepository
 import io.github.lrq3000.utterlane.settings.SettingsActivity
 import kotlinx.coroutines.*
@@ -95,6 +100,8 @@ class HomeWorkspaceAndroidTest {
                 it.capture.phase == io.github.lrq3000.utterlane.home.HomeCapturePhase.RECORDING && it.metrics.capturedSamples >= 1600
             } }
             withTimeout(10000) { while (audio.directory.exists()) delay(20) }
+            assertTrue("Live durable PCM must replace the prior result before Stop or ASR completion",
+                app.homeController.state.value.capture.active)
             instrumentation.runOnMainSync { app.homeController.record() }
             val next = withTimeout(120000) { app.homeController.state.first { !it.busy && it.model != null } }
             id = checkNotNull(next.result.audio).id
@@ -152,6 +159,7 @@ class HomeWorkspaceAndroidTest {
             // a BUSY rejection. The ID exists before this recorder throws, but
             // no onStarted signal, samples or useful result follow it.
             instrumentation.uiAutomation.grantRuntimePermission(app.packageName, "android.permission.RECORD_AUDIO")
+            for (attempt in EmptyAttempt.entries) verifyEmptyReadyAttempt(result, attempt)
             val priorStore = result.result.store
             val priorText = priorStore?.file?.readText()
             app.microphoneSessions = MicrophoneSessionFactory { FailingOpenCapture() }
@@ -188,6 +196,54 @@ class HomeWorkspaceAndroidTest {
             original.delete()
             onboarding.update { previousOnboarding }
         }
+    }
+
+    private enum class EmptyAttempt { READY_FAILURE, READY_CANCEL, EARLY_STOP }
+
+    private suspend fun verifyEmptyReadyAttempt(prior: HomeState, attempt: EmptyAttempt) {
+        val descriptor = HomeJournal(app).restore()
+        val source = ReadyEmptyCapture("Home QA zero-input $attempt")
+        app.microphoneSessions = MicrophoneSessionFactory { source }
+        try {
+            instrumentation.runOnMainSync {
+                app.homeController.record()
+                if (attempt == EmptyAttempt.EARLY_STOP) app.homeController.record()
+            }
+            if (attempt != EmptyAttempt.EARLY_STOP) {
+                withTimeout(10000) { app.homeController.state.first { it.capture.phase == HomeCapturePhase.RECORDING } }
+                assertRetainedResult(prior, descriptor)
+                instrumentation.runOnMainSync {
+                    if (attempt == EmptyAttempt.READY_CANCEL) app.stopService(Intent(app, HomeSessionService::class.java))
+                    else app.homeController.record()
+                }
+            }
+            val expected = if (attempt == EmptyAttempt.READY_CANCEL) app.getString(R.string.stream_cancelled) else source.failure
+            withTimeout(120000) { app.homeController.state.first { !it.busy && it.message == expected } }
+            assertRetainedResult(prior, descriptor)
+        } finally { source.stop() }
+    }
+
+    private fun assertRetainedResult(prior: HomeState, descriptor: DialogInput?) {
+        val current = app.homeController.state.value
+        assertSame("Ready without PCM must retain the previous model owner", prior.model, current.model)
+        assertEquals(prior.result.audio?.id, current.result.audio?.id)
+        assertSame(prior.result.store, current.result.store)
+        assertEquals("Ready/empty Stop must not overwrite the recovery descriptor", descriptor, HomeJournal(app).restore())
+        prior.result.audio?.let { assertTrue(it.part(0).isFile) }
+        prior.result.store?.let { assertTrue(it.file.isFile) }
+    }
+
+    /** Signals AudioRecord readiness but never delivers a single PCM frame. */
+    private class ReadyEmptyCapture(val failure: String) : AudioCapture {
+        private val stopped = AtomicBoolean(false)
+        private var observer: CaptureObserver? = null
+        override fun setObserver(observer: CaptureObserver) { this.observer = observer }
+        override fun startRecording(onSamples: (ShortArray) -> Unit, shouldContinue: () -> Boolean) {
+            observer?.onStarted()
+            while (!stopped.get() && shouldContinue()) Thread.sleep(10)
+            error(failure)
+        }
+        override fun stop() { stopped.set(true) }
     }
 
     private class SlowCapture : AudioCapture {
