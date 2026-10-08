@@ -16,7 +16,11 @@ internal class HomeCaptureOwner<R>(
 ) {
     interface Driver { fun start(); fun stop(); fun interrupt() }
     interface Events<R> {
+        /** Recorder readiness only enables Stop delivery; it does not own any words yet. */
         fun ready()
+        /** Confirm writer-published PCM or useful committed text. False means no
+         * useful input, or a stale/completed session that must not publish a journal. */
+        fun input(spooledSamples: Long = 0, preview: String = ""): Boolean
         fun captureEnded()
         fun result(result: R)
         fun rejected(message: String)
@@ -46,12 +50,19 @@ internal class HomeCaptureOwner<R>(
             override fun ready() {
                 if (!current() || ready || interrupted || completed || state.value.phase == HomeCapturePhase.PROCESSING) return
                 ready = true
-                accept()
                 mutable.value = state.value.copy(phase = if (stopRequested) HomeCapturePhase.STOPPING else HomeCapturePhase.RECORDING)
                 deliverStop()
             }
             override fun captureEnded() {
                 if (current()) mutable.value = state.value.copy(phase = HomeCapturePhase.PROCESSING)
+            }
+            override fun input(spooledSamples: Long, preview: String): Boolean {
+                if (!current() || completed || (spooledSamples <= 0 && preview.isBlank())) return false
+                // A stopping/cancelled capture may still spool its final tail.
+                // Accept that authoritative input without changing phase, Stop
+                // latches, or recorder readiness. The callback runs only once.
+                accept()
+                return true
             }
             override fun result(result: R) {
                 if (!current() || completed) return

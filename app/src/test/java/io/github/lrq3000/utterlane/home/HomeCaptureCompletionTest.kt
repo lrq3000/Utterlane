@@ -33,6 +33,28 @@ class HomeCaptureCompletionTest {
         f.assertPriorPreserved("Cancelled before microphone opened")
     }
 
+    @Test fun readyThenZeroInputFailurePreservesPriorUnsavedTextAndAudio() = fixture().use { f ->
+        f.events.ready()
+        f.deliver(null, "", "Empty after Ready")
+        f.events.closed()
+        f.assertPriorPreserved("Empty after Ready")
+    }
+
+    @Test fun readyThenZeroInputCancellationPreservesPriorUnsavedTextAndAudio() = fixture().use { f ->
+        f.events.ready(); f.owner.interrupt()
+        f.deliver(null, "", "Cancelled after Ready")
+        f.events.closed()
+        f.assertPriorPreserved("Cancelled after Ready")
+    }
+
+    @Test fun stopQueuedBeforeReadyWithNoPcmPreservesPriorUnsavedWork() = fixture().use { f ->
+        f.owner.stop(); f.events.ready()
+        f.events.captureEnded()
+        f.deliver(null, "", "Empty early Stop")
+        f.events.closed()
+        f.assertPriorPreserved("Empty early Stop")
+    }
+
     @Test fun allocatedEmptyMetadataAndWhitespaceTextAreNotUsefulInput() = fixture().use { f ->
         val empty = f.history.begin(HistoryRetention.NONE, keepUntilDismissed = true)
         try {

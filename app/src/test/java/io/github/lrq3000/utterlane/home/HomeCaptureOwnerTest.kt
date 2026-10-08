@@ -41,7 +41,7 @@ class HomeCaptureOwnerTest {
         f.driver.events.ready(); f.driver.events.ready()
         assertEquals(1, f.driver.stops)
         assertEquals(HomeCapturePhase.STOPPING, f.owner.state.value.phase)
-        assertEquals(listOf("previous"), f.released)
+        assertTrue("Readiness only delivers Stop; it is not replacement input", f.released.isEmpty())
     }
 
     @Test fun `completed processing cannot restart until native cleanup closes`() {
@@ -61,6 +61,7 @@ class HomeCaptureOwnerTest {
         val old = f.driver
         old.events.ready(); old.events.result("first"); old.events.closed()
         f.owner.start()
+        assertFalse(old.events.input(spooledSamples = 1600, preview = "stale text"))
         old.events.ready(); old.events.result("stale"); old.events.closed(); old.events.rejected("late error")
         assertEquals(HomeCapturePhase.STARTING, f.owner.state.value.phase)
         assertEquals(listOf("first"), f.results)
@@ -75,6 +76,7 @@ class HomeCaptureOwnerTest {
         assertTrue(f.owner.state.value.active)
         f.driver.events.closed()
         assertFalse(f.owner.state.value.active)
+        assertTrue("Ready then cancellation without input must preserve the old owner", f.released.isEmpty())
     }
 
     @Test fun `failure with recoverable audio before ready still adopts the result`() {
@@ -109,5 +111,56 @@ class HomeCaptureOwnerTest {
         f.driver.events.captureEnded(); f.driver.events.ready()
         assertEquals(HomeCapturePhase.PROCESSING, f.owner.state.value.phase)
         assertEquals(0, f.driver.stops)
+    }
+
+    @Test fun `ready then empty completion leaves the prior owner intact`() {
+        val f = Fixture()
+        f.owner.start(); f.driver.events.ready()
+        assertFalse(f.driver.events.input(spooledSamples = 0, preview = " \n"))
+        f.driver.events.captureEnded(); f.driver.events.rejected("No audio"); f.driver.events.closed()
+        assertTrue(f.released.isEmpty())
+        assertTrue(f.results.isEmpty())
+    }
+
+    @Test fun `durably spooled live samples accept once without restarting or stopping capture`() {
+        val f = Fixture()
+        f.owner.start(); f.driver.events.ready()
+        assertTrue(f.released.isEmpty())
+        assertTrue(f.driver.events.input(spooledSamples = 1))
+        assertTrue(f.driver.events.input(spooledSamples = 3200))
+        assertEquals(listOf("previous"), f.released)
+        assertEquals(HomeCapturePhase.RECORDING, f.owner.state.value.phase)
+        assertEquals(1, f.driver.starts)
+        assertEquals(0, f.driver.stops)
+        assertTrue(f.results.isEmpty())
+    }
+
+    @Test fun `useful live text can accept before ready without opening another capture`() {
+        val f = Fixture()
+        f.owner.start()
+        assertTrue(f.driver.events.input(preview = "Useful text"))
+        f.driver.events.ready()
+        assertEquals(listOf("previous"), f.released)
+        assertEquals(1, f.driver.starts)
+        assertEquals(0, f.driver.stops)
+    }
+
+    @Test fun `spooled tail after stop or interruption is still authoritative input`() {
+        val f = Fixture()
+        f.owner.start(); f.owner.stop(); f.driver.events.ready(); f.owner.interrupt()
+        assertTrue(f.driver.events.input(spooledSamples = 1))
+        assertEquals(listOf("previous"), f.released)
+        assertEquals(HomeCapturePhase.STOPPING, f.owner.state.value.phase)
+        assertEquals(1, f.driver.stops)
+        assertEquals(1, f.driver.starts)
+    }
+
+    @Test fun `completed sessions cannot republish late live input`() {
+        val f = Fixture()
+        f.owner.start(); f.driver.events.result("finished")
+        assertFalse(f.driver.events.input(spooledSamples = 1, preview = "late"))
+        f.driver.events.closed()
+        assertFalse(f.driver.events.input(spooledSamples = 1))
+        assertEquals(listOf("previous"), f.released)
     }
 }
