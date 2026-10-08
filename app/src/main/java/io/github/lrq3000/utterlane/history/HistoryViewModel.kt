@@ -17,8 +17,21 @@ import kotlinx.coroutines.withContext
 
 internal data class HistoryRow(val cursor: HistoryCursor, val detail: String,
     val retention: RetentionMark, val model: String? = null, val durationMs: Long = 0,
-    val recovery: Boolean = false, val imported: Boolean = false) {
+    val recovery: Boolean = false, val imported: Boolean = false, val speakerLabels: Boolean = false) {
     val id get() = cursor.id
+
+    companion object {
+        fun from(entry: TranscriptEntry, preview: String) =
+            // Result metadata belongs to this transcript, never to the current
+            // speaker setting or a subsequently retranscribed source recording.
+            HistoryRow(entry.cursor, preview, entry.retention, model = entry.model,
+                durationMs = entry.durationMs, speakerLabels = entry.speakerLabels)
+
+        fun from(entry: HistoryEntry) =
+            HistoryRow(entry.cursor, "", entry.retention, durationMs = entry.durationMs,
+                recovery = entry.needsRecovery, imported = entry.sourceName != null,
+                speakerLabels = entry.speakerLabels)
+    }
 }
 
 /** One retained pager per destination. Loaded previews stay bounded while dropped
@@ -64,19 +77,14 @@ private class HistoryPagingSource(private val app: UtterlaneApp, private val tra
                     val source = app.transcriptHistory.page(params.key, direction, params.loadSize)
                     HistoryPage(source.entries.map { entry ->
                         val preview = app.transcriptHistory.acquire(entry.id).use {
-                            entry.file.reader(Charsets.UTF_8).use { reader ->
-                                val buffer = CharArray(160)
-                                val count = reader.read(buffer)
-                                if (count < 0) "" else String(buffer, 0, count)
-                            }
+                            entry.file.reader(Charsets.UTF_8).use(HistoryPreview::read)
                         }
-                        HistoryRow(entry.cursor, preview, entry.retention, model = entry.model)
+                        HistoryRow.from(entry, preview)
                     }, source.before, source.after)
                 } else {
                     val source = app.recordingHistory.page(params.key, direction, params.loadSize)
                     HistoryPage(source.entries.map { entry ->
-                        HistoryRow(entry.cursor, "", entry.retention, durationMs = entry.durationMs,
-                            recovery = entry.needsRecovery, imported = entry.sourceName != null)
+                        HistoryRow.from(entry)
                     }, source.before, source.after)
                 }
                 // Initialization, pruning or deletion can change the index while
