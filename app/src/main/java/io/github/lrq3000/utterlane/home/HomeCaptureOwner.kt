@@ -31,11 +31,12 @@ internal class HomeCaptureOwner<R>(
     private var stopRequested = false
     private var stopSent = false
     private var interrupted = false
+    private var completed = false
 
     fun start(): Boolean {
         if (state.value.active) return false
         val token = ++generation
-        accepted = false; ready = false; stopRequested = false; stopSent = false; interrupted = false
+        accepted = false; ready = false; stopRequested = false; stopSent = false; interrupted = false; completed = false
         mutable.value = HomeCaptureState(HomeCapturePhase.STARTING)
         val events = object : Events<R> {
             private fun current() = token == generation && state.value.active
@@ -43,7 +44,7 @@ internal class HomeCaptureOwner<R>(
                 if (!accepted) { accepted = true; onAccepted() }
             }
             override fun ready() {
-                if (!current() || ready || interrupted) return
+                if (!current() || ready || interrupted || completed || state.value.phase == HomeCapturePhase.PROCESSING) return
                 ready = true
                 accept()
                 mutable.value = state.value.copy(phase = if (stopRequested) HomeCapturePhase.STOPPING else HomeCapturePhase.RECORDING)
@@ -53,8 +54,10 @@ internal class HomeCaptureOwner<R>(
                 if (current()) mutable.value = state.value.copy(phase = HomeCapturePhase.PROCESSING)
             }
             override fun result(result: R) {
-                if (!current()) return
+                if (!current() || completed) return
+                completed = true
                 accept()
+                mutable.value = state.value.copy(phase = HomeCapturePhase.PROCESSING)
                 onResult(result)
             }
             override fun rejected(message: String) {
