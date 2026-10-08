@@ -92,11 +92,12 @@ class AndroidAudioInputDevices(context: Context) : AudioInputDevices {
         return "device:" + digest.joinToString("") { "%02x".format(it) }
     }
 
-    override fun observe(onChanged: () -> Unit) {
+    override fun observe(onChanged: (Set<Int>) -> Unit) {
         check(callback == null)
         callback = object : AudioDeviceCallback() {
-            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = onChanged()
-            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) = onChanged()
+            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = onChanged(emptySet())
+            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) =
+                onChanged(removedDevices.mapTo(mutableSetOf()) { it.id })
         }.also { manager.registerAudioDeviceCallback(it, Handler(Looper.getMainLooper())) }
     }
 

@@ -2,6 +2,7 @@ package io.github.lrq3000.utterlane.audio
 
 import android.app.Application
 import android.media.AudioDeviceInfo
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -90,6 +91,21 @@ class AndroidAudioInputDevicesTest {
             assertEquals(original.key, reconnected.key)
             assertEquals(70, reconnected.inputId)
             assertEquals(80, reconnected.communicationId)
+        }
+    }
+
+    @Test fun closingScoInputDoesNotForgetStillConnectedCommunicationEndpoint() = runBlocking {
+        AudioRoutingPlatform().use { platform ->
+            val source = AudioRoutingPlatform.device(7, sco, "headset", true)
+            platform.inputDevices = listOf(platform.phone, source)
+            platform.communicationDevices = listOf(AudioRoutingPlatform.device(8, sco, "headset"))
+            val headset = platform.devices.inputs().single { it.bluetooth }
+            val controller = platform.controller()
+            assertTrue(controller.select(headset.key))
+            platform.inputDevices = listOf(platform.phone)
+            platform.changed(removed = listOf(source))
+            assertEquals(headset.key, controller.snapshotForRecording().selected.key)
+            assertNull(controller.state.value!!.selected.inputId)
         }
     }
 
