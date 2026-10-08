@@ -4,7 +4,6 @@ import java.io.Closeable
 import java.io.File
 import java.io.InputStream
 import java.util.Properties
-import java.util.TreeSet
 import java.util.UUID
 
 data class HistoryEntry(val id: String, val directory: File, val started: Long, val reference: Long, val samples: Long, val status: String,
@@ -13,6 +12,7 @@ data class HistoryEntry(val id: String, val directory: File, val started: Long, 
     val sourceName: String? = null, val mimeType: String = "audio/wav", val importedDurationMs: Long = 0,
     val failureMessage: String? = null, val failureKind: String? = null) {
     val retention get() = RetentionMark(reference, pinned, holdForLaunch)
+    val cursor get() = HistoryCursor(started, id)
     val durationMs: Long get() = if (sourceName == null) samples * 1000 / 16000 else importedDurationMs
     val seconds: Long get() = durationMs / 1000
     val parts: Int get() = if (sourceName != null) 1 else ((samples + RecordingHistory.PART_SAMPLES - 1) / RecordingHistory.PART_SAMPLES).toInt()
@@ -23,7 +23,7 @@ data class HistoryEntry(val id: String, val directory: File, val started: Long, 
 class RecordingHistory(private val root: File, private val clock: () -> Long = System::currentTimeMillis) {
     companion object { const val PART_SAMPLES = 3600L * 16000 }
     private val entries = mutableMapOf<String, HistoryEntry>()
-    private val ordered = TreeSet(compareByDescending<HistoryEntry> { it.started }.thenBy { it.id })
+    private val ordered = HistoryIndex<HistoryEntry>()
     private val active = mutableMapOf<String, Recording>()
     private val leases = mutableMapOf<String, Int>()
     private val deferred = mutableSetOf<String>()
@@ -105,8 +105,16 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
         } catch (e: Exception) { entry.directory.deleteRecursively(); throw e }
     }
 
-    @Synchronized fun list(page: Int = 0, pageSize: Int = 30): List<HistoryEntry> =
-        ordered.asSequence().filter { it.status != "active" && it.id !in deferred }.drop(page * pageSize).take(pageSize).toList()
+    @Synchronized fun list(page: Int = 0, pageSize: Int = 30): List<HistoryEntry> {
+        initialize()
+        return ordered.list(page, pageSize)
+    }
+
+    @Synchronized fun page(anchor: HistoryCursor? = null, direction: HistoryDirection = HistoryDirection.REFRESH,
+        limit: Int = 30): HistoryPage<HistoryEntry> {
+        initialize()
+        return ordered.page(anchor, direction, limit)
+    }
 
     @Synchronized fun recoveryCount(): Int = recoveries.size
 
@@ -258,8 +266,12 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
     }
 
     private fun put(entry: HistoryEntry) {
-        entries.put(entry.id, entry)?.let { ordered.remove(it) }
-        ordered.add(entry)
+        entries.put(entry.id, entry)?.let { ordered.remove(it.cursor) }
+        // Hide discarded entries immediately, even while leases delay physical
+        // deletion. The visible index therefore needs no page-time filtering.
+        if (entry.status !in setOf("active", "importing", "discarded") && entry.id !in deferred) {
+            ordered.put(entry.cursor, entry)
+        }
         if (entry.needsRecovery && entry.status !in setOf("active", "importing", "discarded")) recoveries.add(entry.id) else recoveries.remove(entry.id)
         expiry.put(entry.id, entry.retention, eligible = !entry.temporary && entry.status != "active" && entry.status != "discarded")
         changes.value++
@@ -272,7 +284,7 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
         val entry = entries[id] ?: return
         // Keep the index/deferred marker if deletion fails, so the next prune retries.
         if (!entry.directory.deleteRecursively()) return
-        entries.remove(id); ordered.remove(entry); deferred.remove(id)
+        entries.remove(id); ordered.remove(entry.cursor); deferred.remove(id)
         recoveries.remove(id)
         expiry.remove(id)
         changes.value++

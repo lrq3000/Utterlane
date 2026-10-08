@@ -42,10 +42,10 @@ history stores and native Android instrumentation. Standard application identity
 `history/RecordingHistory.kt`, `history/TranscriptHistory.kt`, and repository tests
 under the corresponding main/test `io/github/lrq3000/utterlane` source directories.
 
-- [ ] Add failing tests for deterministic newest-first ordering with ID tie breaks,
+- [x] Add failing tests for deterministic newest-first ordering with ID tie breaks,
   empty and exact-size boundaries, prepend, refresh around a deleted anchor, inserts
   between pages, and pin/deletion behavior with leased records.
-- [ ] Use this shared cursor contract:
+- [x] Use this shared cursor contract:
 
   ```kotlin
   data class HistoryCursor(val created: Long, val id: String) : Comparable<HistoryCursor> {
@@ -56,15 +56,16 @@ under the corresponding main/test `io/github/lrq3000/utterlane` source directori
   data class HistoryPage<T>(val entries: List<T>, val before: HistoryCursor?, val after: HistoryCursor?)
   ```
 
-- [ ] Back the visible index with `TreeMap<HistoryCursor, T>`. Append reads
+- [x] Back the visible index with `TreeMap<HistoryCursor, T>`. Append reads
   `tailMap(anchor, false)`; prepend reads `headMap(anchor, false).descendingMap()`
   and reverses the bounded result. Refresh includes the anchor and nearby entries,
   filling the window from the opposite side when near a boundary. Keys survive
   anchor deletion. Neighbor keys determine completion without an empty extra page.
-- [ ] Keep index updates inside existing repository synchronization. Exclude active
+- [x] Keep index updates inside existing repository synchronization. Exclude active
   or deleted entries from the visible index immediately while preserving storage
   leases. Keep legacy `list(page, pageSize)` for existing callers.
-- [ ] Run focused history tests, review the diff, and commit the index milestone.
+- [x] Run focused history tests and review the diff: 30 history/reader/recovery
+  tests passed, including nine new cases. Commit the index milestone with this plan.
 
 ## Task 2: Full-screen presentation and navigation
 
