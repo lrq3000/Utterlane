@@ -131,3 +131,22 @@ global cache index while covering files from prior processes. The dialog reports
 
 The final cross-session batch passed **315 JVM tests and 32 Android tests**,
 including 18 D-specific cases and 14 existing dialog/playback/history regressions.
+
+## In-flight producer publication
+
+A final review found that another dialog could still autosave a working result
+after it was deleted. A JVM test and a two-model native test reproduced this: the
+producer retained its file lease, waited while the other model deleted the result,
+then published it back into history.
+
+History publication now checks the durable source disposition under the same
+source lock used by marker writes. The entire check/publication is coordinated:
+a save either precedes the marker and is removed by the confirmed ID, or observes
+the marker and is rejected. Canonical-path lock stripes keep lock memory bounded.
+Autosave callers treat this specific rejection as explicit deletion rather than
+recognition failure, preserving independent audio retention behavior.
+
+The complete validation batch then passed **316 JVM tests and 33 Android tests**
+(19 D-specific tests plus the same 14 existing regressions). Debug app and test APK
+builds passed. The native producer test controls the actual history-save boundary;
+it does not claim an additional speech-recognition accuracy benchmark.

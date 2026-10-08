@@ -212,9 +212,13 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         metrics.captureEnded()
                         created.finish() // Includes the enabled speaker finisher before saving results.
                         if (retainText && textDuration != HistoryRetention.NONE && created.store.segments > 0) {
-                            val saved = app.transcriptHistory.save(created.store.file, chosenModel, audioId, modelId = resultModelId)
-                            created.store.attachSource(created.store.source.copy(transcriptId = saved.id))
-                            mutable.update { it.copy(transcriptId = saved.id) }
+                            try {
+                                val saved = app.transcriptHistory.save(created.store.file, chosenModel, audioId, modelId = resultModelId)
+                                created.store.attachSource(created.store.source.copy(transcriptId = saved.id))
+                                mutable.update { it.copy(transcriptId = saved.id) }
+                            } catch (_: TranscriptDiscardedException) {
+                                Log.i("TranscribeDialog", "Transcript autosave skipped after explicit deletion")
+                            }
                         }
                         app.recordingHistory.completeRecovery(audioId, app.settingsRepository.audioHistoryRetention.first())
                         metrics.completed(null)

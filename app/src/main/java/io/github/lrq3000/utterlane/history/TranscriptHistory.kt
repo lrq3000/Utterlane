@@ -1,5 +1,6 @@
 package io.github.lrq3000.utterlane.history
 
+import io.github.lrq3000.utterlane.asr.TranscriptSource
 import java.io.Closeable
 import java.io.File
 import java.util.Properties
@@ -48,23 +49,28 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
     /** A stable attempt ID deduplicates manual saving; a new recognition attempt uses a new ID. */
     @Synchronized fun save(source: File, model: String, audioId: String? = null, pinned: Boolean = false,
         attempt: String = source.name, modelId: String? = null): TranscriptEntry {
-        initialize()
-        val id = idForAttempt(attempt)
-        entries[id]?.let { existing ->
-            check(id !in deleted) { "Transcript was deleted" }
-            if (pinned && !existing.retention.pinned) setPinned(id, true, HistoryRetention.FOREVER, "")
-            return get(id)
+        // Share the source-disposition lock with deletion. A producer either
+        // publishes before the marker (and is then deleted by its confirmed ID),
+        // or observes the marker and cannot recreate that result afterward.
+        return TranscriptSource.withActiveSource(source) {
+            initialize()
+            val id = idForAttempt(attempt)
+            entries[id]?.let { existing ->
+                check(id !in deleted) { "Transcript was deleted" }
+                if (pinned && !existing.retention.pinned) setPinned(id, true, HistoryRetention.FOREVER, "")
+                return@withActiveSource get(id)
+            }
+            check(source.isFile && source.length() > 0) { "There is no transcript to save" }
+            val directory = File(root, id)
+            check(directory.mkdir()) { "Cannot create transcript history" }
+            val entry = TranscriptEntry(id, directory, clock(), model, audioId, RetentionMark(clock(), pinned), modelId)
+            try {
+                source.inputStream().use { input -> entry.file.outputStream().use { input.copyTo(it, 64 * 1024) } }
+                persist(entry)
+                put(entry)
+                entry
+            } catch (e: Exception) { directory.deleteRecursively(); throw e }
         }
-        check(source.isFile && source.length() > 0) { "There is no transcript to save" }
-        val directory = File(root, id)
-        check(directory.mkdir()) { "Cannot create transcript history" }
-        val entry = TranscriptEntry(id, directory, clock(), model, audioId, RetentionMark(clock(), pinned), modelId)
-        try {
-            source.inputStream().use { input -> entry.file.outputStream().use { input.copyTo(it, 64 * 1024) } }
-            persist(entry)
-            put(entry)
-            return entry
-        } catch (e: Exception) { directory.deleteRecursively(); throw e }
     }
 
     @Synchronized fun get(id: String): TranscriptEntry = checkNotNull(entries[id]?.takeIf { id !in deleted }) { "Transcript is unavailable" }

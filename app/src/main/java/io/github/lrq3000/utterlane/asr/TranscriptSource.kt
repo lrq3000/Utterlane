@@ -9,15 +9,17 @@ data class WorkingTranscriptCopy(val file: File, val source: TranscriptSource) {
     val id: String get() = source.transcriptId ?: TranscriptHistory.idForAttempt(file.name)
 }
 
+class TranscriptDiscardedException : IllegalStateException("Transcript was deleted")
+
 /** Private provenance for working text, including history-disabled/recovery paths.
  * It contains identifiers only; exports and clipboard text never include it. */
 data class TranscriptSource(val audioId: String? = null, val transcriptId: String? = null,
     val modelName: String = "", val modelId: String? = null, val discarded: Boolean = false) {
     fun write(file: File) {
-        synchronized(writeLock) {
+        synchronized(lockFor(file)) {
             // Late producer metadata must not clear a durable deletion marker.
             // Serialize the check/write and the shared atomic temporary filename.
-            check(discarded || !read(file).discarded) { "Transcript was deleted" }
+            if (!discarded && read(file).discarded) throw TranscriptDiscardedException()
             val properties = Properties().apply {
                 audioId?.let { setProperty("audioId", it) }
                 transcriptId?.let { setProperty("transcriptId", it) }
@@ -30,7 +32,14 @@ data class TranscriptSource(val audioId: String? = null, val transcriptId: Strin
     }
 
     companion object {
-        private val writeLock = Any()
+        // Bounded striping avoids retaining a lock for every historical filename,
+        // while unrelated metadata usually remains independent of a large save.
+        private val sourceLocks = Array(64) { Any() }
+        private fun lockFor(file: File) = sourceLocks[(file.canonicalPath.hashCode() and Int.MAX_VALUE) % sourceLocks.size]
+        fun <T> withActiveSource(file: File, action: () -> T): T = synchronized(lockFor(file)) {
+            if (read(file).discarded) throw TranscriptDiscardedException()
+            action()
+        }
         fun metadata(file: File) = File(file.parentFile, file.name + ".source")
         /** Read provenance, never transcript bodies. This cold-path scan includes
          * recovery copies from previous owners/processes, not just the open dialog. */

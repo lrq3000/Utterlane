@@ -1,5 +1,7 @@
 package io.github.lrq3000.utterlane.history
 
+import io.github.lrq3000.utterlane.asr.TranscriptSource
+import io.github.lrq3000.utterlane.asr.TranscriptStore
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -132,5 +134,24 @@ class LinkedHistoryTest {
         assertEquals(listOf(HistoryDeletionTarget.AUDIO), plan.choices)
         assertThrows(IllegalArgumentException::class.java) { history.delete(plan, HistoryDeletionTarget.BOTH) }
         assertTrue(source.part(0).exists())
+    }
+
+    @Test fun aDeletedWorkingResultCannotBePublishedByALateProducer() {
+        val recordings = RecordingHistory(folder.newFolder())
+        val texts = TranscriptHistory(folder.newFolder())
+        val source = audio(recordings)
+        val store = TranscriptStore(folder.newFile())
+        store.attachSource(TranscriptSource(audioId = source.id))
+        store.append("An in-flight result")
+        val lease = store.acquire()
+        try {
+            val history = LinkedHistory(recordings, texts)
+            val plan = history.plan(source.id, null, false, TranscriptHistory.idForAttempt(store.file.name))
+            store.dispose()
+            history.delete(plan, HistoryDeletionTarget.TRANSCRIPTS)
+            assertTrue(store.file.exists())
+            assertThrows(IllegalStateException::class.java) { texts.save(store.file, "Late producer", source.id) }
+            assertTrue(texts.forAudio(source.id).isEmpty())
+        } finally { lease.close() }
     }
 }

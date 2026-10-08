@@ -208,6 +208,49 @@ class TranscriptionDialogDAndroidTest {
         }
     }
 
+    @Test fun anotherDialogDeletionBlocksAnActiveProducersLaterSave() = runBlocking {
+        Fixture().use { fixture ->
+            val firstOwner = ViewModelStore()
+            val secondOwner = ViewModelStore()
+            lateinit var producing: TranscriptionDialogModel
+            lateinit var deleting: TranscriptionDialogModel
+            instrumentation.runOnMainSync {
+                producing = TranscriptionDialogModel(app, DialogInput(audioId = fixture.recording.id))
+                deleting = TranscriptionDialogModel(app, DialogInput(audioId = fixture.recording.id))
+                firstOwner.put("dialog", producing); secondOwner.put("dialog", deleting)
+            }
+            val working = fixture.workingCopy(null)
+            val finish = CompletableDeferred<Unit>()
+            val producer = async(Dispatchers.IO) {
+                finish.await()
+                runCatching { app.transcriptHistory.save(working.file, "Active producer", fixture.recording.id) }
+            }
+            try {
+                withTimeout(5000) { producing.state.first { !it.importing }; deleting.state.first { !it.importing } }
+                // Pause an independent producer at the actual autosave boundary;
+                // the other dialog does not own or cancel its job or working lease.
+                withContext(Dispatchers.IO) {
+                    producing.javaClass.getDeclaredMethod("exposeStore", TranscriptStore::class.java)
+                        .apply { isAccessible = true }.invoke(producing, working)
+                }
+                instrumentation.runOnMainSync { deleting.requestDeletion() }
+                withTimeout(5000) { deleting.state.first { it.deletion != null } }
+                instrumentation.runOnMainSync { deleting.chooseDeletion(HistoryDeletionTarget.TRANSCRIPTS); deleting.confirmDeletion() }
+                withTimeout(5000) { deleting.state.first { !it.deleting && it.preview.isEmpty() } }
+                assertTrue(producer.isActive)
+                assertTrue("The producer still owns its working bytes", working.file.exists())
+                finish.complete(Unit)
+                assertTrue("A confirmed-deleted result must not reappear in history", withTimeout(5000) { producer.await() }.isFailure)
+                assertTrue(app.transcriptHistory.forAudio(fixture.recording.id).isEmpty())
+            } finally {
+                producer.cancelAndJoin()
+                instrumentation.runOnMainSync { firstOwner.clear(); secondOwner.clear() }
+                app.transcriptHistory.forAudio(fixture.recording.id).forEach { app.transcriptHistory.delete(it.id) }
+                TranscriptStore.deleteArtifacts(working.file)
+            }
+        }
+    }
+
     @Test fun transcriptOriginConfirmationDeletesOnlyTheSelectedVersion() = runBlocking {
         Fixture().use { fixture ->
             fixture.open(transcript = true)

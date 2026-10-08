@@ -109,9 +109,15 @@ class MicrophoneSession(
                         val complete = checkNotNull(session)
                         complete.finish()
                         if (saveTranscripts && textRetention != io.github.lrq3000.utterlane.history.HistoryRetention.NONE && complete.store.segments > 0) {
-                            val text = app.transcriptHistory.save(complete.store.file, metrics.state.value.modelName, saved.entry.id,
-                                modelId = app.modelManager.selected.value.id)
-                            complete.store.attachSource(complete.store.source.copy(transcriptId = text.id))
+                            try {
+                                val text = app.transcriptHistory.save(complete.store.file, metrics.state.value.modelName, saved.entry.id,
+                                    modelId = app.modelManager.selected.value.id)
+                                complete.store.attachSource(complete.store.source.copy(transcriptId = text.id))
+                            } catch (_: TranscriptDiscardedException) {
+                                // An explicit deletion elsewhere is not a capture
+                                // failure and must not force extra audio retention.
+                                Log.i("MicrophoneSession", "Transcript autosave skipped after explicit deletion")
+                            }
                         }
                     },
                     onSamples = { metrics.samples(it, true) },
