@@ -1,6 +1,7 @@
 package io.github.lrq3000.utterlane
 
 import android.os.SystemClock
+import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.lrq3000.utterlane.asr.*
@@ -27,6 +28,31 @@ import io.github.lrq3000.utterlane.history.RecordingHistory
 /** Local acoustic replay, including raw timing/posterior evidence, never bundled private audio. */
 @RunWith(AndroidJUnit4::class)
 class DiarizationFixtureAndroidTest {
+    @Test fun segmentationPlans(): Unit = runBlocking {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext
+        val pcm = readFixturePcm(app, "test-1-speaker-french")
+        val plans = JSONArray()
+        // Cheap screening uses the actual segmenter and decoder. Only profiles
+        // that change boundaries need expensive neural recognition afterward.
+        for (amplitude in listOf(200, 400, 800, 1600)) for (silenceMs in listOf(100, 200, 300, 600)) {
+            val windows = JSONArray()
+            var inputSamples = 0L
+            val options = RuntimeOptions(silenceAmplitude = amplitude, silenceDurationMs = silenceMs)
+            val segmenter = AudioSegmenter(options = options) { window ->
+                inputSamples += window.samples.size
+                windows.put(JSONObject().put("owned_end_ms", window.ownedEnd / 16.0)
+                    .put("ready_audio_ms", (window.startSample + window.samples.size) / 16.0))
+            }
+            segmenter.accept(pcm); segmenter.finish()
+            plans.put(JSONObject().put("amplitude", amplitude).put("silence_ms", silenceMs)
+                .put("input_audio_ms", inputSamples / 16.0).put("windows", windows))
+        }
+        val output = File(app.getExternalFilesDir(null), "diarization-runs/segmentation-plans.json")
+        output.parentFile!!.mkdirs()
+        output.writeText(JSONObject().put("pcm_sha256", pcmSha256(pcm)).put("samples", pcm.size)
+            .put("plans", plans).toString(2))
+    }
+
     @Test fun workerReportsCompletedProgressDuringLongRequests(): Unit = runBlocking {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as UtterlaneApp
         app.modelManager.initializeSelection()
@@ -111,17 +137,7 @@ class DiarizationFixtureAndroidTest {
         val completedSamples = AtomicLong()
         val capture = if (realtime) {
             require(repeats == 1 && sourceTag == null) { "Real-time trials require one fresh <=30-second recording" }
-            // Decode before the timed capture, avoiding codec load masquerading
-            // as a slower microphone. Storage is explicitly capped at 30 s.
-            val pieces = mutableListOf<ShortArray>()
-            var length = 0
-            AudioDecoder(app).decode("/sdcard/Download/diarization-qa/$fixture.m4a", { pcm ->
-                require(length + pcm.size <= 30 * 16000) { "Real-time fixture exceeds 30 seconds" }
-                pieces += pcm; length += pcm.size
-            })
-            val pcm = ShortArray(length)
-            var offset = 0
-            for (piece in pieces) { piece.copyInto(pcm, offset); offset += piece.size }
+            val pcm = readFixturePcm(app, fixture)
             RealtimeFixtureCapture(pcm, options.captureBlockMs * 16, completedSamples::get)
         } else null
         val directory = File(app.getExternalFilesDir(null), "diarization-runs/$tag").apply { mkdirs() }
@@ -317,6 +333,20 @@ class DiarizationFixtureAndroidTest {
     }
 
     companion object {
+        /** Decode before timing capture; keep all PCM but reject >30-second inputs. */
+        private suspend fun readFixturePcm(context: Context, fixture: String): ShortArray {
+            val pieces = mutableListOf<ShortArray>()
+            var length = 0
+            AudioDecoder(context).decode("/sdcard/Download/diarization-qa/$fixture.m4a", { pcm ->
+                require(length + pcm.size <= 30 * 16000) { "Real-time fixture exceeds 30 seconds" }
+                pieces += pcm; length += pcm.size
+            })
+            val pcm = ShortArray(length)
+            var offset = 0
+            for (piece in pieces) { piece.copyInto(pcm, offset); offset += piece.size }
+            return pcm
+        }
+
         private fun pcmSha256(samples: ShortArray): String {
             val pcm = ByteBuffer.allocate(samples.size * 2).order(ByteOrder.LITTLE_ENDIAN)
             pcm.asShortBuffer().put(samples)
