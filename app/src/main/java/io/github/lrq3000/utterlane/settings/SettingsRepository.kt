@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.combine
 import io.github.lrq3000.utterlane.asr.ModelCatalog
 import io.github.lrq3000.utterlane.asr.ModelIdleTimeout
 import io.github.lrq3000.utterlane.history.HistoryRetention
+import io.github.lrq3000.utterlane.audio.InputPreferences
+import io.github.lrq3000.utterlane.audio.AudioInput
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -24,6 +26,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     companion object {
         private val SERVICE_ENABLED_KEY = booleanPreferencesKey("service_enabled")
+        private val AUDIO_INPUT_KEY = stringPreferencesKey("audio_input")
+        private val PREFER_BLUETOOTH_KEY = booleanPreferencesKey("prefer_bluetooth_microphone")
         private val THEME_KEY = stringPreferencesKey("theme_mode")
         private val SHOW_TRANSCRIPTION_STREAM_STATISTICS_KEY = booleanPreferencesKey("show_transcription_stream_statistics")
         private val VISUAL_REFRESH_RATE_KEY = intPreferencesKey("visual_refresh_rate")
@@ -59,6 +63,25 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     // One DataStore transaction publishes a complete, validated snapshot. Reading raw
     // values also tolerates a wrongly typed preference left by a corrupt/older build.
     val runtimeOptions: Flow<RuntimeOptions> = dataStore.data.map { readRuntimeOptions(it) }
+
+    private fun readAudioInput(preferences: Preferences) = InputPreferences(
+        preferences[AUDIO_INPUT_KEY] ?: AudioInput.PHONE_KEY, preferences[PREFER_BLUETOOTH_KEY] ?: false)
+
+    val audioInputPreferences: Flow<InputPreferences> = dataStore.data.map(::readAudioInput)
+
+    /** The transform sees the latest values inside the transaction, including manual overrides. */
+    suspend fun updateAudioInput(transform: (InputPreferences) -> InputPreferences): InputPreferences {
+        val result = dataStore.edit { preferences ->
+            val previous = readAudioInput(preferences)
+            val next = transform(previous)
+            // Avoid creating saved settings merely by inspecting a new installation.
+            if (next != previous) {
+                preferences[AUDIO_INPUT_KEY] = next.selectedKey
+                preferences[PREFER_BLUETOOTH_KEY] = next.preferBluetooth
+            }
+        }
+        return readAudioInput(result)
+    }
 
     private fun readRuntimeOptions(preferences: Preferences): RuntimeOptions {
         val raw = preferences.asMap()
