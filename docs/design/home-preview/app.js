@@ -99,18 +99,23 @@ class PreviewApp {
   intro(title, subtitle) {
     return `<div class="home-intro"><div><h1>${title}</h1><p>${subtitle}</p></div></div>`;
   }
-  importButton() { return `<button class="text-button import-button" data-action="import">${icon('upload')}Or transcribe an audio file</button>`; }
+  // Both presentations are the same local "load audio file button" action.
+  loadAudioFileButton({ iconOnly = false } = {}) {
+    const action = 'load-audio-file';
+    return iconOnly ? iconButton(action, 'Transcribe an audio file', action)
+      : `<button class="text-button load-audio-file-button" data-action="${action}">${icon(action)}Or transcribe an audio file</button>`;
+  }
   home() {
     const transcript = TranscriptPanel.render();
     const speakers = SpeakerToggle.render(this.preferences);
     const waveform = WaveformControl.render();
     if (this.notebookLayout) {
-      return `${brandHeader()}<div class="home-content"><div class="home-intro"><div><h1>New transcript</h1><p>Your voice. Your own space.</p></div>${iconButton('import', 'Transcribe an audio file', 'upload')}</div>${transcript}</div><div class="capture-dock">${speakers}${waveform}</div>`;
+      return `${brandHeader()}<div class="home-content"><div class="home-intro"><div><h1>New transcript</h1><p>Your voice. Your own space.</p></div>${this.loadAudioFileButton({ iconOnly: true })}</div>${transcript}</div><div class="capture-dock">${speakers}${waveform}</div>`;
     }
     if (this.concept === 'studio') {
-      return `${brandHeader()}<div class="home-content">${this.intro('Make yourself heard.', 'A private space to capture what matters.')}${HistoryNavigation.render('strip')}${transcript}${speakers}${waveform}<div class="import-row">${this.importButton()}</div></div>`;
+      return `${brandHeader()}<div class="home-content">${this.intro('Make yourself heard.', 'A private space to capture what matters.')}${HistoryNavigation.render('strip')}${transcript}${speakers}${waveform}<div class="load-audio-file-row">${this.loadAudioFileButton()}</div></div>`;
     }
-    return `${brandHeader()}<div class="home-content">${this.intro('Speak freely.', 'Turn a thought into something you can use.')}${transcript}${speakers}${waveform}${HistoryNavigation.render()}<div class="import-row">${this.importButton()}</div></div>`;
+    return `${brandHeader()}<div class="home-content">${this.intro('Speak freely.', 'Turn a thought into something you can use.')}${transcript}${speakers}${waveform}${HistoryNavigation.render()}<div class="load-audio-file-row">${this.loadAudioFileButton()}</div></div>`;
   }
   settings() {
     const row = (action, glyph, title, subtitle) => `<button class="setting-row" data-action="${action}">${icon(glyph)}<span><strong>${title}</strong><small>${subtitle}</small></span>${icon('arrow')}</button>`;
@@ -127,7 +132,7 @@ class PreviewApp {
     this.update();
   }
   update() {
-    TranscriptPanel.update(this.session, { showImportHint: this.concept === 'blue-notebook' });
+    TranscriptPanel.update(this.session, { showLoadAudioFileHint: this.concept === 'blue-notebook' });
     WaveformControl.update(this.session);
     SpeakerToggle.update(this.preferences);
     document.querySelector('#preview-state').value = this.session.phase;
@@ -213,13 +218,13 @@ class PreviewApp {
         this.setTheme(this.theme === 'dark' ? 'light' : 'dark');
         this.render();
         break;
-      case 'import':
-        this.openSheet('Transcribe an audio file', `<p>In Android, this opens the file picker. Your audio stays on your device.</p><p>For this design study, use a sample recording to preview the transcription flow.</p>${this.sheetAction('sample-import', 'audio', 'Use a sample recording', 'Simulates importing and transcribing an audio file')}`);
+      case 'load-audio-file':
+        this.openSheet('Transcribe an audio file', `<p>In Android, this opens the file picker. Your audio stays on your device.</p><p>For this design study, use a sample recording to preview the transcription flow.</p>${this.sheetAction('sample-load-audio-file', 'audio', 'Use a sample recording', 'Simulates loading and transcribing an audio file')}`);
         break;
-      case 'sample-import':
+      case 'sample-load-audio-file':
         if (['recording', 'processing'].includes(this.session.phase)) {
           this.sheet.close();
-          this.notify('Finish the current recording before importing a sample.');
+          this.notify('Finish the current recording before loading a sample.');
         } else {
           this.sheet.close();
           this.route = 'home';

@@ -17,7 +17,7 @@ const PATHS = {
   stop: '<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
   download: '<path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>',
-  upload: '<path d="M12 16V4m-5 5 5-5 5 5M4 16v5h16v-5"/>',
+  'load-audio-file': '<path d="M12 16V4m-5 5 5-5 5 5M4 16v5h16v-5"/>',
   home: '<path d="m3 10 9-7 9 7v10H3zM9 20v-7h6v7"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
 };
@@ -40,14 +40,14 @@ export class TranscriptPanel {
       <div class="transcript-actions"><button class="copy-button" data-action="copy" disabled>${icon('copy')}Copy</button><button class="share-button" data-action="share" disabled>${icon('share')}Share</button>${iconButton('more', 'More transcript actions', 'more')}</div>
     </section>`;
   }
-  static update(session, { showImportHint = false } = {}) {
+  static update(session, { showLoadAudioFileHint = false } = {}) {
     const body = document.querySelector('#transcript-body');
     if (!body) return;
     const empty = !session.text;
     // Offer the alternative only while idle, not while a capture is underway.
-    const importHint = showImportHint && session.phase === 'ready'
-      ? `<br>Or upload an audio file with the <span class="inline-upload-hint">${icon('upload')} button</span>.` : '';
-    const html = empty ? `<div class="empty-transcript"><div class="empty-mark">${icon('document')}</div><h3>${session.phase === 'recording' ? 'Listening to you…' : 'A space for your words'}</h3><p>${session.phase === 'recording' ? 'Your transcript will appear here<br>as you speak.' : 'Tap the waveform below and speak.<br>Your transcript will appear here.'}${importHint}</p></div>` : session.segments.map(segment => `<p>${session.labels ? `<span class="speaker speaker-${segment.speaker}">Speaker ${segment.speaker}</span>` : ''}${escapeHtml(segment.text)}</p>`).join('');
+    const loadAudioFileHint = showLoadAudioFileHint && session.phase === 'ready'
+      ? `<br>Or load an audio file with the <span class="inline-load-audio-file-hint">${icon('load-audio-file')} button</span>.` : '';
+    const html = empty ? `<div class="empty-transcript"><div class="empty-mark">${icon('document')}</div><h3>${session.phase === 'recording' ? 'Listening to you…' : 'A space for your words'}</h3><p>${session.phase === 'recording' ? 'Your transcript will appear here<br>as you speak.' : 'Tap the waveform below and speak.<br>Your transcript will appear here.'}${loadAudioFileHint}</p></div>` : session.segments.map(segment => `<p>${session.labels ? `<span class="speaker speaker-${segment.speaker}">Speaker ${segment.speaker}</span>` : ''}${escapeHtml(segment.text)}</p>`).join('');
     // Keep the scroll position and selection stable; a time/level update is not a
     // reason to replace transcript nodes. Only follow new text near the bottom.
     if (body.dataset.content !== html) {

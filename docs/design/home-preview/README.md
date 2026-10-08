@@ -51,7 +51,7 @@ new branding assets, or external image-generation dependencies.
 5. Toggle **Speaker labels** on Home or in Settings. The preference is synchronized
    across all four concept tabs via local storage and applies to new recordings.
    Existing results keep the speaker-label choice with which they were created.
-6. Try importing a sample audio file, the share preview, appearance switching,
+6. Try loading a sample audio file, the share preview, appearance switching,
    360/390/430-pixel phone widths, 125% text, and the direct state selector.
 
 In **B and D**, Record / Audio history / Transcripts form a persistent navigation
@@ -69,7 +69,12 @@ row with a square audio-file action on the right. The row has no background or
 border. The text determines the row and button height, so the action scales
 naturally with the text-size control.
 
-The sample transcript, audio levels, recognition, ETA, library, import, and
+Internally this is the **load audio file button** (`loadAudioFileButton` and the
+`load-audio-file` action). That name describes local file loading, not transfer to
+a server; it is not an additional visible button label. D's empty-state hint says
+“Or load an audio file…” and reuses the same icon immediately before “button.”
+
+The sample transcript, audio levels, recognition, ETA, library, file loading, and
 Android settings/share destinations are **simulated**. There is no microphone
 capture, speech engine, audio playback, model setup, or connection to Android app
 data. Copy uses the browser clipboard when available and provides selectable text
