@@ -127,7 +127,7 @@ class PreviewApp {
     this.update();
   }
   update() {
-    TranscriptPanel.update(this.session);
+    TranscriptPanel.update(this.session, { showImportHint: this.concept === 'blue-notebook' });
     WaveformControl.update(this.session);
     SpeakerToggle.update(this.preferences);
     document.querySelector('#preview-state').value = this.session.phase;

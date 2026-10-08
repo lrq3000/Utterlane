@@ -40,11 +40,14 @@ export class TranscriptPanel {
       <div class="transcript-actions"><button class="copy-button" data-action="copy" disabled>${icon('copy')}Copy</button><button class="share-button" data-action="share" disabled>${icon('share')}Share</button>${iconButton('more', 'More transcript actions', 'more')}</div>
     </section>`;
   }
-  static update(session) {
+  static update(session, { showImportHint = false } = {}) {
     const body = document.querySelector('#transcript-body');
     if (!body) return;
     const empty = !session.text;
-    const html = empty ? `<div class="empty-transcript"><div class="empty-mark">${icon('document')}</div><h3>${session.phase === 'recording' ? 'Listening to you…' : 'A space for your words'}</h3><p>${session.phase === 'recording' ? 'Your transcript will appear here<br>as you speak.' : 'Tap the waveform below and speak.<br>Your transcript will appear here.'}</p></div>` : session.segments.map(segment => `<p>${session.labels ? `<span class="speaker speaker-${segment.speaker}">Speaker ${segment.speaker}</span>` : ''}${escapeHtml(segment.text)}</p>`).join('');
+    // Offer the alternative only while idle, not while a capture is underway.
+    const importHint = showImportHint && session.phase === 'ready'
+      ? `<br>Or upload an audio file with the <span class="inline-upload-hint">${icon('upload')} button</span>.` : '';
+    const html = empty ? `<div class="empty-transcript"><div class="empty-mark">${icon('document')}</div><h3>${session.phase === 'recording' ? 'Listening to you…' : 'A space for your words'}</h3><p>${session.phase === 'recording' ? 'Your transcript will appear here<br>as you speak.' : 'Tap the waveform below and speak.<br>Your transcript will appear here.'}${importHint}</p></div>` : session.segments.map(segment => `<p>${session.labels ? `<span class="speaker speaker-${segment.speaker}">Speaker ${segment.speaker}</span>` : ''}${escapeHtml(segment.text)}</p>`).join('');
     // Keep the scroll position and selection stable; a time/level update is not a
     // reason to replace transcript nodes. Only follow new text near the bottom.
     if (body.dataset.content !== html) {
