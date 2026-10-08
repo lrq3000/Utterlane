@@ -13,6 +13,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.lrq3000.utterlane.UtterlaneApp
+import io.github.lrq3000.utterlane.history.TranscriptMetadata
 import io.github.lrq3000.utterlane.settings.SettingsRepository
 import io.github.lrq3000.utterlane.ui.theme.UtterlaneTheme
 
@@ -42,7 +43,8 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
             savedInstanceState?.getString("working_text") ?: intent.getStringExtra("transcript_path"),
             automatic = savedInstanceState == null && audio == null && textId == null && !intent.hasExtra("transcript_path"),
             transcriptOrigin = savedInstanceState?.getBoolean("text_origin") ?: intent.hasExtra(EXTRA_TRANSCRIPT_ID),
-            modelName = savedInstanceState?.getString("result_model").orEmpty(), modelId = savedInstanceState?.getString("result_model_id"))
+            modelName = savedInstanceState?.getString("result_model").orEmpty(), modelId = savedInstanceState?.getString("result_model_id"),
+            metadata = TranscriptMetadata.fromBundle(savedInstanceState))
         model = ViewModelProvider(this, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = TranscriptionDialogModel(app, request) as T
         })[TranscriptionDialogModel::class.java]
