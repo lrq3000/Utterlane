@@ -1,8 +1,5 @@
 package io.github.lrq3000.utterlane.transcribe
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,9 +21,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.history.RecordingRecovery
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -34,7 +28,6 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
     val state by model.state.collectAsStateWithLifecycle()
     val app = UtterlaneApp.instance
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val view = LocalView.current
     val working = state.running || state.importing || state.saving
     DisposableEffect(view, working) {
@@ -106,7 +99,10 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                                 Text(stringResource(R.string.dialog_save_audio))
                             }
                             DropdownMenu(expanded = audioMenu, onDismissRequest = { audioMenu = false }) {
-                                DropdownMenuItem(text = { Text(stringResource(R.string.dialog_save_history)) }, onClick = { audioMenu = false; model.saveAudioToHistory() })
+                                DropdownMenuItem(text = { Text(stringResource(if (state.audio?.pinned == true) R.string.history_unpin else R.string.dialog_save_history)) }, onClick = {
+                                    audioMenu = false
+                                    model.setAudioPinned(state.audio?.pinned != true)
+                                })
                                 DropdownMenuItem(text = { Text(stringResource(R.string.dialog_share_audio)) }, onClick = {
                                     audioMenu = false; model.shareAudio { context.startActivity(Intent.createChooser(it, context.getString(R.string.dialog_share_audio))) }
                                 })
@@ -118,20 +114,10 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                         }
                     }
                     if (state.preview.isNotEmpty()) {
-                        Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-                            Text(state.preview, Modifier.padding(12.dp).heightIn(max = 300.dp).verticalScroll(rememberScrollState()))
-                        }
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = { scope.launch {
-                                val text = withContext(Dispatchers.IO) { state.store?.readForTransfer() }
-                                if (text != null) (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                                    .setPrimaryClip(ClipData.newPlainText("Transcript", text))
-                                else android.widget.Toast.makeText(context, R.string.stream_use_export, android.widget.Toast.LENGTH_LONG).show()
-                            } }) { Text(stringResource(R.string.transcribe_copy)) }
-                            TextButton(onClick = { state.store?.let { shareTranscript(context, it) } }) { Text(stringResource(R.string.dialog_share_text)) }
-                            TextButton(onClick = model::saveTranscriptToHistory, enabled = !state.running && !state.saving && !state.closing) {
-                                Text(stringResource(R.string.dialog_keep_text))
+                        TranscriptText(state.preview, Modifier.padding(vertical = 12.dp))
+                        TranscriptTransferActions(state.store) {
+                            TextButton(onClick = { model.setTranscriptPinned(!state.transcriptPinned) }, enabled = !state.running && !state.saving && !state.closing) {
+                                Text(stringResource(if (state.transcriptPinned) R.string.history_unpin else R.string.dialog_keep_text))
                             }
                         }
                         Row {
