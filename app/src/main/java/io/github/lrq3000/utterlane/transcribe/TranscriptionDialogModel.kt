@@ -95,9 +95,16 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                 withContext(Dispatchers.IO) { refreshAudio() }
                 mutable.update { it.copy(importing = false) }
                 if (input.automatic && ownedAudioId != null) transcribe()
-                else if (mutable.value.audio?.needsRecovery == true) mutable.update {
-                    it.copy(message = if (it.audio?.failureKind == "MODEL") app.getString(R.string.dialog_model_failed)
-                        else it.audio?.failureMessage ?: app.getString(R.string.dialog_recovery_info))
+                else mutable.value.audio?.takeIf {
+                    // Recovery protection also owns successful temporary results;
+                    // only a real failure/interruption warrants recovery wording.
+                    it.needsRecovery && (it.status == "failed" || it.status == "interrupted" ||
+                        it.failureKind != null || it.failureMessage != null)
+                }?.let { recovery ->
+                    mutable.update {
+                        it.copy(message = if (recovery.failureKind == "MODEL") app.getString(R.string.dialog_model_failed)
+                            else recovery.failureMessage ?: app.getString(R.string.dialog_recovery_info))
+                    }
                 }
             } catch (e: CancellationException) { throw e
             } catch (e: Exception) { showError(e)
@@ -237,14 +244,18 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         check(!state.value.running) { "Wait for the current attempt to finish" }
         val store = checkNotNull(currentStore) { "There is no transcript to save" }
         val existing = mutable.value.transcriptId
-        val saved = if (existing != null) {
-            app.transcriptHistory.setPinned(existing, pinned, app.settingsRepository.transcriptHistoryRetention.first(), app.historyCleanup.launchToken)
-            app.transcriptHistory.get(existing)
-        } else {
-            check(pinned) { "There is no saved transcript to unpin" }
-            resultMetadata.save(app.transcriptHistory, store.file, chosenModel, ownedAudioId, pinned = true, modelId = resultModelId)
-        }
-        mutable.update { it.copy(transcriptId = saved.id, transcriptPinned = saved.retention.pinned) }
+        val saved = existing?.let {
+            app.transcriptHistory.setPinnedIfPresent(it, pinned, app.settingsRepository.transcriptHistoryRetention.first(), app.historyCleanup.launchToken)
+        } ?: if (pinned) {
+            // Working text has an independent lifetime. Explicit Keep authorizes
+            // a fresh copy after expiry/deletion, never reuse of a discarded ID.
+            // Automatic saves still use their stable attempt ID for deduplication.
+            val metadata = resultMetadata
+            app.transcriptHistory.save(store.file, chosenModel, ownedAudioId, pinned = true,
+                attempt = java.util.UUID.randomUUID().toString(), modelId = resultModelId,
+                created = metadata.created, durationMs = metadata.durationMs, speakerLabels = metadata.speakerLabels)
+        } else null
+        mutable.update { it.copy(transcriptId = saved?.id, transcriptPinned = saved?.retention?.pinned == true) }
     }
 
     fun shareAudio(launch: (android.content.Intent) -> Unit) = saveAction(successMessage = null) {

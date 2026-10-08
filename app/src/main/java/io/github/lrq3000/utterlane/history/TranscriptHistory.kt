@@ -81,9 +81,16 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
     }
 
     @Synchronized fun setPinned(id: String, value: Boolean, duration: HistoryRetention, launch: String) {
-        val entry = get(id)
+        checkNotNull(setPinnedIfPresent(id, value, duration, launch)) { "Transcript is unavailable" }
+    }
+
+    /** Absence and pinning are one index operation: callers can offer a new
+     * explicit copy without mistaking a discarded-but-leased file for history. */
+    @Synchronized fun setPinnedIfPresent(id: String, value: Boolean, duration: HistoryRetention, launch: String): TranscriptEntry? {
+        val entry = entries[id]?.takeUnless { id in deleted } ?: return null
         val updated = entry.copy(retention = entry.retention.pin(value, duration, clock(), launch))
         persist(updated); put(updated)
+        return updated
     }
     @Synchronized fun onUserLaunch(launch: String) {
         initialize()
