@@ -15,13 +15,25 @@ dialog. The user approved these directions on 2026-10-08:
 Use the existing [Blue harmony palette](../blue-harmony-spec.md), system fonts,
 thin rounded borders, and consistent outline icons. The pin uses the app's
 Material PushPin silhouette, filled when retained. Every icon has an accessible
-name, tooltip, and at least a 48-pixel interactive target. Delete remains written
-out; a top-left back arrow is the sole dismissal control in each open dialog.
+name, tooltip, and at least a 48-pixel interactive target. A red outline trash icon
+sits at the far right of the audio-control row, after retranscribe and download;
+a top-left back arrow is the sole dismissal control in each open dialog.
 This follow-up revision separates dismissal from pin/copy/share, particularly in
 B's header, to reduce accidental exits. The title separates Back from these tools;
 on narrow phones, B's tools occupy a second row while Back stays at the top left.
 The transcript fills remaining vertical space instead of being capped at 300 dp.
 Its persistent, high-contrast scrollbar must reflect and control actual scrolling.
+The latest revision removes page controls and page counts: the entire sample is
+one continuous scroll region. A future native implementation should retain bounded
+disk-backed loading behind continuous scrolling rather than loading arbitrarily
+large transcripts into memory.
+
+Every trash-icon tap opens a confirmation with **Cancel** and **Delete**:
+**Delete this audio recording?** for recording-origin views, or **Delete this
+transcript?** for transcript-origin views. The source of the view determines the
+question, even when a saved transcript still has audio available. Cancel receives
+initial focus, Escape cancels, and backdrop clicks never confirm. The preview's
+underlying phone controls are inert until the confirmation is dismissed.
 
 ## Function inventory
 
@@ -36,8 +48,8 @@ Checked against `TranscriptionDialog.kt`, `AudioPlaybackControls.kt`, and
 | Save audio to history / share audio / save to device | Audio-save icon opens the three existing choices |
 | Copy and share transcript | Outline copy and share icons; preview-only feedback |
 | Keep transcript forever | Outline pin becomes filled after saving |
-| Previous and next transcript page | Back/forward chevrons in the document footer |
-| Delete transcript / delete audio / discard | Explicit destructive text, matching the preview source |
+| Read the complete transcript | Continuous scrolling; pagination controls removed at the user's request |
+| Delete transcript / delete audio / discard | Red trash icon on the audio row, followed by source-specific confirmation |
 | Progress, retention, recovery information | Preview state selector and compact inline status |
 | Optional processing statistics | Separate review toggle; rendered only while processing |
 | Transcript without retained audio | Text-only preview; audio-dependent controls are disabled |
@@ -55,8 +67,9 @@ unpin action would be a separate functional decision, not an implicit redesign.
 3. Create `preview.js` with a shared dialog renderer/controller, local sample
    transcript, icon definitions, accessible menus, and simulated interactions.
 4. Serve this directory on loopback and inspect it in the real Chrome browser.
-   Check all layouts, light/dark, a narrow phone, larger text, pin state, paging,
-   scrolling, playback controls, both menus, close/reopen, and conditional states.
+   Check all layouts, light/dark, a narrow phone, larger text, pin state,
+   continuous scrolling, deletion confirmation/cancellation, playback controls,
+   both menus, close/reopen, and conditional states.
 5. Check JavaScript syntax and `git diff --check`, then commit the complete study.
 
 These are design-review artifacts. All displayed recordings, transcripts, progress,
@@ -75,8 +88,10 @@ python -m http.server 8773 --bind 127.0.0.1
 Then open <http://127.0.0.1:8773/>. Compare all three, or focus one at full size.
 Use the review controls to change appearance, phone width, text size, and state.
 Scroll inside the transcript, tap the pin, open audio/retranscription menus, and
-try the close/reopen interaction. Functional Android implementation follows only
-after selection and design approval.
+try the close/reopen and delete/cancel interactions. Compare **Complete**,
+**Transcript + audio**, and **Text only** to see the deletion subject follow the
+view's source. Functional Android implementation follows only after selection
+and design approval.
 
 ## Browser review record
 
@@ -96,9 +111,9 @@ Reviewed in Chrome through browser-controller on 2026-10-08:
   and 320 pixels, with 48 × 48 targets and separate transcript actions. At 320
   pixels, B's actions occupy the second row and all visible controls fit inside
   each phone. Back/reopen was exercised in B and restored focus to Go back.
-- Scroll changed the transcript position by 300 pixels without moving the dialog.
-  Paging replaced the content, reset scrolling, updated boundary-button states,
-  and preserved the pin state. Other proposals retained independent pin states.
+- Initial review checked scrolling and pagination. Revision 3 replaces pagination
+  with continuous scrolling and preserves all 11 sample paragraphs, including the
+  former second page's final paragraph. Other proposals retain independent state.
 - Play/pause/stop and simulated seek checked; setting the range to 84 seconds
   produced `01:24 / 02:48`. Pointer dragging could not be verified because the
   automation drag call timed out; input-driven seek feedback was verified.
@@ -111,6 +126,21 @@ Reviewed in Chrome through browser-controller on 2026-10-08:
   HTTP 200 locally; the final page has no external requests or missing favicon.
 - `node --check docs/design/transcription-dialog-preview/preview.js` and
   `git diff --check` passed.
+
+Revision 3 was additionally checked in light and dark appearance:
+
+- No page controls or counters remain in any concept. The audio-history saved
+  message is retained, and each red trash icon is rightmost and aligned with Play.
+- All visible toolbar buttons fit the 320-pixel phone, including during playback
+  when Stop appears. The seek slider moves below the action row only when needed;
+  icon targets remain 48 pixels. The retranscription menu also fits within the phone.
+- Tapping trash leaves the transcript visible behind a confirmation. Cancel closes
+  the confirmation, preserves the text, restores toolbar interaction, and returns
+  focus to trash. A second tap asks again; explicit Delete then closes the preview.
+- Audio-origin, transcript-with-audio, and text-only confirmation subjects were
+  verified. Text-only disables playback while retaining an enabled trash icon.
+- Keyboard Tab stays between confirmation choices, and Escape cancels and restores
+  focus without deleting.
 
 The three layouts are proposals for selection, not an approved native redesign.
 No Android runtime behavior is established by this browser-only review.

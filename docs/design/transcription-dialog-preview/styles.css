@@ -106,7 +106,7 @@ h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.
 .progress > span { display: block; height: 100%; width: 68%; background: var(--blue); }
 .stats { padding-top: 4px; font-variant-numeric: tabular-nums; }
 .recovery-action { background: transparent; border: 0; color: var(--blue); display: block; min-height: 40px; padding: 4px 0; text-align: left; font-weight: 600; font-size: 12px; }
-.audio-strip { display: flex; align-items: center; flex: 0 0 auto; min-height: 65px; gap: 0; border-top: 1px solid var(--line); }
+.audio-strip { position: relative; display: flex; align-items: center; flex: 0 0 auto; min-height: 65px; gap: 0; border-top: 1px solid var(--line); }
 .audio-strip .icon-button { padding: 13px; }
 .audio-strip .icon { width: 22px; height: 22px; }
 .seek-group { flex: 1; min-width: 35px; padding: 0 6px 0 1px; }
@@ -119,7 +119,7 @@ h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.
 .seek-group input:disabled { opacity: .35; cursor: default; }
 .seek-time { font-size: 10px; font-variant-numeric: tabular-nums; color: var(--muted); display: block; text-align: center; white-space: nowrap; }
 .audio-strip .tools { display: flex; border-left: 1px solid var(--line); margin-left: 4px; }
-.tool-holder { position: relative; display: flex; }
+.tool-holder { display: flex; }
 .reading-layout { display: flex; gap: 4px; min-height: 0; flex: 1; }
 .document { min-height: 0; min-width: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--document-line); border-radius: 14px; background: var(--document); }
 /* Native scrolling preserves selection, wheel/touch, scrollbar dragging, and
@@ -130,14 +130,11 @@ h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.
 .transcript::-webkit-scrollbar-thumb { background: var(--thumb); border-radius: 8px; border: 1px solid var(--track); min-height: 44px; }
 .transcript p { margin: 0 0 18px; }
 .transcript p:last-child { margin-bottom: 4px; }
-.page-bar { display: flex; align-items: center; flex-shrink: 0; justify-content: space-between; padding: 0 4px; height: 49px; border-top: 1px solid var(--line); background: var(--surface); }
-.page-label { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.page-bar .icon-button { color: var(--muted); }
-.page-bar .icon { width: 20px; height: 20px; }
 .transcript-actions { display: flex; align-items: center; }
-.bottom-actions { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; padding-top: 4px; min-height: 57px; }
-.delete { color: var(--red); background: transparent; border: none; border-radius: 8px; padding: 0 10px; height: 48px; font-size: 13px; font-weight: 500; }
-.delete:hover { background: color-mix(in srgb, var(--red) 8%, transparent); }
+.bottom-actions { display: flex; align-items: center; justify-content: flex-end; flex-shrink: 0; padding-top: 4px; min-height: 57px; }
+.icon-button.delete { color: var(--red); }
+.icon-button.delete:hover, .icon-button.delete:focus-visible { background: color-mix(in srgb, var(--red) 8%, transparent); }
+.icon-button.delete::after { left: auto; right: 0; transform: none; }
 .rail { display: none; }
 .menu { position: absolute; z-index: 15; width: 230px; right: 0; top: calc(100% + 3px); background: var(--surface); padding: 7px; border: 1px solid var(--document-line); border-radius: 14px; box-shadow: 0 10px 25px #00000024; }
 .menu p { font-size: 11px; color: var(--muted); margin: 4px 10px 6px; }
@@ -147,13 +144,23 @@ h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.
 .closed-state { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 15px; text-align: center; padding: 24px; }
 .closed-state p { color: var(--ink); margin: 0; font-size: 14px; }
 .reopen { background: var(--surface); border: 1px solid var(--document-line); color: var(--blue); border-radius: 12px; padding: 14px 20px; font-size: 14px; }
+.confirmation-layer { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; padding: 18px; background: #08132670; border-radius: 20px; }
+.confirmation { width: 100%; max-width: 320px; padding: 24px 20px 16px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.confirmation-icon { color: var(--red); margin-bottom: 16px; }
+.confirmation h4 { margin: 0; font-size: 21px; line-height: 1.35; font-weight: 600; letter-spacing: -.4px; }
+.confirmation p { margin: 12px 0 24px; font-size: 14px; color: var(--muted); line-height: 1.5; }
+.confirmation-actions { display: flex; justify-content: flex-end; gap: 12px; }
+.confirmation-actions button { min-width: 80px; min-height: 48px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--document-line); background: transparent; color: var(--ink); font-size: 14px; font-weight: 600; }
+.confirmation-actions .confirm-delete { color: var(--red); border-color: var(--red); }
+.confirmation-actions button:hover { background: var(--tonal); }
+.confirmation-actions .confirm-delete:hover { background: color-mix(in srgb, var(--red) 8%, transparent); }
 .proposal-caption { max-width: var(--phone-width); margin: 18px auto 0; }
 .proposal-caption p { font-size: 13px; line-height: 1.6; color: var(--muted); margin: 0; }
 .proposal-caption strong { font-weight: 600; color: var(--ink); }
 .measurement { font-size: 11px; color: var(--blue); margin: 8px 0 0; }
 
-/* B trades separate action rows for a denser header. Playback and document
-   paging share the same footer area, leaving the largest full-width text region. */
+/* B trades separate action rows for a denser header. Audio tools share one
+   compact footer, leaving the largest full-width text region. */
 .proposal[data-concept="b"] .screen { padding: 6px 5px 3px; }
 .proposal[data-concept="b"] .dialog { padding: 6px 8px 0; border-radius: 21px; }
 .proposal[data-concept="b"] .dialog-heading h3 { font-size: 19px; letter-spacing: -.5px; }
@@ -162,8 +169,6 @@ h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.
 .proposal[data-concept="b"] .dialog-heading > .close { margin-left: -4px; margin-right: 0; }
 .proposal[data-concept="b"] .document { border-radius: 10px; }
 .proposal[data-concept="b"] .audio-strip { border: 0; }
-.proposal[data-concept="b"] .page-bar { background: transparent; border: 0; padding: 0; }
-.proposal[data-concept="b"] .page-navigation { display: flex; align-items: center; }
 .proposal[data-concept="b"] .menu { top: auto; bottom: calc(100% + 3px); }
 @container phone (max-width: 355px) {
   /* On narrow phones, allow the transcript actions a second row but keep the
@@ -173,6 +178,12 @@ h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.
   .proposal[data-concept="b"] .dialog-heading h3 { grid-row: 1; grid-column: 2; }
   .proposal[data-concept="b"] .header-actions { display: contents; }
   .proposal[data-concept="b"] .header-actions .transcript-actions { grid-row: 2; grid-column: 1 / -1; justify-content: flex-end; }
+  /* When Stop is visible, preserve all 48 px targets on the same action row.
+     Only the seek slider moves below it on the narrowest phone. */
+  .audio-strip:has(.stop:not([hidden])) { flex-wrap: wrap; }
+  .audio-strip:has(.stop:not([hidden])) .tools { margin-left: auto; }
+  .audio-strip:has(.stop:not([hidden])) .seek-group { order: 1; flex-basis: 100%; display: flex; align-items: center; gap: 8px; padding-bottom: 8px; }
+  .audio-strip:has(.stop:not([hidden])) .seek-group input { flex: 1; min-width: 0; }
 }
 
 /* C makes a small document workspace: full-height text with a vertical rail.
@@ -185,8 +196,6 @@ h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.
 .proposal[data-concept="c"] .document { border-radius: 10px; }
 .proposal[data-concept="c"] .transcript { padding-left: 12px; padding-right: 9px; line-height: 1.65; }
 .proposal[data-concept="c"] .audio-strip { margin-right: 6px; }
-.proposal[data-concept="c"] .bottom-actions { justify-content: space-between; min-height: 49px; padding-top: 0; padding-right: 6px; }
-.proposal[data-concept="c"] .page-navigation { display: flex; align-items: center; }
 .studio-footer { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
 .studio-footer p { font-size: 12px; color: var(--muted); line-height: 1.6; margin: 0 0 5px; }
 .studio-footer strong { color: var(--ink); font-weight: 600; }

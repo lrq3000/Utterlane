@@ -12,8 +12,7 @@ class PreviewIcons {
     stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
     retry: '<path d="M20 7v5h-5M19.5 12a8 8 0 1 0-2.3 5.7"/>',
     save: '<path d="M12 3v12m-5-5 5 5 5-5M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
-    previous: '<path d="m14 6-6 6 6 6"/>',
-    next: '<path d="m10 6 6 6-6 6"/>',
+    delete: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>',
     check: '<path d="m5 12 4 4L19 6"/>',
     signal: '<path d="M3 20V15m6 5V11m6 9V7m6 13V3"/>',
     battery: '<rect x="2" y="6" width="18" height="12" rx="2"/><path d="M23 10v4M6 9v6m4-6v6m4-6v6"/>',
@@ -32,26 +31,24 @@ class PreviewIcons {
 }
 
 class TranscriptSample {
-  static pages = [
-    [
+  static paragraphs = [
       "I took the long way home this morning. The streets were still quiet, and the bakery on the corner had just opened its doors. For once, I was not in a hurry to get anywhere.",
       "There is something useful about saying an idea out loud before trying to write it down. You notice where the thought is clear, where it wanders, and which part you actually want to remember.",
       "The idea for next week is simple: leave a little more room between things. A few minutes after a conversation to capture what mattered. A walk without a destination. Time to finish one thought before starting another.",
       "I would like to talk this through with the team on Monday. We do not need another long meeting. We need a short conversation about what is working, what feels unnecessarily complicated, and what we can make easier.",
       "One thing I want to keep is the habit of recording ideas while they are still fresh. They do not have to be polished. A rough sentence that captures the right thought is more useful than a perfect sentence that arrives too late.",
       "Afterwards, I can return to the transcript, find the part I was looking for, and share it. The rest can stay here until I need it. That is enough for today.",
-    ],
-    [
       "A second thought, before I forget: we should keep a little space for the unexpected. The best part of a conversation is often the question nobody planned to ask.",
       "When I read these notes later, I want them to sound like me. Not a summary of what I might have meant, but a record of what I actually said, with all the details that make it useful.",
       "For Monday, the first question is where we lose time. The second is what we can stop doing. The third is what people wish they could spend more attention on.",
       "I will send the relevant paragraph before the meeting, then keep the full transcript in my history. That way there is a short starting point and the original context is still easy to find.",
       "There is no need to resolve everything at once. Let us choose one change, try it for a week, and come back with something concrete to discuss.",
-    ],
   ];
 
-  static render(page) {
-    return this.pages[page].map(text => `<p>${text}</p>`).join("");
+  static render() {
+    // Removing pagination must not remove words: both former pages remain
+    // available in one native scroll region, including the final paragraph.
+    return this.paragraphs.map(text => `<p>${text}</p>`).join("");
   }
 }
 
@@ -78,14 +75,16 @@ class DialogPreview {
     this.playing = false;
     this.playbackActive = false;
     this.position = 0;
-    this.page = 0;
     this.menu = null;
     this.closed = false;
+    this.confirmingDelete = false;
     this.render();
   }
 
   get running() { return this.state === "running"; }
   get noAudio() { return this.state === "text-only"; }
+  get transcriptOrigin() { return this.noAudio || this.state === "transcript"; }
+  get deletionSubject() { return this.transcriptOrigin ? "transcript" : "audio recording"; }
 
   transcriptActions() {
     const button = PreviewIcons.button.bind(PreviewIcons);
@@ -93,20 +92,6 @@ class DialogPreview {
       ${button("pin", this.pinned ? "Transcript kept forever" : "Keep transcript forever", this.pinned ? "pinned" : "pin", `aria-pressed="${this.pinned}" ${this.running ? "disabled" : ""}`)}
       ${button("copy", "Copy transcript")}${button("share", "Share transcript")}
     </div>`;
-  }
-
-  navigation() {
-    const button = PreviewIcons.button.bind(PreviewIcons);
-    return `<div class="page-navigation" role="group" aria-label="Transcript pages">
-      ${button("previous", "Previous page", "previous", this.page === 0 ? "disabled" : "")}
-      <span class="page-label">${this.page + 1} / 2</span>
-      ${button("next", "Next page", "next", this.page === 1 ? "disabled" : "")}
-    </div>`;
-  }
-
-  deleteButton() {
-    const label = this.state === "temporary" ? "Discard" : this.noAudio ? "Delete transcript" : "Delete";
-    return `<button class="delete" data-action="delete" aria-label="${this.noAudio ? "Delete transcript" : this.state === "temporary" ? "Discard temporary recording" : "Delete recording"}">${label}</button>`;
   }
 
   status() {
@@ -143,14 +128,26 @@ class DialogPreview {
         <div class="tool-holder">${button("save", "Save or share audio", "save", `aria-expanded="false" aria-controls="${this.concept.id}-save-menu" ${unavailable}`)}
           <div class="menu" id="${this.concept.id}-save-menu" hidden><p>Audio options</p><button data-action="save-history">Keep audio in history</button><button data-action="share-audio">Share audio</button><button data-action="save-device">Save to device</button></div>
         </div>
+        ${button("delete", `Delete ${this.deletionSubject}`, "delete", `aria-haspopup="dialog" aria-controls="${this.concept.id}-delete-confirmation"`)}
       </div>
     </div>`;
   }
 
   document() {
     const id = this.concept.id;
-    const footer = id === "a" ? `<div class="page-bar">${PreviewIcons.button("previous", "Previous page", "previous", this.page === 0 ? "disabled" : "")}<span class="page-label">Page ${this.page + 1} of 2</span>${PreviewIcons.button("next", "Next page", "next", this.page === 1 ? "disabled" : "")}</div>` : "";
-    return `<div class="reading-layout"><section class="document" aria-label="Transcript document"><div class="transcript" tabindex="0" role="region" aria-label="Scrollable transcript, page ${this.page + 1}">${TranscriptSample.render(this.page)}</div>${footer}</section>${id === "c" ? `<div class="rail">${this.transcriptActions()}</div>` : ""}</div>`;
+    return `<div class="reading-layout"><section class="document" aria-label="Transcript document"><div class="transcript" tabindex="0" role="region" aria-label="Scrollable transcript">${TranscriptSample.render()}</div></section>${id === "c" ? `<div class="rail">${this.transcriptActions()}</div>` : ""}</div>`;
+  }
+
+  deletionConfirmation() {
+    const id = this.concept.id;
+    return `<div class="confirmation-layer" hidden>
+      <section class="confirmation" id="${id}-delete-confirmation" role="alertdialog" aria-labelledby="${id}-delete-title" aria-describedby="${id}-delete-description">
+        <div class="confirmation-icon">${PreviewIcons.render("delete")}</div>
+        <h4 id="${id}-delete-title">Delete this ${this.deletionSubject}?</h4>
+        <p id="${id}-delete-description">This action cannot be undone.</p>
+        <div class="confirmation-actions"><button data-action="cancel-delete">Cancel</button><button class="confirm-delete" data-action="confirm-delete">Delete</button></div>
+      </section>
+    </div>`;
   }
 
   render() {
@@ -162,13 +159,14 @@ class DialogPreview {
     // Each concept reuses the same components and action controller. Only their
     // order/placement changes, so a visual variation cannot silently omit a tool.
     const contents = id === "b"
-      ? `${heading}${this.status()}${this.document()}${this.audioStrip()}<div class="page-bar">${this.deleteButton()}${this.navigation()}</div>`
-      : `${heading}${this.status()}${this.audioStrip()}${this.document()}<div class="bottom-actions">${this.deleteButton()}${id === "a" ? this.transcriptActions() : this.navigation()}</div>`;
+      ? `${heading}${this.status()}${this.document()}${this.audioStrip()}`
+      : `${heading}${this.status()}${this.audioStrip()}${this.document()}${id === "a" ? `<div class="bottom-actions">${this.transcriptActions()}</div>` : ""}`;
     this.root.innerHTML = `<div class="proposal-heading"><span class="letter">${id.toUpperCase()}</span><h2>${title}</h2>${recommendation ? `<span class="recommendation">${recommendation}</span>` : ""}</div>
       <div class="phone"><div class="system-bar" aria-hidden="true"><span>9:41</span><span class="system-icons">${PreviewIcons.render("signal")}${PreviewIcons.render("battery")}</span></div>
         <div class="screen"><div class="app-context" aria-hidden="true">Utterlane</div>
           <section class="dialog" role="dialog" aria-labelledby="${id}-title">${contents}<div class="toast" role="status" hidden></div></section>
           <div class="closed-state" hidden><p>Preview closed</p><button class="reopen" data-action="reopen">Reopen transcription</button></div>
+          ${this.deletionConfirmation()}
         </div><div class="gesture-bar" aria-hidden="true"></div>
       </div><div class="proposal-caption"><p>${caption}</p><div class="measurement"></div></div>`;
     // A vertical toolbar, without changing button order or accessible names.
@@ -222,7 +220,40 @@ class DialogPreview {
     menu.querySelector("button").focus();
   }
 
+  setDeletionConfirmation(visible, restoreFocus = true) {
+    this.confirmingDelete = visible;
+    this.root.querySelector(".confirmation-layer").hidden = !visible;
+    // Only this simulated phone becomes inert; the other proposals and studio
+    // controls remain usable. The overlay never deletes on backdrop clicks.
+    this.root.querySelector(".dialog").inert = visible;
+    if (visible || restoreFocus) {
+      this.root.querySelector(`[data-action="${visible ? "cancel-delete" : "delete"}"]`).focus({ preventScroll: true });
+    }
+  }
+
+  dismiss(deleted = false) {
+    this.closed = true;
+    this.root.querySelector(".dialog").hidden = true;
+    const closed = this.root.querySelector(".closed-state");
+    closed.hidden = false;
+    closed.querySelector("p").textContent = deleted ? "Deletion preview · No real data changed" : "Preview closed";
+    closed.querySelector("button").focus({ preventScroll: true });
+  }
+
   onKeyDown(event) {
+    if (this.confirmingDelete) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.setDeletionConfirmation(false);
+      } else if (event.key === "Tab") {
+        // Keep keyboard navigation inside the two confirmation choices. Cancel
+        // receives initial focus so Enter cannot accidentally authorize deletion.
+        event.preventDefault();
+        const other = event.target.dataset.action === "cancel-delete" ? "confirm-delete" : "cancel-delete";
+        this.root.querySelector(`[data-action="${other}"]`).focus();
+      }
+      return;
+    }
     if (event.key === "Escape" && this.menu) {
       event.preventDefault();
       this.closeMenu(true);
@@ -239,6 +270,13 @@ class DialogPreview {
     const button = event.target.closest("button[data-action]");
     if (!button) { this.closeMenu(); return; }
     const action = button.dataset.action;
+    if (action === "cancel-delete" || action === "confirm-delete") {
+      if (!this.confirmingDelete) return;
+      this.setDeletionConfirmation(false, action === "cancel-delete");
+      if (action === "confirm-delete") this.dismiss(true);
+      return;
+    }
+    if (this.confirmingDelete) return;
     if (["retry", "save"].includes(action)) { this.openMenu(action); return; }
     this.closeMenu(Boolean(button.closest(".menu")));
     if (action === "pin") {
@@ -258,23 +296,10 @@ class DialogPreview {
       this.playbackActive = false;
       this.position = 0;
       this.updatePlayback();
-    } else if (["previous", "next"].includes(action)) {
-      this.page = action === "next" ? 1 : 0;
-      const transcript = this.root.querySelector(".transcript");
-      transcript.innerHTML = TranscriptSample.render(this.page);
-      transcript.scrollTop = 0;
-      transcript.setAttribute("aria-label", `Scrollable transcript, page ${this.page + 1}`);
-      this.root.querySelector('[data-action="previous"]').disabled = this.page === 0;
-      this.root.querySelector('[data-action="next"]').disabled = this.page === 1;
-      this.root.querySelector(".page-label").textContent = this.concept.id === "a" ? `Page ${this.page + 1} of 2` : `${this.page + 1} / 2`;
-      transcript.focus({ preventScroll: true });
-    } else if (action === "close" || action === "delete") {
-      this.closed = true;
-      this.root.querySelector(".dialog").hidden = true;
-      const closed = this.root.querySelector(".closed-state");
-      closed.hidden = false;
-      closed.querySelector("p").textContent = action === "delete" ? "Deletion preview · No real data changed" : "Preview closed";
-      closed.querySelector("button").focus({ preventScroll: true });
+    } else if (action === "delete") {
+      this.setDeletionConfirmation(true);
+    } else if (action === "close") {
+      this.dismiss();
     } else if (action === "reopen") {
       this.closed = false;
       this.root.querySelector(".dialog").hidden = false;
