@@ -92,4 +92,22 @@ class HomeCaptureOwnerTest {
         assertEquals("Start denied", owner.state.value.message)
         assertFalse(owner.state.value.active)
     }
+
+    @Test fun `duplicate completion and late ready do not replace a result twice`() {
+        val f = Fixture()
+        f.owner.start()
+        f.driver.events.result("result")
+        f.driver.events.ready()
+        f.driver.events.result("duplicate")
+        assertEquals(listOf("result"), f.results)
+        assertEquals(HomeCapturePhase.PROCESSING, f.owner.state.value.phase)
+    }
+
+    @Test fun `late ready after capture ended cannot reenable recording`() {
+        val f = Fixture()
+        f.owner.start(); f.owner.stop()
+        f.driver.events.captureEnded(); f.driver.events.ready()
+        assertEquals(HomeCapturePhase.PROCESSING, f.owner.state.value.phase)
+        assertEquals(0, f.driver.stops)
+    }
 }

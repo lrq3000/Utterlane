@@ -25,6 +25,7 @@ internal data class HomeState(
     val result: TranscriptionDialogState = TranscriptionDialogState(),
     val model: TranscriptionDialogModel? = null,
     val preparing: Boolean = false,
+    val permissionDenied: Boolean = false,
     val message: String? = null
 ) {
     val busy get() = capture.active || preparing || result.running || result.importing || result.saving || result.closing
@@ -47,12 +48,13 @@ class HomeController(private val app: UtterlaneApp) {
     private var pendingRetry = false
     private var serviceToken: String? = null
     private var serviceAttached = false
+    private var servicePending = false
     private val journal = HomeJournal(app)
     private val captureOwner = HomeCaptureOwner<CaptureResult>(
         factory = { events -> CaptureDriver(events).also { captureDriver = it } },
         onAccepted = {
             releaseResult()
-            mutable.update { it.copy(result = TranscriptionDialogState(), message = null) }
+            mutable.update { it.copy(result = TranscriptionDialogState(), message = null, permissionDenied = false) }
         }, onResult = ::adoptCapture)
 
     init {
@@ -70,7 +72,7 @@ class HomeController(private val app: UtterlaneApp) {
     }
 
     fun load(uri: Uri) {
-        if (state.value.busy) return
+        if (captureOwner.state.value.active || state.value.busy) return
         pendingFile = uri
         mutable.update { it.copy(preparing = true, message = null) }
         try { requestService(microphone = false) }
@@ -90,18 +92,25 @@ class HomeController(private val app: UtterlaneApp) {
     }
 
     fun showMessage(message: String) { mutable.update { it.copy(message = message) } }
+    fun microphoneDenied() {
+        mutable.update { it.copy(permissionDenied = true, message = app.getString(R.string.onboarding_permission_denied)) }
+    }
 
     private fun requestService(microphone: Boolean) {
         val token = UUID.randomUUID().toString()
         serviceToken = token
-        ContextCompat.startForegroundService(app, Intent(app, HomeSessionService::class.java)
-            .putExtra(HomeSessionService.TOKEN, token).putExtra(HomeSessionService.MICROPHONE, microphone))
+        servicePending = true
+        try {
+            ContextCompat.startForegroundService(app, Intent(app, HomeSessionService::class.java)
+                .putExtra(HomeSessionService.TOKEN, token).putExtra(HomeSessionService.MICROPHONE, microphone))
+        } catch (error: Exception) { servicePending = false; throw error }
     }
 
     internal fun ownsService(token: String?) = token != null && token == serviceToken
 
     internal fun serviceStarted(token: String) {
         if (!ownsService(token)) return
+        servicePending = false
         serviceAttached = true
         when {
             pendingFile != null -> {
@@ -125,6 +134,7 @@ class HomeController(private val app: UtterlaneApp) {
 
     internal fun serviceFailed(token: String, error: Exception) {
         if (!ownsService(token)) return
+        servicePending = false
         pendingFile = null; pendingRetry = false
         captureDriver?.reject(error.message ?: app.getString(R.string.toast_recording_error))
         mutable.update { it.copy(preparing = false) }
@@ -139,6 +149,10 @@ class HomeController(private val app: UtterlaneApp) {
             // permission to discard input. MicrophoneSession writes recovery.
             captureOwner.interrupt()
             slot?.preserve()
+        } else if (state.value.result.running && !servicePending) {
+            // A detail-dialog Retry can arrive between stopSelf and onDestroy.
+            // Reestablish foreground ownership for that new user-requested work.
+            try { requestService(microphone = false) } catch (error: Exception) { showError(error) }
         }
     }
 
@@ -269,6 +283,14 @@ class HomeController(private val app: UtterlaneApp) {
         journal.clear()
         mutable.update { it.copy(model = null) }
         previous.model.dismiss { previous.clear() }
+        // Dismissal can fail on storage. Its model reports that failure rather
+        // than calling done. Release runtime owners in that case too, preserving
+        // disk recovery instead of accumulating invisible ViewModel collectors.
+        previous.observer = scope.launch {
+            val failed = previous.model.state.first { !it.closing }
+            failed.message?.let(::showMessage)
+            previous.clear()
+        }
     }
 
     private inner class ResultOwner(val input: DialogInput, lease: Closeable?) : ViewModelStoreOwner {
@@ -285,7 +307,7 @@ class HomeController(private val app: UtterlaneApp) {
                 mutable.update { it.copy(result = result) }
                 // A retry launched by the reused detailed dialog also receives a
                 // permission-free processing FGS, just like Home's Retry action.
-                if ((result.running || result.importing) && !serviceAttached && !state.value.capture.active) {
+                if (result.running && !serviceAttached && !servicePending && !state.value.capture.active) {
                     try { requestService(microphone = false) } catch (error: Exception) { showError(error) }
                 }
                 if (!result.importing && result.audio?.id != leasedId) {
@@ -298,7 +320,9 @@ class HomeController(private val app: UtterlaneApp) {
                     audioId = saved.getString("owned_audio"), transcriptId = saved.getString("saved_text"),
                     transcriptPath = saved.getString("working_text"), modelName = saved.getString("result_model").orEmpty(),
                     modelId = saved.getString("result_model_id"),
-                    metadata = input.metadata ?: result.audio?.let(::TranscriptMetadata)))
+                    metadata = input.metadata?.let { metadata ->
+                        metadata.copy(speakerLabels = result.audio?.speakerLabels ?: metadata.speakerLabels)
+                    } ?: result.audio?.let(::TranscriptMetadata)))
             } }
         }
         fun preserve() { model.state.value.store?.keepForRecovery() }
