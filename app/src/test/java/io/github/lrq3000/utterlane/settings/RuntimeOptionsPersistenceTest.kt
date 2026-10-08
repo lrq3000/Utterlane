@@ -1,16 +1,10 @@
 package io.github.lrq3000.utterlane.settings
 
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import org.junit.Assert.*
 import org.junit.Test
 import java.util.concurrent.atomic.AtomicInteger
@@ -50,19 +44,6 @@ class RuntimeOptionsPersistenceTest {
         assertEquals("An existing explicit rate must not be replaced by the new default", 10,
             SettingsRepository(store).visualRefreshRate.first())
     }
-    // DataStore 1.0 uses File.renameTo to replace files, which is not portable to
-    // Windows JVM tests. Exercise repository transactions against an in-memory store;
-    // Android still owns the real on-disk DataStore and its atomic file replacement.
-    private class MemoryStore : DataStore<Preferences> {
-        override val data = MutableStateFlow(emptyPreferences())
-        private val mutex = Mutex()
-        var beforeUpdate: suspend () -> Unit = {}
-        override suspend fun updateData(transform: suspend (Preferences) -> Preferences): Preferences {
-            beforeUpdate()
-            return mutex.withLock { transform(data.value).also { data.value = it } }
-        }
-    }
-
     @Test fun snapshotWritesAreAtomicAndResetKeepsOtherPreferences() = runBlocking {
         val store = MemoryStore()
         val repository = SettingsRepository(store)
