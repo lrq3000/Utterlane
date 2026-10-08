@@ -68,3 +68,25 @@ translation batch. These checks exercise native controls, storage, recovery, and
 playback; they are not new speech-recognition accuracy or device-performance
 benchmarks. The user's subsequent scoped pin-menu request is a separate follow-up
 to this initial integration milestone.
+
+## Recovery review follow-up
+
+Two review findings were reproduced with native tests before correction:
+
+- Deleting all linked transcripts while keeping audio left a retired working
+  recovery copy readable. Deletion now removes every tracked copy whose identity
+  was confirmed, while single-transcript deletion preserves unselected versions.
+  Unsaved earlier attempts are included in recording-origin confirmation counts.
+- A failed attempt could leave the last committed text unpublished. Terminal
+  success/failure/cancellation now refreshes the surviving text and byte count.
+
+A JVM regression additionally proved that an export lease could keep an explicitly
+deleted working file reopenable. A durable source-metadata discard marker now
+blocks recovery immediately; startup cleanup completes its physical removal after
+a restart. Active exports retain their existing leases. Recovery availability IO
+runs off the main thread.
+
+The full JVM suite passed **315 tests** after these changes, and both new targeted
+native regression tests passed. The provenance test also simulates a fresh-process
+registry using a copied, tombstoned artifact and verifies cleanup independently of
+the normal cache age.

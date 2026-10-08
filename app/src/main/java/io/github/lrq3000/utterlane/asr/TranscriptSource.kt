@@ -7,13 +7,14 @@ import java.util.Properties
 /** Private provenance for working text, including history-disabled/recovery paths.
  * It contains identifiers only; exports and clipboard text never include it. */
 data class TranscriptSource(val audioId: String? = null, val transcriptId: String? = null,
-    val modelName: String = "", val modelId: String? = null) {
+    val modelName: String = "", val modelId: String? = null, val discarded: Boolean = false) {
     fun write(file: File) {
         val properties = Properties().apply {
             audioId?.let { setProperty("audioId", it) }
             transcriptId?.let { setProperty("transcriptId", it) }
             setProperty("modelName", modelName)
             modelId?.let { setProperty("modelId", it) }
+            setProperty("discarded", discarded.toString())
         }
         HistoryMetadata.write(metadata(file), properties)
     }
@@ -25,7 +26,7 @@ data class TranscriptSource(val audioId: String? = null, val transcriptId: Strin
             if (!metadata.isFile) return TranscriptSource()
             val p = HistoryMetadata.read(metadata)
             return TranscriptSource(p.getProperty("audioId"), p.getProperty("transcriptId"),
-                p.getProperty("modelName", ""), p.getProperty("modelId"))
+                p.getProperty("modelName", ""), p.getProperty("modelId"), p.getProperty("discarded", "false").toBoolean())
         }
         fun retentionReference(file: File): Long {
             if (!file.name.endsWith(".source")) return file.lastModified()

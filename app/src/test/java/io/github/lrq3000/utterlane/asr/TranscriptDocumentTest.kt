@@ -73,4 +73,27 @@ class TranscriptDocumentTest {
         CacheArtifacts.prune(folder.root, 1000, now = 6000, referenceTime = TranscriptSource::retentionReference)
         assertFalse(file.exists()); assertFalse(metadata.exists())
     }
+
+    @Test fun explicitlyDeletedWorkingTextCannotReopenWhileAnExportLeaseSurvives() {
+        val file = folder.newFile()
+        val store = TranscriptStore(file)
+        store.attachSource(TranscriptSource(audioId = "audio"))
+        store.append("Delete this result, including recovery")
+        val export = store.acquire()
+        try {
+            store.dispose()
+            assertTrue("The export still owns the bytes", file.exists())
+            assertThrows(IllegalStateException::class.java) {
+                TranscriptStore(file).keepForRecovery()
+            }
+            // A different directory has no in-memory cache registry entry,
+            // reproducing the durable-disposition side of a process restart.
+            val restarted = folder.newFolder()
+            val copy = file.copyTo(java.io.File(restarted, file.name))
+            TranscriptSource.metadata(file).copyTo(TranscriptSource.metadata(copy))
+            assertThrows(IllegalStateException::class.java) { TranscriptStore(copy).keepForRecovery() }
+            TranscriptStore.prune(restarted, Long.MAX_VALUE)
+            assertFalse(copy.exists()); assertFalse(TranscriptSource.metadata(copy).exists())
+        } finally { export.close() }
+    }
 }

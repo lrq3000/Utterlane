@@ -227,7 +227,13 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
             diagnosticSession?.record(metrics.state.value)
             try { session?.close() } catch (e: Exception) { Log.e("TranscribeDialog", "Recognition cleanup failed", e) }
             session?.store?.takeIf { it !== currentStore }?.dispose()
-            mutable.update { it.copy(running = false, capture = metrics.state.value) }
+            // A last segment can arrive after the final presentation tick. Failure
+            // and cancellation must publish it too, particularly at slow UI rates.
+            val surviving = currentStore
+            latestPreview = surviving?.preview().orEmpty()
+            document.refresh()
+            mutable.update { it.copy(running = false, capture = metrics.state.value,
+                preview = latestPreview, transcriptBytes = surviving?.bytes ?: 0) }
         }
     }
 
@@ -282,8 +288,25 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         it.source.transcriptId ?: TranscriptHistory.idForAttempt(it.file.name)
     }
 
-    private fun deletionPlan() = linkedHistory.plan(ownedAudioId, mutable.value.transcriptId,
-        input.transcriptOrigin, workingTranscriptId())
+    private fun workingFiles(): List<File> = synchronized(temporaryResults) { temporaryResults.toList() }
+    private fun workingId(file: File): String = TranscriptSource.read(file).transcriptId ?: TranscriptHistory.idForAttempt(file.name)
+
+    private fun deletionPlan(): HistoryDeletionPlan {
+        val plan = linkedHistory.plan(ownedAudioId, mutable.value.transcriptId, input.transcriptOrigin, workingTranscriptId())
+        if (!plan.allLinked) return plan
+        // Earlier unsaved attempts also belong to this recording. Count each
+        // identity once, even if history and recovery both contain a copy.
+        val ids = plan.transcriptIds.toMutableSet()
+        workingFiles().filter { it.isFile && it.length() > 0 && !TranscriptSource.read(it).discarded }
+            .forEach { ids.add(workingId(it)) }
+        return plan.copy(transcriptIds = ids.toSet())
+    }
+
+    private fun deleteWorkingCopies(ids: Set<String>) {
+        val selected = workingFiles().filter { it.isFile && workingId(it) in ids }
+        selected.filter { it != currentStore?.file }.forEach(TranscriptStore::deleteArtifacts)
+        synchronized(temporaryResults) { temporaryResults.removeAll(selected.toSet()) }
+    }
 
     fun requestDeletion() {
         if (state.value.importing || state.value.saving || state.value.closing || state.value.deleting || state.value.checkingDeletion) return
@@ -326,6 +349,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         return@withContext
                     }
                     linkedHistory.delete(request.plan, target)
+                    if (target != HistoryDeletionTarget.AUDIO) deleteWorkingCopies(request.plan.transcriptIds)
                     if (target != HistoryDeletionTarget.AUDIO && workingTranscriptId() in request.plan.transcriptIds) {
                         document.show(null)
                         currentStore?.dispose(); currentStore = null; latestPreview = ""
@@ -334,7 +358,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                     if (target != HistoryDeletionTarget.TRANSCRIPTS) ownedAudioId?.let { RecordingRecovery.dismissNotification(app, it) }
                     refreshAudio(); refreshTranscript()
                     val empty = deletionPlan().choices.isEmpty()
-                    if (empty) synchronized(temporaryResults) { temporaryResults.toList() }.forEach(TranscriptStore::deleteArtifacts)
+                    if (empty) workingFiles().forEach(TranscriptStore::deleteArtifacts)
                     mutable.update { it.copy(finished = empty, message = app.getString(R.string.dialog_deleted)) }
                 }
             } catch (e: Exception) { showError(e)

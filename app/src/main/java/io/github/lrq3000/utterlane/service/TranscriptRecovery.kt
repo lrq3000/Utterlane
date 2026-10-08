@@ -8,6 +8,7 @@ import androidx.core.app.NotificationCompat
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.asr.TranscriptStore
+import io.github.lrq3000.utterlane.asr.TranscriptSource
 import io.github.lrq3000.utterlane.transcribe.TranscribeActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -17,7 +18,7 @@ import kotlinx.coroutines.withContext
 object TranscriptRecovery {
     fun show(context: Context, store: TranscriptStore) {
         UtterlaneApp.instance.applicationScope.launch(Dispatchers.IO) {
-            if (store.file.length() == 0L) { store.dispose(); return@launch }
+            if (store.file.length() == 0L || TranscriptSource.read(store.file).discarded) { store.dispose(); return@launch }
             store.keepForRecovery()
             // The Settings recovery action also works when notification permission is
             // denied. No transcription text is placed in the notification itself.
@@ -36,9 +37,15 @@ object TranscriptRecovery {
     }
 
     fun open(context: Context) {
-        val path = context.getSharedPreferences("transcript_recovery", Context.MODE_PRIVATE).getString("path", null)
-        if (path != null && java.io.File(path).isFile) context.startActivity(Intent(context, TranscribeActivity::class.java)
-            .putExtra("transcript_path", path).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        else android.widget.Toast.makeText(context, context.getString(R.string.stream_recover_none), android.widget.Toast.LENGTH_LONG).show()
+        UtterlaneApp.instance.applicationScope.launch(Dispatchers.IO) {
+            val path = context.getSharedPreferences("transcript_recovery", Context.MODE_PRIVATE).getString("path", null)
+            val file = path?.let { java.io.File(it) }
+            val available = file?.isFile == true && !TranscriptSource.read(file).discarded
+            withContext(Dispatchers.Main) {
+                if (available) context.startActivity(Intent(context, TranscribeActivity::class.java)
+                    .putExtra("transcript_path", path).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                else android.widget.Toast.makeText(context, context.getString(R.string.stream_recover_none), android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
     }
 }

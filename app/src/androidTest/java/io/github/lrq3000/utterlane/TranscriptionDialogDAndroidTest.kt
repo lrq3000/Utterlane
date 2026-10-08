@@ -93,6 +93,67 @@ class TranscriptionDialogDAndroidTest {
         }
     }
 
+    @Test fun transcriptDeletionCleansSelectedRecoveryCopiesButPreservesUnselectedVersions() = runBlocking {
+        for (single in listOf(false, true)) Fixture().use { fixture ->
+            val directory = File(app.cacheDir, "transcripts").apply { mkdirs() }
+            fun working(entry: TranscriptEntry): TranscriptStore {
+                val file = File.createTempFile("version-d-", ".txt", directory)
+                entry.file.copyTo(file, overwrite = true)
+                return TranscriptStore(file).also { it.attachSource(TranscriptSource(fixture.recording.id, entry.id, entry.model)) }
+            }
+            val old = working(fixture.first).also { it.keepForRecovery() }
+            val next = working(fixture.second)
+            val owners = ViewModelStore()
+            lateinit var model: TranscriptionDialogModel
+            instrumentation.runOnMainSync {
+                model = TranscriptionDialogModel(app, DialogInput(audioId = fixture.recording.id,
+                    transcriptPath = old.file.absolutePath, transcriptOrigin = single))
+                owners.put("dialog", model)
+            }
+            try {
+                withTimeout(5000) { model.state.first { !it.importing } }
+                // Exercise the actual publication boundary used by retranscription,
+                // without loading an ASR model merely to generate fixture text.
+                withContext(Dispatchers.IO) {
+                    model.javaClass.getDeclaredMethod("exposeStore", TranscriptStore::class.java)
+                        .apply { isAccessible = true }.invoke(model, next)
+                }
+                instrumentation.runOnMainSync { model.requestDeletion() }
+                withTimeout(5000) { model.state.first { it.deletion != null } }
+                instrumentation.runOnMainSync { model.chooseDeletion(HistoryDeletionTarget.TRANSCRIPTS); model.confirmDeletion() }
+                withTimeout(5000) { model.state.first { !it.deleting && it.preview.isEmpty() } }
+                assertEquals("Only confirmed recovery versions may disappear", single, old.file.exists())
+                assertFalse(next.file.exists())
+                assertTrue(fixture.recording.part(0).exists())
+                assertEquals(single, fixture.first.file.exists())
+            } finally {
+                instrumentation.runOnMainSync { owners.clear() }
+                TranscriptStore.deleteArtifacts(old.file); TranscriptStore.deleteArtifacts(next.file)
+            }
+        }
+    }
+
+    @Test fun failedAttemptPublishesTheLatestSurvivingWorkingText() = runBlocking {
+        assertFalse("Use the model-free QA identity", app.modelManager.isModelReady())
+        Fixture().use { fixture ->
+            val owners = ViewModelStore()
+            lateinit var model: TranscriptionDialogModel
+            instrumentation.runOnMainSync {
+                model = TranscriptionDialogModel(app, DialogInput(audioId = fixture.recording.id))
+                owners.put("dialog", model)
+            }
+            try {
+                val loaded = withTimeout(5000) { model.state.first { !it.importing } }
+                val store = checkNotNull(loaded.store)
+                withContext(Dispatchers.IO) { store.append("Latest preserved segment") }
+                instrumentation.runOnMainSync { model.retry() }
+                val failed = withTimeout(10000) { model.state.first { !it.running && it.capture.phase == io.github.lrq3000.utterlane.asr.CapturePhase.FAILED } }
+                assertEquals(store.preview(), failed.preview)
+                assertEquals(store.bytes, failed.transcriptBytes)
+            } finally { instrumentation.runOnMainSync { owners.clear() } }
+        }
+    }
+
     @Test fun transcriptOriginConfirmationDeletesOnlyTheSelectedVersion() = runBlocking {
         Fixture().use { fixture ->
             fixture.open(transcript = true)

@@ -10,11 +10,23 @@ class TranscriptStore(val file: File) {
         const val PREVIEW_LIMIT = 8000
         const val TRANSFER_LIMIT = 64000
         fun deleteArtifacts(file: File) {
+            // A sharing lease may delay unlinking the bytes. Persist intent first
+            // so recovery cannot reopen them, including after a process restart.
+            if (file.isFile || TranscriptSource.metadata(file).isFile)
+                TranscriptSource.read(file).copy(discarded = true).write(file)
             CacheArtifacts.deleteWhenReleased(file)
             CacheArtifacts.deleteWhenReleased(TranscriptSource.metadata(file))
         }
-        fun prune(directory: File, maximumAgeMs: Long) = CacheArtifacts.prune(directory, maximumAgeMs,
-            includeDirectories = false, referenceTime = TranscriptSource::retentionReference)
+        fun prune(directory: File, maximumAgeMs: Long) {
+            directory.listFiles()?.filter { it.name.endsWith(".source") }?.forEach { metadata ->
+                val file = File(directory, metadata.name.removeSuffix(".source"))
+                // Explicit deletion can finish between directory listing and read.
+                val discarded = try { TranscriptSource.read(file).discarded } catch (_: java.io.IOException) { false }
+                if (discarded) deleteArtifacts(file)
+            }
+            CacheArtifacts.prune(directory, maximumAgeMs, includeDirectories = false,
+                referenceTime = TranscriptSource::retentionReference)
+        }
     }
     private var tail = ""
     var segments = 0
@@ -26,6 +38,7 @@ class TranscriptStore(val file: File) {
         private set
 
     init {
+        check(!source.discarded) { "Transcript was deleted" }
         if (!file.exists()) check(file.createNewFile()) { "Cannot create transcript" }
         // Recovery reconstructs only the bounded final page, not the full text.
         tail = page((file.length() - PREVIEW_LIMIT).coerceAtLeast(0))
