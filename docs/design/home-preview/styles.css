@@ -113,8 +113,11 @@ button:active:not(:disabled) { filter: brightness(.94); }
 .waveform-cta { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 24px; font-size: calc(13px * var(--font-scale)); font-weight: 550; }
 .waveform-cta .icon { width: 17px; height: 17px; }
 .record-dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; outline: 3px solid #ffffff26; margin-right: 3px; }
-.capture-note { display: flex; align-items: center; justify-content: center; gap: 4px; font-size: calc(9px * var(--font-scale)); color: var(--muted); margin: 8px 0 0; line-height: 1.4; }
-.capture-note .icon { width: 11px; height: 11px; }
+/* Size the complete privacy sentence against the actual recording-panel width,
+ * including its icon and gap, instead of wrapping or truncating it on small phones. */
+.recording-control { container-type: inline-size; }
+.capture-note { display: flex; align-items: center; justify-content: center; gap: .4em; font-size: min(11px, 2.8cqw); white-space: nowrap; color: var(--muted); margin: 8px 0 0; line-height: 1.4; }
+.capture-note .icon { width: 1.2em; height: 1.2em; }
 .finishing-progress { min-height: 57px; display: flex; flex-direction: column; justify-content: center; gap: 9px; }
 .progress-label { font-size: calc(10px * var(--font-scale)); display: flex; justify-content: space-between; }
 .progress-track { background: #ffffff33; height: 4px; border-radius: 2px; overflow: hidden; }
@@ -130,6 +133,8 @@ button:active:not(:disabled) { filter: brightness(.94); }
 .history-nav.tiles .history-link > .icon { width: 19px; height: 19px; }
 .text-button { background: transparent; border: 0; color: var(--primary); display: flex; align-items: center; justify-content: center; gap: 6px; font-size: calc(12px * var(--font-scale)); min-height: 44px; padding: 7px; border-radius: 10px; }
 .text-button .icon { width: 16px; height: 16px; }
+.import-button { font-size: calc(15px * var(--font-scale)); font-weight: 600; }
+.import-button .icon { width: 18px; height: 18px; }
 .import-row { display: flex; justify-content: center; }
 .focus .home-content { gap: 10px; }
 .focus .transcript-body { height: 125px; }
