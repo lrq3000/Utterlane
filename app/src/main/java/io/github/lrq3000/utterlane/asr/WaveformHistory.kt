@@ -3,12 +3,11 @@ package io.github.lrq3000.utterlane.asr
 import kotlin.math.log10
 import kotlin.math.sqrt
 
-/** Fixed 6.4-second history: changing refresh rate never changes the audio time axis. */
+/** Last 64 microphone callbacks, preserving the original waveform's motion and
+ * amplitude detail. Capture advances history; refresh rate only gates snapshots. */
 internal class WaveformHistory {
     private val levels = FloatArray(64)
     private var cursor = 0
-    private var bucketSamples = 0
-    private var energy = 0.0
     private var revision = 0L
     private var publishedRevision = -1L
     private var published = FloatArray(64)
@@ -22,32 +21,25 @@ internal class WaveformHistory {
         for (sample in pcm) {
             val square = sample.toDouble() * sample
             blockEnergy += square
-            energy += square
-            if (++bucketSamples == 1600) {
-                levels[cursor] = normalized(decibels(energy, bucketSamples))
-                cursor = (cursor + 1) % levels.size
-                energy = 0.0
-                bucketSamples = 0
-            }
         }
         val db = decibels(blockEnergy, pcm.size)
         level = normalized(db)
         audible = db > -55
-        if (pcm.isNotEmpty()) revision++
+        if (pcm.isNotEmpty()) {
+            // Do not aggregate short callbacks into slower audio-time buckets:
+            // each incoming RMS value is a finished point, even between redraws.
+            levels[cursor] = level
+            cursor = (cursor + 1) % levels.size
+            revision++
+        }
     }
 
-    // Historical buckets remain fixed in audio time. The last point can show
-    // the current partial bucket, so a 60/200 Hz display is not secretly capped
-    // by the 100 ms history buckets. Energy still accumulates only once per PCM
-    // sample; a safe snapshot is built only when a visual publication is due.
+    // A low refresh rate may show several new points at once, never slow their
+    // progression. Copy only at publication; older snapshots remain immutable,
+    // and ticks without new audio reuse the array instead of redrawing the view.
     fun snapshot(): FloatArray {
         if (revision != publishedRevision) {
-            val partial = bucketSamples > 0
-            val tip = if (partial) normalized(decibels(energy, bucketSamples)) else 0f
-            published = FloatArray(levels.size) {
-                if (partial && it == levels.lastIndex) tip
-                else levels[(cursor + (if (partial) 1 else 0) + it) % levels.size]
-            }
+            published = FloatArray(levels.size) { levels[(cursor + it) % levels.size] }
             publishedRevision = revision
         }
         return published

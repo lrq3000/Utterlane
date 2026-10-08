@@ -158,6 +158,44 @@ the initial recovery-lifetime discussion in `recording-first-backpressure.md`.
   variant under `app/build/outputs/history-design-b-*.png`. These generated QA
   images and the earlier design mockups are local/ignored, not tracked artifacts.
 
+## Waveform progression correction (2026-10-08)
+
+- The fixed 100 ms buckets described above unintentionally changed scrolling speed
+  and amplitude detail, beyond the requested publication-rate limit. The current
+  waveform instead retains the last 64 nonempty microphone callback RMS levels,
+  matching the pre-limiter implementation at `1237054`. Refresh frequency controls
+  snapshot publication, not point insertion; displayed duration depends on block size.
+- Three regressions failed on the old buckets before the correction: two short
+  callbacks did not create independent points, RMS differed from the old algorithm,
+  and low-rate publication contained the wrong history. The replacement tests cover
+  rollover, mixed callback lengths, silence/PCM extrema, immutable snapshots and all
+  nine refresh choices with 10/20/50 ms callbacks. Existing publication-budget and
+  exact-input-count checks remain in place.
+- **291 JVM tests passed**, zero failures/skips. An interrupted full run reported a
+  local Gradle worker connection timeout; focused and full incremental runs then
+  passed with `--max-workers=2`, without changing project build configuration.
+- Debug app/test APKs built and installed under the separate `.waveformqa` identity.
+  **Six Android tests passed** on API-28 LDPlayer (`emulator-5554`): three existing
+  recording-panel tests and three new rendered-waveform cases at 30/60/200 Hz.
+  The latter drive the production panel with controlled 10 ms PCM blocks and check
+  rendered pixels: a tall marker moves from column 63 to 43 after 20 callbacks and
+  to 13 after 50, then disappears after the ring wraps. Every refresh setting yields
+  the same positions. This validates input-relative movement, not physical display
+  FPS; the test clock is controlled and screenshots add wall-clock pauses.
+- Six native screenshots were pulled into the ignored
+  `app/build/outputs/waveform-qa/` directory; 30 Hz progression and matching 200 Hz
+  position were visually inspected. The device crash buffer was empty. Subjective
+  smoothness on the user's phone still benefits from testing with live speech.
+
+Waveform-specific reproduction (PowerShell, JDK 21):
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest "-PqaApplicationIdSuffix=.waveformqa" "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q --offline
+adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5554 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s emulator-5554 shell am instrument -w -e class io.github.lrq3000.utterlane.WaveformCadenceAndroidTest,io.github.lrq3000.utterlane.CapturePanelAndroidTest io.github.lrq3000.utterlane.waveformqa.test/androidx.test.runner.AndroidJUnitRunner
+```
+
 ## Reproduction commands
 
 ```powershell
