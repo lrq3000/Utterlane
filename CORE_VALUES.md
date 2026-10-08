@@ -75,6 +75,18 @@ actually depend on the failed component, retaining all useful functioning parts.
 - Separate component lifecycles, failure handling, and recovery paths so that a
   failed processing task does not automatically cancel healthy tasks. Optional
   enhancements must not become prerequisites for the core workflow.
+- **Continuity through fallback:** When a preferred component becomes unavailable,
+  automatically continue through a functioning alternative whenever possible,
+  preserving accumulated work and clearly indicating degraded operation without
+  requiring immediate user attention. A fallback must not claim success until the
+  alternative is actually functioning, and it must respect an explicit Stop or
+  Cancel rather than restart an operation the user has ended.
+  - For example, if a Bluetooth microphone disconnects during a meeting or lecture,
+    continue recording through the phone microphone and show a persistent, clear
+    warning. The user may not be watching the screen and should not lose the rest
+    of the event because the preferred microphone failed. Preserve already captured
+    audio; if the fallback also fails, explain the actual capture failure and retain
+    recoverable work rather than silently pretending recording continues.
 - Distinguish an unavailable enhancement from an actual capture failure. If a
   genuine microphone or storage constraint prevents continued capture, explain
   what stopped and preserve what was successfully captured or processed.
