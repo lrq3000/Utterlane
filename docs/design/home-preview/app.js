@@ -1,10 +1,11 @@
 import { DemoSession, Preferences, PreviewPreferences, duration, escapeHtml } from './state.js';
-import { TranscriptPanel, WaveformControl, SpeakerToggle, HistoryNavigation, brandHeader, icon, iconButton } from './components.js';
+import { TranscriptPanel, WaveformControl, SpeakerToggle, HistoryNavigation, PrimaryNavigation, brandHeader, icon, iconButton } from './components.js';
 
 const CONCEPTS = {
   focus: { name: 'A / Focus', description: 'One calm screen, one obvious action. The transcript, speaker labels and recording control stay together, with both histories directly below.', tradeoff: 'Best balance for a first launch. The transcript has less reading room than Notebook.' },
   notebook: { name: 'B / Notebook', description: 'A document-first canvas. Your words take most of the screen, while a lower recording dock stays within easy reach. Histories become primary navigation.', tradeoff: 'Best for longer reading and everyday dictation. The history destinations are a little less descriptive.' },
   studio: { name: 'C / Studio', description: 'A compact recording workspace. A library strip sits above the live transcript, with a precise recording console below. Quiet surfaces, clear boundaries.', tradeoff: 'Best for frequent use. The denser layout is more utilitarian than Focus.' },
+  'blue-notebook': { name: 'D / Blue Notebook', description: 'Notebook’s reading-first layout with Focus’s pale-blue canvas, rounded bordered panels and tonal actions. The main navigation stays visible below every destination.', tradeoff: 'Keeps the larger reading area and thumb-friendly controls, with clearer separation between the transcript and recording tools.' },
 };
 
 /** Route ownership is independent from the recording model. In Android the home
@@ -25,6 +26,14 @@ class PreviewApp {
     this.root = document.querySelector('#app');
     this.sheet = document.querySelector('#sheet');
     this.device.classList.add(this.concept);
+    this.notebookLayout = ['notebook', 'blue-notebook'].includes(this.concept);
+    if (this.notebookLayout) {
+      // D is a visual variant of B, sharing its layout, state and navigation.
+      this.device.classList.add('notebook');
+      const navigation = document.querySelector('#primary-nav');
+      navigation.innerHTML = PrimaryNavigation.render();
+      navigation.hidden = false;
+    }
     this.theme = this.previewPreferences.values.theme;
     this.session.addEventListener('change', () => this.update());
     this.preferences.addEventListener('change', () => SpeakerToggle.update(this.preferences));
@@ -95,8 +104,8 @@ class PreviewApp {
     const transcript = TranscriptPanel.render();
     const speakers = SpeakerToggle.render(this.preferences);
     const waveform = WaveformControl.render();
-    if (this.concept === 'notebook') {
-      return `${brandHeader()}<div class="home-content"><div class="home-intro"><div><h1>New transcript</h1><p>Your voice. Your own space.</p></div>${iconButton('import', 'Transcribe an audio file', 'upload')}</div>${transcript}</div><div class="capture-dock">${speakers}${waveform}</div><nav class="bottom-nav" aria-label="Main navigation"><button class="selected" data-action="home" aria-current="page">${icon('mic')}Record</button><button data-action="audio" aria-label="Audio history">${icon('audio')}Audio history</button><button data-action="transcripts" aria-label="Transcript history">${icon('document')}Transcripts</button></nav>`;
+    if (this.notebookLayout) {
+      return `${brandHeader()}<div class="home-content"><div class="home-intro"><div><h1>New transcript</h1><p>Your voice. Your own space.</p></div>${iconButton('import', 'Transcribe an audio file', 'upload')}</div>${transcript}</div><div class="capture-dock">${speakers}${waveform}</div>`;
     }
     if (this.concept === 'studio') {
       return `${brandHeader()}<div class="home-content">${this.intro('Make yourself heard.', 'A private space to capture what matters.')}${HistoryNavigation.render('strip')}${transcript}${speakers}${waveform}<div class="import-row">${this.importButton()}</div></div>`;
@@ -113,6 +122,7 @@ class PreviewApp {
   }
   render() {
     this.root.innerHTML = this.route === 'home' ? this.home() : this.route === 'settings' ? this.settings() : this.history();
+    PrimaryNavigation.update(this.route);
     this.root.scrollTop = 0;
     this.update();
   }
