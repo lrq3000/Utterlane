@@ -9,6 +9,9 @@ import io.github.lrq3000.utterlane.history.*
 import io.github.lrq3000.utterlane.transcribe.*
 import java.io.Closeable
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.*
@@ -128,6 +131,105 @@ class TranscriptionResultMetadataAndroidTest {
                 assertTrue("The working text must remain usable", source.isFile)
             }
         } finally { app.transcriptHistory.delete(saved.id); source.delete() }
+    }
+
+    @Test fun explicitDeleteRemovesReplacementPublishedByPendingKeep() = runBlocking {
+        dismissDuringPendingKeep(delete = true)
+    }
+
+    @Test fun ordinaryDismissPreservesReplacementPublishedByPendingKeep() = runBlocking {
+        dismissDuringPendingKeep(delete = false)
+    }
+
+    private suspend fun dismissDuringPendingKeep(delete: Boolean) {
+        val source = workingText()
+        val root = File.createTempFile("pending-keep-", "", app.cacheDir).apply { delete(); mkdir() }
+        val saveEntered = CountDownLatch(1)
+        val releaseSave = CountDownLatch(1)
+        val pauseNextSave = AtomicBoolean(false)
+        val history = TranscriptHistory(root) {
+            // The repository's normal clock dependency provides a boundary
+            // after mkdir and before publishing a real saved entry. No production
+            // hooks, fake save results or timing sleeps control this race.
+            if (pauseNextSave.compareAndSet(true, false)) {
+                saveEntered.countDown()
+                check(releaseSave.await(10, TimeUnit.SECONDS)) { "Replacement save was not released" }
+            }
+            System.currentTimeMillis()
+        }
+        val original = metadata.save(history, source, "Fixture model", pinned = true)
+        val originalLease = history.acquire(original.id)
+        val originalHistory = app.transcriptHistory
+        // Scope the singleton dependency swap to this fixture. Background cleanup
+        // cannot touch other entries through this isolated repository, and all
+        // production model/Keep/Delete operations remain the real implementations.
+        val field = UtterlaneApp::class.java.getDeclaredField("transcriptHistory").apply { isAccessible = true }
+        val dismissed = CompletableDeferred<Unit>()
+        var owner: DialogOwner? = null
+        try {
+            instrumentation.runOnMainSync { field.set(app, history) }
+            val dialog = DialogOwner(DialogInput(transcriptId = original.id, transcriptPath = source.absolutePath))
+            owner = dialog
+            dialog.ready()
+            // The dialog still owns working text and the old ID. A prior cleanup
+            // makes the next Keep exercise the missing-entry replacement path.
+            history.delete(original.id)
+            pauseNextSave.set(true)
+            instrumentation.runOnMainSync { dialog.model.setTranscriptPinned(true) }
+            assertTrue("Keep never reached replacement publication", saveEntered.await(5, TimeUnit.SECONDS))
+            instrumentation.runOnMainSync { dialog.model.dismiss(delete) { dismissed.complete(Unit) } }
+            if (delete) {
+                // Save holds the repository monitor. Observe dismissal blocked at
+                // its early delete call, proving it already captured the OLD ID
+                // before allowing Keep to publish its replacement. This condition
+                // removes dependence on thread scheduling or arbitrary delays.
+                withTimeout(5000) {
+                    while (!Thread.getAllStackTraces().any { (thread, stack) ->
+                        thread.state == Thread.State.BLOCKED &&
+                            stack.any { it.className == TranscriptHistory::class.java.name && it.methodName == "delete" } &&
+                            stack.any { it.className.startsWith(TranscriptionDialogModel::class.java.name + "\$dismiss") }
+                    }) delay(10)
+                }
+                val marker = java.util.Properties().apply {
+                    File(original.directory, "transcript.properties").inputStream().use { load(it) }
+                }
+                assertEquals("true", marker.getProperty("discarded"))
+            }
+            releaseSave.countDown()
+            withTimeout(5000) { dismissed.await() }
+            val replacementId = checkNotNull(dialog.model.state.value.transcriptId)
+            assertNotEquals("The pending operation must really create a new copy", original.id, replacementId)
+            assertThrows(IllegalStateException::class.java) { history.get(original.id) }
+            originalLease.close()
+            assertFalse(original.directory.exists())
+            if (delete) {
+                assertThrows("Explicit Delete must win over the pending Keep", IllegalStateException::class.java) { history.get(replacementId) }
+                assertFalse(File(root, replacementId).exists())
+                assertTrue(history.list().isEmpty())
+            } else {
+                assertTrue(history.get(replacementId).retention.pinned)
+                assertEquals(listOf(replacementId), history.list().map { it.id })
+            }
+        } finally {
+            releaseSave.countDown()
+            // Join the actual operations before restoring the shared dependency,
+            // including when a race-boundary assertion fails.
+            try {
+                owner?.let { dialog ->
+                    try {
+                        withTimeout(5000) {
+                            dialog.model.state.first { !it.saving }
+                            if (dialog.model.state.value.closing) dismissed.await()
+                        }
+                    } finally { dialog.close() }
+                }
+            } finally {
+                instrumentation.runOnMainSync { field.set(app, originalHistory) }
+                originalLease.close()
+                root.deleteRecursively()
+                source.delete()
+            }
+        }
     }
 
     private suspend fun saveAfterDeletion(leased: Boolean) {
