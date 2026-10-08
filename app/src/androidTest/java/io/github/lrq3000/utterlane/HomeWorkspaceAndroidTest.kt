@@ -166,6 +166,19 @@ class HomeWorkspaceAndroidTest {
                 assertSame(priorStore, failedCapture.result.store)
                 assertEquals(priorText, priorStore.file.readText())
             }
+            instrumentation.runOnMainSync {
+                app.homeController.microphoneDenied()
+                // This is the reused detail dialog's direct path, deliberately
+                // bypassing HomeController.retry and its preparation helper.
+                checkNotNull(failedCapture.model).retry(useCurrentModel = true)
+                assertTrue(app.homeController.state.value.result.running)
+                assertNull(app.homeController.state.value.message)
+                assertFalse(app.homeController.state.value.permissionDenied)
+            }
+            val retried = withTimeout(120000) { app.homeController.state.first { !it.busy } }
+            assertNull(retried.message)
+            assertFalse(retried.permissionDenied)
+            assertNotNull("The corrupt source still reports its actual retry failure", retried.result.message)
             instrumentation.runOnMainSync { app.homeController.dismiss() }
             withTimeout(10000) { app.homeController.state.first { it.model == null } }
         } finally {
