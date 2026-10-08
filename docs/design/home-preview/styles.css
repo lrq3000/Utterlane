@@ -165,7 +165,7 @@ button:active:not(:disabled) { filter: brightness(.94); }
 .bottom-nav button.selected { color: var(--primary); background: var(--container); }
 .bottom-nav .icon { height: 18px; width: 18px; }
 
-/* C: dark-first library strip, a tighter session workspace, and an edge-aligned
+/* C: library strip, a tighter session workspace, and an edge-aligned
  * recording console. Restrained rules replace extra rounded surface layers. */
 .studio .app-header { padding-bottom: 6px; }
 .studio .home-content { gap: 11px; padding: 0 18px 14px; }

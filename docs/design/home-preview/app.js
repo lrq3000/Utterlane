@@ -1,10 +1,10 @@
-import { DemoSession, Preferences, duration, escapeHtml } from './state.js';
+import { DemoSession, Preferences, PreviewPreferences, duration, escapeHtml } from './state.js';
 import { TranscriptPanel, WaveformControl, SpeakerToggle, HistoryNavigation, brandHeader, icon, iconButton } from './components.js';
 
 const CONCEPTS = {
-  focus: { name: 'A / Focus', theme: 'light', description: 'One calm screen, one obvious action. The transcript, speaker labels and recording control stay together, with both histories directly below.', tradeoff: 'Best balance for a first launch. The transcript has less reading room than Notebook.' },
-  notebook: { name: 'B / Notebook', theme: 'light', description: 'A document-first canvas. Your words take most of the screen, while a lower recording dock stays within easy reach. Histories become primary navigation.', tradeoff: 'Best for longer reading and everyday dictation. The history destinations are a little less descriptive.' },
-  studio: { name: 'C / Studio', theme: 'dark', description: 'A compact, dark-first workspace. A library strip sits above the live transcript, with a precise recording console below. Quiet surfaces, clear boundaries.', tradeoff: 'Best for frequent use. The denser layout is more utilitarian than Focus. Light mode is included.' },
+  focus: { name: 'A / Focus', description: 'One calm screen, one obvious action. The transcript, speaker labels and recording control stay together, with both histories directly below.', tradeoff: 'Best balance for a first launch. The transcript has less reading room than Notebook.' },
+  notebook: { name: 'B / Notebook', description: 'A document-first canvas. Your words take most of the screen, while a lower recording dock stays within easy reach. Histories become primary navigation.', tradeoff: 'Best for longer reading and everyday dictation. The history destinations are a little less descriptive.' },
+  studio: { name: 'C / Studio', description: 'A compact recording workspace. A library strip sits above the live transcript, with a precise recording console below. Quiet surfaces, clear boundaries.', tradeoff: 'Best for frequent use. The denser layout is more utilitarian than Focus.' },
 };
 
 /** Route ownership is independent from the recording model. In Android the home
@@ -15,13 +15,17 @@ class PreviewApp {
     const requested = new URLSearchParams(location.search).get('concept');
     this.concept = Object.hasOwn(CONCEPTS, requested) ? requested : 'focus';
     this.preferences = new Preferences();
+    this.previewPreferences = new PreviewPreferences();
     this.session = new DemoSession(this.preferences);
+    // Restore before observing: preview() passes through intermediate phases,
+    // which must not overwrite the phase selected for comparison.
+    this.session.preview(this.previewPreferences.values.state);
     this.route = 'home';
     this.device = document.querySelector('#device');
     this.root = document.querySelector('#app');
     this.sheet = document.querySelector('#sheet');
     this.device.classList.add(this.concept);
-    this.theme = CONCEPTS[this.concept].theme;
+    this.theme = this.previewPreferences.values.theme;
     this.session.addEventListener('change', () => this.update());
     this.preferences.addEventListener('change', () => SpeakerToggle.update(this.preferences));
     this.device.addEventListener('click', event => {
@@ -48,14 +52,25 @@ class PreviewApp {
     document.querySelectorAll('[data-theme]').forEach(button => {
       if (button.tagName === 'BUTTON') button.addEventListener('click', () => this.setTheme(button.dataset.theme));
     });
-    document.querySelector('#preview-width').addEventListener('change', event => this.device.style.setProperty('--phone-width', `${event.target.value}px`));
+    for (const [id, key, property, suffix] of [
+      ['preview-width', 'width', '--phone-width', 'px'],
+      ['text-size', 'textSize', '--font-scale', ''],
+    ]) {
+      const control = document.getElementById(id);
+      control.value = this.previewPreferences.values[key];
+      const apply = () => {
+        this.device.style.setProperty(property, `${control.value}${suffix}`);
+        this.previewPreferences.set(key, control.value);
+      };
+      apply();
+      control.addEventListener('change', apply);
+    }
     document.querySelector('#preview-state').addEventListener('change', event => {
       this.route = 'home';
       this.sheet.close();
       this.session.preview(event.target.value);
       this.render();
     });
-    document.querySelector('#text-size').addEventListener('change', event => this.device.style.setProperty('--font-scale', event.target.value));
     // Fit the complete phone into a laptop viewport without changing its layout
     // dimensions. Narrow browser windows instead show the phone at natural size.
     const fitPreview = () => {
@@ -68,6 +83,7 @@ class PreviewApp {
   }
   setTheme(theme) {
     this.theme = theme;
+    this.previewPreferences.set('theme', theme);
     this.device.dataset.theme = theme;
     document.querySelectorAll('button[data-theme]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.theme === theme)));
   }
@@ -105,6 +121,12 @@ class PreviewApp {
     WaveformControl.update(this.session);
     SpeakerToggle.update(this.preferences);
     document.querySelector('#preview-state').value = this.session.phase;
+    // Recording emits level updates four times a second. Only phase transitions
+    // need a storage write, and hidden tabs must not replace the active review.
+    if (this.previewPhase !== this.session.phase) {
+      this.previewPhase = this.session.phase;
+      if (!document.hidden) this.previewPreferences.set('state', this.session.phase);
+    }
   }
   notify(message) {
     const toast = document.querySelector('#toast');

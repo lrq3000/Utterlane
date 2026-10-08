@@ -25,6 +25,40 @@ export class Preferences extends EventTarget {
   }
 }
 
+/** One review configuration for every design URL. Validate stored values so an
+ * older or malformed preference cannot leave a select or the phone in limbo.
+ * Persist only presentation settings, never sample transcripts or recordings.
+ */
+export class PreviewPreferences {
+  static key = 'utterlane-home-study-preview';
+  static choices = {
+    theme: ['light', 'dark'],
+    width: ['390', '360', '430'],
+    textSize: ['1', '1.25'],
+    state: ['ready', 'recording', 'processing', 'complete'],
+  };
+  constructor() { this.values = this.read(); }
+  read() {
+    let stored = this.values;
+    try { stored = JSON.parse(localStorage.getItem(PreviewPreferences.key)); }
+    catch { /* Keep the in-memory settings if browser storage is unavailable. */ }
+    return Object.fromEntries(Object.entries(PreviewPreferences.choices).map(([key, choices]) =>
+      [key, choices.includes(stored?.[key]) ? stored[key] : choices[0]]));
+  }
+  set(key, value) {
+    if (!PreviewPreferences.choices[key]?.includes(value)) return;
+    // Merge the latest settings so an already-open tab cannot overwrite another
+    // tab's width or appearance when its recording state changes.
+    const latest = this.read();
+    const changed = latest[key] !== value;
+    this.values = { ...latest, [key]: value };
+    if (changed) {
+      try { localStorage.setItem(PreviewPreferences.key, JSON.stringify(this.values)); }
+      catch { /* The controls remain usable without persistence. */ }
+    }
+  }
+}
+
 export const SAMPLE_SEGMENTS = [
   { speaker: 1, text: 'I had an idea on the way here. Let us make a little more room for the things that matter.' },
   { speaker: 2, text: 'I like that. We could start with a quiet morning, a good conversation, and time to think.' },
