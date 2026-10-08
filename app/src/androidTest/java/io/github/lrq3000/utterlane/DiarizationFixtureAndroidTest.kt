@@ -80,6 +80,12 @@ class DiarizationFixtureAndroidTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp
         val args = InstrumentationRegistry.getArguments()
+        // The native override is read once per process. Run each configuration
+        // through a separate instrumentation invocation, before loading models.
+        val attention = args.getString("native_attention", "default")
+        require(attention in listOf("default", "flash", "manual"))
+        if (attention == "default") android.system.Os.unsetenv("CRISPASR_NEMOTRON3_DIAR_ATTN")
+        else android.system.Os.setenv("CRISPASR_NEMOTRON3_DIAR_ATTN", attention, true)
         val fixture = args.getString("fixture", "test-1-speaker-french")
         require(fixture in listOf("test-1-speaker-french", "test-2-speakers-french-3-turns"))
         val tag = args.getString("tag", "candidate").also { require(it.matches(Regex("[a-zA-Z0-9_-]+"))) }
@@ -97,6 +103,9 @@ class DiarizationFixtureAndroidTest {
         val words = File(directory, "$fixture.words.jsonl").apply { writeText("") }
         val frames = FileOutputStream(File(directory, "$fixture.probabilities.f32"))
         val stages = mutableMapOf<String, Long>()
+        val nativeStageNanos = mutableMapOf<String, Long>()
+        val forwardMillis = mutableListOf<Double>()
+        var stageStarted = 0L
         var windowIndex = 0
         var owned = 0L
         var fed = 0L
@@ -136,6 +145,11 @@ class DiarizationFixtureAndroidTest {
         val speaker = if (enabled && count != 1) {
             val start = SystemClock.elapsedRealtime()
             CrispSpeakerStream("/sdcard/Download/Nemotron-3-Diarization.q8_0.gguf", options) { units, stage ->
+                val now = SystemClock.elapsedRealtimeNanos()
+                val elapsed = now - stageStarted
+                nativeStageNanos[stage] = (nativeStageNanos[stage] ?: 0L) + elapsed
+                if (stage == "transformer") forwardMillis += elapsed / 1_000_000.0
+                stageStarted = now
                 assertTrue("Native progress must increase within an invocation", units > (stages[stage] ?: 0))
                 stages[stage] = units
             }.also { timing("speaker_load", start) }
@@ -144,6 +158,10 @@ class DiarizationFixtureAndroidTest {
             override fun push(samples: ShortArray, final: Boolean): FloatArray {
                 stages.clear()
                 val start = SystemClock.elapsedRealtime()
+                // Callback intervals include graph preparation/compute in the
+                // transformer stage and mel extraction in the features stage.
+                // These are wall times, not sampled CPU or per-kernel timings.
+                stageStarted = SystemClock.elapsedRealtimeNanos()
                 val result = speaker?.push(samples, final) ?: floatArrayOf()
                 nativeCalls += stages["transformer"]?.toInt() ?: 0
                 val bytes = ByteBuffer.allocate(result.size * 4).order(ByteOrder.LITTLE_ENDIAN)
@@ -191,6 +209,9 @@ class DiarizationFixtureAndroidTest {
                 put("options", JSONObject(options.toMap())); put("diarization", enabled); put("speakers", count)
                 put("samples", accepted); put("processed_samples", owned); put("fed_to_speakers", fed)
                 put("native_forwards", nativeCalls); put("elapsed_ms", SystemClock.elapsedRealtime() - started)
+                put("native_attention", attention)
+                put("native_stage_ms", JSONObject(nativeStageNanos.mapValues { it.value / 1_000_000.0 }))
+                put("native_forward_ms", JSONArray(forwardMillis))
             }.toString(2))
             assertEquals(accepted, owned)
             if (enabled && count != 1) { assertEquals(accepted, fed); assertTrue(nativeCalls > 0) }
