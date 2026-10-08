@@ -34,9 +34,15 @@ internal class HistoryTestUi(private val ui: OnboardingTestUi) {
         } finally { row.recycle() }
     }
 
-    fun text(id: String): String {
+    fun text(id: String): String = rowLabels(id) { it.text }
+
+    /** Icons can remain child nodes in the unmerged accessibility tree. Inspect
+     * the actual descriptions, not visible text or an assumed merged parent. */
+    fun contentDescriptions(id: String): String = rowLabels(id) { it.contentDescription }
+
+    private fun rowLabels(id: String, label: (AccessibilityNodeInfo) -> CharSequence?): String {
         val row = ui.node("history_entry_$id")
-        return try { textOf(row) } finally { row.recycle() }
+        return try { labelsOf(row, label) } finally { row.recycle() }
     }
 
     fun assertAbsent(tag: String) {
@@ -52,11 +58,11 @@ internal class HistoryTestUi(private val ui: OnboardingTestUi) {
         }
     }
 
-    private fun textOf(node: AccessibilityNodeInfo): String = buildString {
-        append(node.text?.toString().orEmpty())
+    private fun labelsOf(node: AccessibilityNodeInfo, label: (AccessibilityNodeInfo) -> CharSequence?): String = buildString {
+        append(label(node)?.toString().orEmpty())
         for (index in 0 until node.childCount) {
             val child = node.getChild(index) ?: continue
-            try { append('\n'); append(textOf(child)) } finally { child.recycle() }
+            try { append('\n'); append(labelsOf(child, label)) } finally { child.recycle() }
         }
     }
 

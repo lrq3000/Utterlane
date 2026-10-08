@@ -30,9 +30,8 @@ class HistoryPresentationAndroidTest {
             val text = historyUi.text(recording.entry.id)
             assertTrue(text.contains(app.getString(R.string.history_audio_recording)))
             assertTrue(text.contains(app.getString(R.string.home_speakers)))
-            val row = ui.node("history_entry_${recording.entry.id}")
-            try { assertTrue(row.contentDescription.toString().contains(app.getString(R.string.history_recovery_item))) }
-            finally { row.recycle() }
+            assertTrue(historyUi.contentDescriptions(recording.entry.id)
+                .contains(app.getString(R.string.history_recovery_item)))
             historyUi.awaitPinned(recording.entry.id, false)
             historyUi.assertNavigationOnly(recording.entry.id)
         } finally {
