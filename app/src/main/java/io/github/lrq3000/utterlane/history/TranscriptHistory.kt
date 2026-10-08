@@ -15,7 +15,13 @@ data class TranscriptEntry(val id: String, val directory: File, val created: Lon
 
 /** Text history owns independent copies; deleting source audio cannot cascade into it. */
 class TranscriptHistory(private val root: File, private val clock: () -> Long = System::currentTimeMillis) {
+    companion object {
+        fun idForAttempt(attempt: String): String = UUID.nameUUIDFromBytes(attempt.toByteArray(Charsets.UTF_8)).toString()
+    }
     private val entries = mutableMapOf<String, TranscriptEntry>()
+    // Derived from each transcript's persisted audioId, never a second source of
+    // truth. Lookup touches only the versions associated with one recording.
+    private val byAudio = mutableMapOf<String, MutableSet<String>>()
     private val ordered = HistoryIndex<TranscriptEntry>()
     private val expiry = RetentionIndex()
     private val leases = mutableMapOf<String, Int>()
@@ -43,7 +49,7 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
     @Synchronized fun save(source: File, model: String, audioId: String? = null, pinned: Boolean = false,
         attempt: String = source.name, modelId: String? = null): TranscriptEntry {
         initialize()
-        val id = UUID.nameUUIDFromBytes(attempt.toByteArray(Charsets.UTF_8)).toString()
+        val id = idForAttempt(attempt)
         entries[id]?.let { existing ->
             check(id !in deleted) { "Transcript was deleted" }
             if (pinned && !existing.retention.pinned) setPinned(id, true, HistoryRetention.FOREVER, "")
@@ -62,6 +68,15 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
     }
 
     @Synchronized fun get(id: String): TranscriptEntry = checkNotNull(entries[id]?.takeIf { id !in deleted }) { "Transcript is unavailable" }
+    @Synchronized fun find(id: String?): TranscriptEntry? {
+        initialize()
+        return entries[id]?.takeIf { it.id !in deleted }
+    }
+
+    @Synchronized fun forAudio(audioId: String): List<TranscriptEntry> {
+        initialize()
+        return byAudio[audioId]?.mapNotNull { entries[it] } ?: emptyList()
+    }
     @Synchronized fun list(page: Int = 0, pageSize: Int = 30): List<TranscriptEntry> {
         initialize()
         return ordered.list(page, pageSize)
@@ -94,6 +109,7 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
     @Synchronized fun delete(id: String) {
         val entry = entries[id] ?: return
         persist(entry, discarded = true)
+        unlink(entry)
         deleted.add(id); ordered.remove(entry.cursor); expiry.remove(id); changes.value++
         if ((leases[id] ?: 0) == 0) remove(id)
     }
@@ -110,14 +126,28 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
         } }
     }
     private fun put(entry: TranscriptEntry) {
-        entries.put(entry.id, entry)?.let { ordered.remove(it.cursor) }
-        if (entry.id !in deleted) ordered.put(entry.cursor, entry)
+        entries.put(entry.id, entry)?.let {
+            ordered.remove(it.cursor)
+            if (it.audioId != entry.audioId) unlink(it)
+        }
+        if (entry.id !in deleted) {
+            ordered.put(entry.cursor, entry)
+            entry.audioId?.let { byAudio.getOrPut(it) { linkedSetOf() }.add(entry.id) }
+        }
         expiry.put(entry.id, entry.retention); changes.value++
     }
     private fun remove(id: String) {
         val entry = entries[id] ?: return
         if (!entry.directory.deleteRecursively()) return
+        unlink(entry)
         entries.remove(id); ordered.remove(entry.cursor); deleted.remove(id); expiry.remove(id); changes.value++
+    }
+    private fun unlink(entry: TranscriptEntry) {
+        val audioId = entry.audioId ?: return
+        byAudio[audioId]?.let { ids ->
+            ids.remove(entry.id)
+            if (ids.isEmpty()) byAudio.remove(audioId)
+        }
     }
     private fun persist(entry: TranscriptEntry, discarded: Boolean = false) {
         val p = Properties().apply {
