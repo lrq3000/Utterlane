@@ -32,7 +32,7 @@ Utterlane wordmark and the Blue harmony light/dark palette are reused directly.
 | **Studio** | Library strip above the transcript, compact recording console below | Efficient, clearly organized workspace for frequent use | Denser and more utilitarian |
 
 Focus is the initial recommendation for the broadest audience. Each concept has
-both light and dark modes; Studio merely starts dark. The waveform retains the
+both light and dark modes, and all three default to light. The waveform retains the
 existing violet–indigo–blue recording identity. There are no glows, ambient motion,
 new branding assets, or external image-generation dependencies.
 
@@ -59,8 +59,13 @@ data. Copy uses the browser clipboard when available and provides selectable tex
 when denied. Text export downloads the actual sample `.txt`. Browser sharing, if
 available, is an explicitly selected action. No sample text or audio is uploaded.
 
-Only the demo speaker preference persists between page loads. Sample histories
-exist in memory and reset on reload. The native implementation must instead
+Appearance, phone width, text size, and the current jump-to-state phase are saved
+locally and restored when opening another design or reloading. An explicit dark
+choice takes precedence over the light default, including in Studio. Active
+recording/finishing previews restart their sample timeline on a new page; this
+preserves the comparison phase, not the previous session's audio or elapsed time.
+The demo speaker preference also persists. Sample histories exist in memory and
+reset on reload. The native implementation must instead
 respect the real, independent history toggles and retention policies; automatic
 demo history is not a proposal to override those settings.
 
@@ -70,8 +75,9 @@ The prototype deliberately shares behavior, not just matching visuals:
 
 - `components.js`: `TranscriptPanel`, `WaveformControl`, `SpeakerToggle`,
   `HistoryNavigation`, the header and icon primitives.
-- `state.js`: one `DemoSession` state machine and one observable `Preferences`
-  source. The 64-bar waveform and finite sample text have bounded per-tick work.
+- `state.js`: one `DemoSession` state machine, one observable speaker `Preferences`
+  source, and validated shared `PreviewPreferences` for the four review controls.
+  The 64-bar waveform and finite sample text have bounded per-tick work.
 - `app.js`: route ownership and layout composition. Opening a destination does
   not own or terminate the capture lifecycle.
 - `styles.css`: shared tokens and component styles, with explicit layout variants.
