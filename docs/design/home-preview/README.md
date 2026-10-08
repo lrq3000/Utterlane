@@ -31,7 +31,7 @@ Utterlane wordmark and the Blue harmony light/dark palette are reused directly.
 | **Focus** | Transcript card, app-wide speaker switch, waveform, two history shortcuts | Balanced first-use experience; each feature has an explicit label | Smaller reading area |
 | **Notebook** | Open document canvas, lower recording dock, primary bottom navigation | More text visible; recorder stays near the thumb | History destinations have less explanatory copy |
 | **Studio** | Library strip above the transcript, compact recording console below | Efficient, clearly organized workspace for frequent use | Denser and more utilitarian |
-| **Blue Notebook** | Notebook's layout with Focus's blue canvas, rounded bordered transcript/speaker panels, and tonal actions | Larger reading area with clearer visual grouping and persistent navigation | Panel borders and padding use a little more space than the open Notebook canvas |
+| **Blue Notebook** | Notebook's layout with Focus's blue canvas, a rounded bordered transcript, compact speaker controls, and tonal actions | Larger reading area with clearer visual grouping and persistent navigation | Transcript borders and padding use a little more space than the open Notebook canvas |
 
 Focus is the initial recommendation for the broadest audience. Each concept has
 both light and dark modes, and all four default to light. The waveform retains the
@@ -60,7 +60,14 @@ histories and Settings, and highlights the current primary destination. The pane
 reserves its own space so it does not hide the final content row; transient notices
 appear above it. Native-style modal dialogs still take focus above the whole app.
 D reuses B's layout and navigation renderer, with visual overrides for A's palette,
-rounded bordered panels and tonal buttons.
+the rounded bordered transcript and tonal buttons. Its speaker controls are
+unboxed and compact.
+
+File transcription is accessed from the Record screen in every design, not from
+either history. In D, the title and subtitle share an invisible full-width layout
+row with a square audio-file action on the right. The row has no background or
+border. The text determines the row and button height, so the action scales
+naturally with the text-size control.
 
 The sample transcript, audio levels, recognition, ETA, library, import, and
 Android settings/share destinations are **simulated**. There is no microphone
