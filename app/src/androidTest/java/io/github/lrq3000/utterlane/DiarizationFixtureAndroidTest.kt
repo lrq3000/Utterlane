@@ -115,6 +115,19 @@ class DiarizationFixtureAndroidTest {
         require(attention in listOf("default", "flash", "manual"))
         if (attention == "default") android.system.Os.unsetenv("CRISPASR_NEMOTRON3_DIAR_ATTN")
         else android.system.Os.setenv("CRISPASR_NEMOTRON3_DIAR_ATTN", attention, true)
+        val decoder = args.getString("asr_decoder", "default")
+        require(decoder in listOf("default", "ggml", "scalar"))
+        if (decoder == "default") android.system.Os.unsetenv("CRISPASR_PARAKEET_GGML_DECODE")
+        else android.system.Os.setenv("CRISPASR_PARAKEET_GGML_DECODE", if (decoder == "ggml") "1" else "0", true)
+        val projection = args.getString("asr_projection", "default")
+        require(projection in listOf("default", "backend"))
+        if (projection == "default") android.system.Os.unsetenv("CRISPASR_RNNT_GPU_ENC_PROJ")
+        else {
+            require(decoder == "ggml")
+            // Despite its upstream name, this uses the selected backend, which
+            // remains CPU-only in Utterlane. It does not enable a GPU.
+            android.system.Os.setenv("CRISPASR_RNNT_GPU_ENC_PROJ", "1", true)
+        }
         val fixture = args.getString("fixture", "test-1-speaker-french")
         require(fixture in listOf("test-1-speaker-french", "test-2-speakers-french-3-turns"))
         val tag = args.getString("tag", "candidate").also { require(it.matches(Regex("[a-zA-Z0-9_-]+"))) }
@@ -163,6 +176,9 @@ class DiarizationFixtureAndroidTest {
                 put("audio_end_ms", owned / 16.0)
             }.toString() + "\n")
         }
+        val nativeLog = if (args.getString("native_probe", "false").toBooleanStrict())
+            NativeBenchmarkLog(File(directory, "native-benchmarks.txt")) else null
+        try {
         val load = SystemClock.elapsedRealtime()
         val modelPath = "/sdcard/Download/parakeet-qa/parakeet-ultra-q8_0.gguf"
         val native: RecognitionBackend = recorded ?: CrispParakeetBackend(modelPath, options.asrThreads)
@@ -294,6 +310,8 @@ class DiarizationFixtureAndroidTest {
                 put("last_text_ms", if (lastTextAt == 0L) JSONObject.NULL else lastTextAt - timingOrigin)
                 put("model_setup_ms", timingOrigin - load)
                 put("native_attention", attention)
+                put("asr_decoder", decoder)
+                put("asr_projection", projection)
                 put("asr_source_tag", sourceTag ?: JSONObject.NULL)
                 put("native_stage_ms", JSONObject(nativeStageNanos.mapValues { it.value / 1_000_000.0 }))
                 put("native_forward_ms", JSONArray(forwardMillis))
@@ -302,6 +320,7 @@ class DiarizationFixtureAndroidTest {
             if (enabled && count != 1) { assertEquals(accepted, fed); assertTrue(nativeCalls > 0) }
             android.util.Log.i("DiarizationFixture", "$fixture $tag: samples=$accepted forwards=$nativeCalls elapsed=${SystemClock.elapsedRealtime() - started}ms")
         } finally { session.close(); processor?.close(); native.close(); frames.close(); store.dispose() }
+        } finally { nativeLog?.close() }
     }
 
     /** Recompute native speakers while holding real ASR words and windows fixed.

@@ -34,6 +34,9 @@ class DiarizationSpeedRun:
             "native_attention": self.args.attention,
             "diarization": str(self.args.diarization == "on").lower(),
             "realtime": str(self.args.realtime).lower(),
+            "asr_decoder": self.args.asr_decoder,
+            "asr_projection": self.args.asr_projection,
+            "native_probe": str(self.args.native_probe).lower(),
         }
         if self.args.asr_source_tag:
             arguments["asr_source_tag"] = self.args.asr_source_tag
@@ -65,7 +68,7 @@ class DiarizationSpeedRun:
         displayed = report
         if self.args.compact:
             displayed = {key: report[key] for key in (
-                "tag", "diarization", "elapsed_ms", "first_text_ms", "asr_audio_seconds",
+                "tag", "diarization", "asr_decoder", "elapsed_ms", "first_text_ms", "asr_audio_seconds",
                 "stage_totals_ms", "chunk_count", "chunk_p95_ms")}
             displayed["word_errors"] = report["text"]
             if report["capture"]:
@@ -101,6 +104,8 @@ class DiarizationSpeedRun:
             "options": summary["options"], "native_attention": summary.get("native_attention", "default"),
             "asr_source_tag": summary.get("asr_source_tag"),
             "diarization": summary["diarization"],
+            "asr_decoder": summary.get("asr_decoder", "default"),
+            "asr_projection": summary.get("asr_projection", "default"),
             "realtime": summary.get("realtime", False), "capture": summary.get("capture"),
             "first_text_ms": summary.get("first_text_ms"),
             "first_text_with_setup_ms": summary.get("first_text_with_setup_ms"),
@@ -139,6 +144,8 @@ class DiarizationSpeedReport:
             rows.append({
                 "tag": report["tag"], "fixture": report["fixture"], "repeats": report["repeats"],
                 "diarization": diarization,
+                "asr_decoder": report.get("asr_decoder", "default"),
+                "asr_projection": report.get("asr_projection", "default"),
                 "realtime": report.get("realtime", False),
                 "capture_ms": capture.get("capture_elapsed_ms"),
                 "backlog_at_stop_audio_ms": capture.get("backlog_at_stop_audio_ms"),
@@ -189,6 +196,9 @@ def main():
     parser.add_argument("--repeats", type=int, choices=range(1, 9), default=1)
     parser.add_argument("--attention", choices=("default", "flash", "manual"), default="default")
     parser.add_argument("--diarization", choices=("on", "off"), default="on")
+    parser.add_argument("--asr-decoder", choices=("default", "ggml", "scalar"), default="default", help="QA-only native decoder override; not a current app setting")
+    parser.add_argument("--asr-projection", choices=("default", "backend"), default="default", help="QA-only encoder projection override, requiring the ggml decoder")
+    parser.add_argument("--native-probe", action="store_true", help="Capture native stage counters in the local, private run artifacts")
     parser.add_argument("--realtime", action="store_true", help="Pace independent capture through RecordingPipeline; one fixture, at most 30 seconds")
     parser.add_argument("--compact", action="store_true", help="Print headline metrics; retain the full local JSON report")
     parser.add_argument("--asr-source-tag", help="Reuse PCM-checked ASR evidence; elapsed time then excludes neural ASR")
@@ -208,6 +218,8 @@ def main():
         parser.error("ASR-only benchmarks must run neural ASR rather than replay its evidence")
     if args.realtime and (args.repeats != 1 or args.asr_source_tag):
         parser.error("Real-time trials require one fresh recording, without ASR evidence replay")
+    if args.asr_projection == "backend" and args.asr_decoder != "ggml":
+        parser.error("Backend projection requires --asr-decoder ggml")
     for tag in (args.tag, args.asr_source_tag):
         if tag is not None and not re.fullmatch(r"[a-zA-Z0-9_-]+", tag):
             parser.error("Run/source tags must contain only letters, digits, underscores or hyphens")
