@@ -4,7 +4,7 @@
 
 class PreviewIcons {
   static paths = {
-    close: '<path d="m6 6 12 12M18 6 6 18"/>',
+    back: '<path d="M20 12H4m7-7-7 7 7 7"/>',
     copy: '<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3"/>',
     share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/>',
     play: '<path d="m8 4 12 8-12 8Z"/>',
@@ -155,8 +155,10 @@ class DialogPreview {
 
   render() {
     const { id, title, recommendation, caption } = this.concept;
-    const close = PreviewIcons.button("close", "Close transcription");
-    const heading = `<header class="dialog-heading"><h3 id="${id}-title">Transcription</h3>${id === "b" ? `<div class="header-actions">${this.transcriptActions()}${close}</div>` : close}</header>`;
+    // Separate dismissal from transcript actions: the title sits between Back
+    // and B's pin/copy/share tools, reducing accidental exits while using them.
+    const back = PreviewIcons.button("close", "Go back", "back");
+    const heading = `<header class="dialog-heading">${back}<h3 id="${id}-title">Transcription</h3>${id === "b" ? `<div class="header-actions">${this.transcriptActions()}</div>` : ""}</header>`;
     // Each concept reuses the same components and action controller. Only their
     // order/placement changes, so a visual variation cannot silently omit a tool.
     const contents = id === "b"

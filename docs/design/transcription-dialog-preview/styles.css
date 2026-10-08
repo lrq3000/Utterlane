@@ -89,7 +89,7 @@ h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.
 .icon-button { width: 48px; height: 48px; padding: 12px; border: 0; flex: 0 0 48px; display: inline-flex; align-items: center; justify-content: center; background: transparent; color: var(--blue); border-radius: 12px; position: relative; }
 .icon { display: block; width: 24px; height: 24px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .icon-button:hover:not(:disabled), .icon-button:focus-visible { background: var(--tonal); }
-.icon-button.close { color: var(--ink); margin-right: -6px; }
+.icon-button.close { color: var(--ink); margin-left: -6px; margin-right: 4px; }
 .icon-button.pin[aria-pressed="true"] .icon { fill: currentColor; }
 .icon-button.pin .icon { stroke: none; }
 /* Keep icon-only controls visually quiet; names appear on hover/focus and are
@@ -97,7 +97,7 @@ h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.
 .icon-button::after { content: attr(aria-label); position: absolute; z-index: 10; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); color: var(--surface); background: var(--ink); border-radius: 6px; padding: 7px 9px; font-size: 11px; font-weight: 500; line-height: 1.3; white-space: nowrap; pointer-events: none; opacity: 0; }
 .icon-button:hover::after, .icon-button:focus-visible::after { opacity: 1; transition: opacity .1s .35s; }
 .dialog-heading .icon-button::after { top: calc(100% + 4px); bottom: auto; }
-.close::after { left: auto; right: 0; transform: none; }
+.close::after { left: 0; right: auto; transform: none; }
 .status { padding: 0 3px 8px; font-size: 11px; color: var(--muted); line-height: 1.45; }
 .status-line { display: flex; gap: 6px; align-items: center; }
 .status-line > .icon { width: 13px; height: 13px; stroke-width: 2; }
@@ -159,7 +159,7 @@ h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.
 .proposal[data-concept="b"] .dialog-heading h3 { font-size: 19px; letter-spacing: -.5px; }
 .proposal[data-concept="b"] .dialog-heading { flex-wrap: wrap; }
 .proposal[data-concept="b"] .header-actions { display: flex; margin-left: auto; }
-.proposal[data-concept="b"] .header-actions .close { margin-right: -4px; }
+.proposal[data-concept="b"] .dialog-heading > .close { margin-left: -4px; margin-right: 0; }
 .proposal[data-concept="b"] .document { border-radius: 10px; }
 .proposal[data-concept="b"] .audio-strip { border: 0; }
 .proposal[data-concept="b"] .page-bar { background: transparent; border: 0; padding: 0; }
@@ -167,10 +167,11 @@ h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.
 .proposal[data-concept="b"] .menu { top: auto; bottom: calc(100% + 3px); }
 @container phone (max-width: 355px) {
   /* On narrow phones, allow the transcript actions a second row but keep the
-     only dismissal control anchored in the top-right corner. */
-  .proposal[data-concept="b"] .dialog-heading { display: grid; grid-template-columns: 1fr 48px; }
+     only dismissal control anchored in the top-left corner. */
+  .proposal[data-concept="b"] .dialog-heading { display: grid; grid-template-columns: 48px 1fr; }
+  .proposal[data-concept="b"] .dialog-heading > .close { grid-row: 1; grid-column: 1; }
+  .proposal[data-concept="b"] .dialog-heading h3 { grid-row: 1; grid-column: 2; }
   .proposal[data-concept="b"] .header-actions { display: contents; }
-  .proposal[data-concept="b"] .header-actions .close { grid-row: 1; grid-column: 2; }
   .proposal[data-concept="b"] .header-actions .transcript-actions { grid-row: 2; grid-column: 1 / -1; justify-content: flex-end; }
 }
 

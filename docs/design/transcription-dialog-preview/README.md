@@ -16,7 +16,10 @@ Use the existing [Blue harmony palette](../blue-harmony-spec.md), system fonts,
 thin rounded borders, and consistent outline icons. The pin uses the app's
 Material PushPin silhouette, filled when retained. Every icon has an accessible
 name, tooltip, and at least a 48-pixel interactive target. Delete remains written
-out; the top-right close icon is the sole close control in each open dialog.
+out; a top-left back arrow is the sole dismissal control in each open dialog.
+This follow-up revision separates dismissal from pin/copy/share, particularly in
+B's header, to reduce accidental exits. The title separates Back from these tools;
+on narrow phones, B's tools occupy a second row while Back stays at the top left.
 The transcript fills remaining vertical space instead of being capped at 300 dp.
 Its persistent, high-contrast scrollbar must reflect and control actual scrolling.
 
@@ -27,7 +30,7 @@ Checked against `TranscriptionDialog.kt`, `AudioPlaybackControls.kt`, and
 
 | Existing capability | Preview representation |
 | --- | --- |
-| Close | Top-right cross; preview can be reopened |
+| Close / go back | Top-left outline back arrow; preview can be reopened |
 | Playback, pause/resume, stop, seek | Compact audio strip, simulated playback state and seek position |
 | Retranscribe using same model / choose another model | Circular-arrow icon opens the two existing choices |
 | Save audio to history / share audio / save to device | Audio-save icon opens the three existing choices |
@@ -86,9 +89,13 @@ Reviewed in Chrome through browser-controller on 2026-10-08:
 - Desktop viewport: 1150 × 791. Phone canvases: 392 and 320 pixels wide. A separate
   360 × 780 iframe viewport verified responsive page stacking without horizontal
   overflow. Transcript text checked at 100% and 150%.
-- Fixed a review finding: B's narrow layout now gives actions a second row while
-  keeping the sole close icon at the top right. Visible controls remained within
-  the phone bounds at 320 pixels.
+- Initial review fixed B's narrow layout by giving actions a second row while
+  keeping dismissal in the header. The subsequent user-requested revision replaces
+  the top-right cross with a top-left back arrow in all three concepts.
+- Follow-up review verified Back precedes the title in all three layouts at 392
+  and 320 pixels, with 48 × 48 targets and separate transcript actions. At 320
+  pixels, B's actions occupy the second row and all visible controls fit inside
+  each phone. Back/reopen was exercised in B and restored focus to Go back.
 - Scroll changed the transcript position by 300 pixels without moving the dialog.
   Paging replaced the content, reset scrolling, updated boundary-button states,
   and preserved the pin state. Other proposals retained independent pin states.
