@@ -37,6 +37,7 @@ class DiarizationSpeedRun:
             "asr_decoder": self.args.asr_decoder,
             "asr_projection": self.args.asr_projection,
             "native_probe": str(self.args.native_probe).lower(),
+            "asr_ffn": self.args.asr_ffn,
         }
         if self.args.asr_source_tag:
             arguments["asr_source_tag"] = self.args.asr_source_tag
@@ -106,6 +107,7 @@ class DiarizationSpeedRun:
             "diarization": summary["diarization"],
             "asr_decoder": summary.get("asr_decoder", "default"),
             "asr_projection": summary.get("asr_projection", "default"),
+            "asr_ffn": summary.get("asr_ffn", "default"),
             "realtime": summary.get("realtime", False), "capture": summary.get("capture"),
             "first_text_ms": summary.get("first_text_ms"),
             "first_text_with_setup_ms": summary.get("first_text_with_setup_ms"),
@@ -146,6 +148,7 @@ class DiarizationSpeedReport:
                 "diarization": diarization,
                 "asr_decoder": report.get("asr_decoder", "default"),
                 "asr_projection": report.get("asr_projection", "default"),
+                "asr_ffn": report.get("asr_ffn", "default"),
                 "realtime": report.get("realtime", False),
                 "capture_ms": capture.get("capture_elapsed_ms"),
                 "backlog_at_stop_audio_ms": capture.get("backlog_at_stop_audio_ms"),
@@ -199,6 +202,7 @@ def main():
     parser.add_argument("--asr-decoder", choices=("default", "ggml", "scalar"), default="default", help="QA-only native decoder override; not a current app setting")
     parser.add_argument("--asr-projection", choices=("default", "backend"), default="default", help="QA-only encoder projection override, requiring the ggml decoder")
     parser.add_argument("--native-probe", action="store_true", help="Capture native stage counters in the local, private run artifacts")
+    parser.add_argument("--asr-ffn", choices=("default", "repack"), default="default", help="QA-only CPU FFN weight-layout experiment; inspect native logs for activation")
     parser.add_argument("--realtime", action="store_true", help="Pace independent capture through RecordingPipeline; one fixture, at most 30 seconds")
     parser.add_argument("--compact", action="store_true", help="Print headline metrics; retain the full local JSON report")
     parser.add_argument("--asr-source-tag", help="Reuse PCM-checked ASR evidence; elapsed time then excludes neural ASR")

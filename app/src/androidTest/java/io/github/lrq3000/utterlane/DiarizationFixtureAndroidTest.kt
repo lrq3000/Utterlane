@@ -128,6 +128,10 @@ class DiarizationFixtureAndroidTest {
             // remains CPU-only in Utterlane. It does not enable a GPU.
             android.system.Os.setenv("CRISPASR_RNNT_GPU_ENC_PROJ", "1", true)
         }
+        val ffn = args.getString("asr_ffn", "default")
+        require(ffn in listOf("default", "repack"))
+        if (ffn == "default") android.system.Os.unsetenv("CRISPASR_PARAKEET_FFN")
+        else android.system.Os.setenv("CRISPASR_PARAKEET_FFN", ffn, true)
         val fixture = args.getString("fixture", "test-1-speaker-french")
         require(fixture in listOf("test-1-speaker-french", "test-2-speakers-french-3-turns"))
         val tag = args.getString("tag", "candidate").also { require(it.matches(Regex("[a-zA-Z0-9_-]+"))) }
@@ -312,6 +316,7 @@ class DiarizationFixtureAndroidTest {
                 put("native_attention", attention)
                 put("asr_decoder", decoder)
                 put("asr_projection", projection)
+                put("asr_ffn", ffn)
                 put("asr_source_tag", sourceTag ?: JSONObject.NULL)
                 put("native_stage_ms", JSONObject(nativeStageNanos.mapValues { it.value / 1_000_000.0 }))
                 put("native_forward_ms", JSONArray(forwardMillis))
