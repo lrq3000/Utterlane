@@ -19,6 +19,9 @@ class TranscriptionSession(
     private val finishSpeakers: (suspend () -> List<SpeechSpan>)? = null
 ) : java.io.Closeable {
     private val speakerText = if (decodeSpeakers != null) SpeakerText(corrections, speakerLabel) else null
+    // The decoder actually used and committed output determine this badge;
+    // a preference alone cannot prove that speaker labeling was available.
+    val hasSpeakerLabels: Boolean get() = speakerText != null && store.segments > 0
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
     private val segmenter = AudioSegmenter(flushPendingOnFinish = decodeSpeakers != null, options = options) { window ->
         if (!mayContinue()) return@AudioSegmenter

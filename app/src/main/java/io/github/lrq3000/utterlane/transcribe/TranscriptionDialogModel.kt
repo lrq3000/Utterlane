@@ -15,14 +15,16 @@ import kotlinx.coroutines.flow.*
 
 data class DialogInput(val uri: Uri? = null, val path: String? = null, val audioId: String? = null,
     val transcriptId: String? = null, val transcriptPath: String? = null, val automatic: Boolean = false,
-    val transcriptOrigin: Boolean = transcriptId != null, val modelName: String = "", val modelId: String? = null)
+    val transcriptOrigin: Boolean = transcriptId != null, val modelName: String = "", val modelId: String? = null,
+    val metadata: TranscriptMetadata? = null)
 
 data class TranscriptionDialogState(
     val audio: HistoryEntry? = null, val store: TranscriptStore? = null, val transcriptId: String? = null,
     val preview: String = "", val pageOffset: Long? = null, val running: Boolean = false,
     val importing: Boolean = false, val saving: Boolean = false, val closing: Boolean = false,
     val progress: Int? = null, val message: String? = null, val model: String = "",
-    val capture: CaptureSnapshot = CaptureSnapshot(), val visualRate: Int = VisualRefreshRate.DEFAULT
+    val capture: CaptureSnapshot = CaptureSnapshot(), val visualRate: Int = VisualRefreshRate.DEFAULT,
+    val transcriptPinned: Boolean = false
 )
 
 /**
@@ -44,6 +46,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     private var chosenModel = input.modelName
     private var resultModelId: String? = input.modelId
     private var lastRequestedModelId: String? = input.modelId
+    @Volatile private var resultMetadata = input.metadata ?: TranscriptMetadata()
     var metrics = CaptureMetrics()
         private set
 
@@ -62,7 +65,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                     if (entry != null) {
                         ownedAudioId = ownedAudioId ?: entry.audioId
                         chosenModel = entry.model; resultModelId = entry.modelId; lastRequestedModelId = entry.modelId
-                        mutable.update { it.copy(transcriptId = entry.id, model = entry.model) }
+                        resultMetadata = TranscriptMetadata(entry)
+                        mutable.update { it.copy(transcriptId = entry.id, model = entry.model, transcriptPinned = entry.retention.pinned) }
                     }
                     val restored = input.transcriptPath?.let { File(it).canonicalFile }?.takeIf { file ->
                         require(file.parentFile == File(app.cacheDir, "transcripts").canonicalFile) { "Transcript is unavailable" }
@@ -103,6 +107,9 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
 
     private fun refreshAudio() {
         val audio = ownedAudioId?.let { runCatching { app.recordingHistory.get(it) }.getOrNull() }?.takeUnless { it.status == "discarded" }
+        // Source deletion or a later re-transcription must not erase/change the
+        // metadata attached to the text this dialog already owns.
+        if (resultMetadata.created == null && audio != null) resultMetadata = TranscriptMetadata(audio)
         mutable.update { it.copy(audio = audio) }
     }
 
@@ -115,7 +122,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     }
 
     fun retry(useCurrentModel: Boolean = false) {
-        if (state.value.running || state.value.importing || state.value.closing || operation?.isActive == true) return
+        if (state.value.running || state.value.importing || state.value.saving || state.value.closing || operation?.isActive == true) return
         operation = viewModelScope.launch { transcribe(useCurrentModel) }
     }
 
@@ -164,8 +171,9 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         resultModelId = app.modelManager.selected.value.id
                         lastRequestedModelId = resultModelId
                         withContext(Dispatchers.Main) {
+                            resultMetadata = TranscriptMetadata(source, speakerLabels = false)
                             exposeStore(created.store)
-                            mutable.update { it.copy(transcriptId = null, model = chosenModel) }
+                            mutable.update { it.copy(transcriptId = null, model = chosenModel, transcriptPinned = false) }
                         }
                         val accept: suspend (ShortArray) -> Unit = { pcm -> metrics.captured(pcm.size); created.accept(pcm) }
                         if (source.sourceName != null) AudioDecoder(app).decode(source.part(0).absolutePath, accept) { latestProgress = it?.coerceIn(0, 99) }
@@ -180,8 +188,9 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         }
                         metrics.captureEnded()
                         created.finish() // Includes the enabled speaker finisher before saving results.
+                        resultMetadata = resultMetadata.copy(speakerLabels = created.hasSpeakerLabels)
                         if (retainText && textDuration != HistoryRetention.NONE && created.store.segments > 0) {
-                            val saved = app.transcriptHistory.save(created.store.file, chosenModel, audioId, modelId = resultModelId)
+                            val saved = resultMetadata.save(app.transcriptHistory, created.store.file, chosenModel, audioId, modelId = resultModelId)
                             mutable.update { it.copy(transcriptId = saved.id) }
                         }
                         app.recordingHistory.completeRecovery(audioId, app.settingsRepository.audioHistoryRetention.first())
@@ -200,26 +209,42 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
             presenter?.cancel(); activity?.cancel(); diagnostics?.cancel()
             diagnosticSession?.record(metrics.state.value)
             try { session?.close() } catch (e: Exception) { Log.e("TranscribeDialog", "Recognition cleanup failed", e) }
+            session?.takeIf { it.store === currentStore }?.let { completed ->
+                // Partial labeled text is still a real result after inference
+                // failure. Save the badge without requiring its source to exist.
+                resultMetadata = resultMetadata.copy(speakerLabels = completed.hasSpeakerLabels)
+                withContext(NonCancellable + Dispatchers.IO) {
+                    try { app.recordingHistory.setSpeakerLabels(audioId, completed.hasSpeakerLabels) }
+                    catch (e: Exception) { Log.e("TranscribeDialog", "Could not save speaker metadata", e) }
+                }
+            }
             session?.store?.takeIf { it !== currentStore }?.dispose()
             mutable.update { it.copy(running = false, capture = metrics.state.value) }
         }
     }
 
-    fun saveAudioToHistory() = saveAction {
+    fun saveAudioToHistory() = setAudioPinned(true)
+
+    fun setAudioPinned(pinned: Boolean) = saveAction {
         val id = checkNotNull(ownedAudioId)
-        app.recordingHistory.setPinned(id, true, app.settingsRepository.audioHistoryRetention.first(), app.historyCleanup.launchToken)
+        app.recordingHistory.setPinned(id, pinned, app.settingsRepository.audioHistoryRetention.first(), app.historyCleanup.launchToken)
         refreshAudio()
     }
 
-    fun saveTranscriptToHistory() = saveAction {
+    fun saveTranscriptToHistory() = setTranscriptPinned(true)
+
+    fun setTranscriptPinned(pinned: Boolean) = saveAction {
         check(!state.value.running) { "Wait for the current attempt to finish" }
         val store = checkNotNull(currentStore) { "There is no transcript to save" }
         val existing = mutable.value.transcriptId
         val saved = if (existing != null) {
-            app.transcriptHistory.setPinned(existing, true, app.settingsRepository.transcriptHistoryRetention.first(), app.historyCleanup.launchToken)
+            app.transcriptHistory.setPinned(existing, pinned, app.settingsRepository.transcriptHistoryRetention.first(), app.historyCleanup.launchToken)
             app.transcriptHistory.get(existing)
-        } else app.transcriptHistory.save(store.file, chosenModel, ownedAudioId, pinned = true, modelId = resultModelId)
-        mutable.update { it.copy(transcriptId = saved.id) }
+        } else {
+            check(pinned) { "There is no saved transcript to unpin" }
+            resultMetadata.save(app.transcriptHistory, store.file, chosenModel, ownedAudioId, pinned = true, modelId = resultModelId)
+        }
+        mutable.update { it.copy(transcriptId = saved.id, transcriptPinned = saved.retention.pinned) }
     }
 
     fun shareAudio(launch: (android.content.Intent) -> Unit) = saveAction(successMessage = null) {

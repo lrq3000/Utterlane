@@ -5,6 +5,7 @@ import android.util.Log
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.history.RecordingHistory
+import io.github.lrq3000.utterlane.history.TranscriptMetadata
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
@@ -21,7 +22,9 @@ class MicrophoneSession(
     private val onWarning: (String) -> Unit = {},
     private val onReady: () -> Unit = {},
     private val recorder: AudioCapture = AudioRecorder(),
-    private val onSessionClosed: () -> Unit = {}
+    private val onSessionClosed: () -> Unit = {},
+    private val keepResultAudio: Boolean = false,
+    private val openRecoveryOnFailure: Boolean = true
 ) {
     companion object {
         private val active = AtomicReference<MicrophoneSession?>(null)
@@ -34,6 +37,12 @@ class MicrophoneSession(
     @Volatile private var resetRequested = false
     @Volatile private var discardRequested = false
     @Volatile private var recordingId: String? = null
+    /** Identifiers remain stable even if retention/deletion later removes the entry. */
+    val audioId: String? get() = recordingId
+    @Volatile var savedTranscriptId: String? = null
+        private set
+    @Volatile var speakerLabels: Boolean = false
+        private set
 
     @OptIn(ExperimentalCoroutinesApi::class)
     fun start() {
@@ -80,7 +89,7 @@ class MicrophoneSession(
                 // This minimal private-storage setup precedes capture; model
                 // verification/loading/warm-up do not. The file is also the
                 // processing backlog when completed-recording history is off.
-                val saved = app.recordingHistory.begin(retention, automaticHistory)
+                val saved = app.recordingHistory.begin(retention, automaticHistory, keepUntilDismissed = keepResultAudio)
                 recording = saved
                 recordingId = saved.entry.id
                 lease = app.recordingHistory.acquire(saved.entry.id)
@@ -96,6 +105,7 @@ class MicrophoneSession(
                     prepare = {
                         phase = SessionFailure.Kind.MODEL
                         session = app.recognizerManager.createSession(captureOptions, onProcessed = metrics::processed) { delta ->
+                            speakerLabels = session!!.hasSpeakerLabels
                             if (!cancelled) withContext(Dispatchers.Main) { onText(delta, session!!.store) }
                         }
                         phase = SessionFailure.Kind.INFERENCE
@@ -107,8 +117,13 @@ class MicrophoneSession(
                         val complete = checkNotNull(session)
                         complete.finish()
                         if (saveTranscripts && textRetention != io.github.lrq3000.utterlane.history.HistoryRetention.NONE && complete.store.segments > 0) {
-                            app.transcriptHistory.save(complete.store.file, metrics.state.value.modelName, saved.entry.id,
-                                modelId = app.modelManager.selected.value.id)
+                            // The writer has drained before this callback; the
+                            // entry snapshot still has zero samples until finish.
+                            savedTranscriptId = TranscriptMetadata(saved.entry,
+                                durationMs = saved.writtenSamples * 1000 / 16000,
+                                speakerLabels = complete.hasSpeakerLabels).save(app.transcriptHistory,
+                                complete.store.file, metrics.state.value.modelName, saved.entry.id,
+                                modelId = app.modelManager.selected.value.id).id
                         }
                     },
                     onSamples = { metrics.samples(it, true) },
@@ -145,6 +160,9 @@ class MicrophoneSession(
                     recorder.stop()
                     withContext(NonCancellable + Dispatchers.IO) {
                         try { session?.close() } catch (e: Exception) { Log.e("MicrophoneSession", "Recognition cleanup failed", e) }
+                        speakerLabels = session?.hasSpeakerLabels == true
+                        try { recording?.let { UtterlaneApp.instance.recordingHistory.setSpeakerLabels(it.entry.id, speakerLabels) } }
+                        catch (e: Exception) { Log.e("MicrophoneSession", "Could not save speaker metadata", e) }
                         try { if (discardRequested) recording?.let { UtterlaneApp.instance.recordingHistory.dismiss(it.entry.id) } }
                         catch (e: Exception) { Log.e("MicrophoneSession", "Discard persistence failed; still finalizing audio", e) }
                         try { recording?.finish((failure != null && failure.kind != SessionFailure.Kind.NO_SPEECH) || cancelled) }
@@ -167,7 +185,9 @@ class MicrophoneSession(
                     withContext(NonCancellable + Dispatchers.Main) {
                         val originalFailure = failure
                         recording?.takeIf { !discardRequested && it.writtenSamples > 0 && (cancelled || (originalFailure != null && originalFailure.kind != SessionFailure.Kind.NO_SPEECH)) }?.let {
-                            io.github.lrq3000.utterlane.history.RecordingRecovery.show(context, it.entry.id)
+                            // Inline Home recovery owns the visible error. An
+                            // unexpected interruption still needs a return path.
+                            if (openRecoveryOnFailure || cancelled) io.github.lrq3000.utterlane.history.RecordingRecovery.show(context, it.entry.id)
                             failure = originalFailure?.copy(message = originalFailure.message + "\n" + context.getString(R.string.recording_recovery_saved), recoveryId = it.entry.id)
                         }
                         if (cancelled) metrics.cancelled() else metrics.completed(failure?.message)
