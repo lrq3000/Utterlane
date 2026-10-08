@@ -423,4 +423,9 @@
     <string name="dialog_pin_audio_state">Audio pinned</string>
     <string name="dialog_pin_transcript_state">Transcript pinned</string>
     <string name="dialog_pin_both_state">Audio and transcript pinned</string>
+    <!-- Blue Notebook Home; translate together once native integration is stable. -->
+    <string name="home_notification_title">Utterlane · New transcript</string>
+    <string name="home_notification_recording">Recording or finishing locally. Tap to return to your transcript.</string>
+    <string name="home_notification_processing">Processing audio on your device. Tap to return.</string>
+    <string name="home_stop">Stop recording</string>
 </resources>

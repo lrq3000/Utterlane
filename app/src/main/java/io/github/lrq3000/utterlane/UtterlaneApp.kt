@@ -38,6 +38,7 @@ class UtterlaneApp : Application() {
     var microphoneSessions = MicrophoneSessionFactory()
         internal set
     val audioPlayback by lazy { io.github.lrq3000.utterlane.transcribe.AudioPlaybackController(this) }
+    val homeController by lazy { io.github.lrq3000.utterlane.home.HomeController(this) }
 
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var modelWakeObserver: DeviceWakeObserver? = null
