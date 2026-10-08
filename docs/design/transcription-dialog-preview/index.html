@@ -6,8 +6,9 @@
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="data:,">
   <title>Utterlane · Transcription dialog design study</title>
-  <link rel="stylesheet" href="styles.css">
-  <script src="preview.js" defer></script>
+  <!-- Keep the HTML and its assets on the same revision when revisiting a cached study. -->
+  <link rel="stylesheet" href="styles.css?revision=6">
+  <script src="preview.js?revision=6" defer></script>
 </head>
 <body>
   <header class="studio-header">
@@ -18,7 +19,7 @@
     <section class="intro" aria-labelledby="study-title">
       <div>
         <h1 id="study-title">More room for your words.</h1>
-        <p>Three ways to make the transcript the focus. Familiar actions, quieter controls.</p>
+        <p>Four ways to make the transcript the focus. Familiar actions, quieter controls.</p>
       </div>
       <div class="appearance" role="group" aria-label="Preview appearance">
         <button data-theme="light" aria-pressed="true">Light</button>
@@ -32,6 +33,7 @@
         <button data-view="a" aria-pressed="false">A</button>
         <button data-view="b" aria-pressed="false">B</button>
         <button data-view="c" aria-pressed="false">C</button>
+        <button data-view="d" aria-pressed="false">D</button>
       </div>
       <div class="review-settings">
         <label>Phone <select id="phone-width"><option value="392">392 px</option><option value="360">360 px</option><option value="320">320 px</option></select></label>
@@ -42,10 +44,10 @@
       </div>
     </section>
 
-    <section class="gallery" aria-label="Three transcription dialog proposals"></section>
+    <section class="gallery" aria-label="Four transcription dialog proposals"></section>
 
     <footer class="studio-footer">
-      <p><strong>Try it:</strong> scroll the transcript, pin it, tap the icons, or open the menus. Select A, B, or C above for a full-size view.</p>
+      <p><strong>Try it:</strong> scroll the transcript, pin it, tap the icons, or open the menus. Select A, B, C, or D above for a full-size view.</p>
       <p>Outline at rest. Filled when pinned. Deletion always asks for confirmation. All device actions are simulated.</p>
     </footer>
   </main>

@@ -117,11 +117,20 @@ class DialogPreview {
   audioStrip() {
     const button = PreviewIcons.button.bind(PreviewIcons);
     const unavailable = this.noAudio ? "disabled" : "";
-    return `<div class="audio-strip" role="group" aria-label="Audio playback and tools">
+    return `<div class="audio-strip" role="group" aria-label="${this.concept.id === "d" ? "Playback and transcript actions" : "Audio playback and tools"}">
       ${button("play", this.playing ? "Pause audio" : "Play audio", this.playing ? "pause" : "play", unavailable)}
       ${button("stop", "Stop audio", "stop", `${unavailable} ${this.playbackActive ? "" : "hidden"}`)}
       <div class="seek-group"><input class="seek" type="range" min="0" max="168" value="${this.position}" aria-label="Audio playback position" ${unavailable}><span class="seek-time">${this.noAudio ? "No audio" : `${this.time(this.position)} / 02:48`}</span></div>
-      <div class="tools">
+      ${this.concept.id === "d" ? `<div class="tools">${this.transcriptActions()}</div>` : this.audioTools()}
+    </div>`;
+  }
+
+  audioTools() {
+    const button = PreviewIcons.button.bind(PreviewIcons);
+    const unavailable = this.noAudio ? "disabled" : "";
+    // Share the complete tool group between B's footer and D's header so moving
+    // it preserves its menus, source-specific deletion, and availability states.
+    return `<div class="tools">
         <div class="tool-holder">${button("retry", "Retranscribe", "retry", `aria-expanded="false" aria-controls="${this.concept.id}-retry-menu" ${this.running || this.noAudio ? "disabled" : ""}`)}
           <div class="menu" id="${this.concept.id}-retry-menu" hidden><p>Retranscribe</p><button data-action="same-model">Use the same model</button><button data-action="choose-model">Choose another model</button></div>
         </div>
@@ -129,7 +138,6 @@ class DialogPreview {
           <div class="menu" id="${this.concept.id}-save-menu" hidden><p>Audio options</p><button data-action="save-history">Keep audio in history</button><button data-action="share-audio">Share audio</button><button data-action="save-device">Save to device</button></div>
         </div>
         ${button("delete", `Delete ${this.deletionSubject}`, "delete", `aria-haspopup="dialog" aria-controls="${this.concept.id}-delete-confirmation"`)}
-      </div>
     </div>`;
   }
 
@@ -153,12 +161,13 @@ class DialogPreview {
   render() {
     const { id, title, recommendation, caption } = this.concept;
     // Separate dismissal from transcript actions: the title sits between Back
-    // and B's pin/copy/share tools, reducing accidental exits while using them.
+    // and the reader layouts' tools, reducing accidental exits while using them.
     const back = PreviewIcons.button("close", "Go back", "back");
-    const heading = `<header class="dialog-heading">${back}<h3 id="${id}-title"><span>Transcription</span></h3>${id === "b" ? `<div class="header-actions">${this.transcriptActions()}</div>` : ""}</header>`;
+    const headerActions = this.concept.reader ? `<div class="header-actions">${id === "d" ? this.audioTools() : this.transcriptActions()}</div>` : "";
+    const heading = `<header class="dialog-heading">${back}<h3 id="${id}-title"><span>Transcription</span></h3>${headerActions}</header>`;
     // Each concept reuses the same components and action controller. Only their
     // order/placement changes, so a visual variation cannot silently omit a tool.
-    const contents = id === "b"
+    const contents = this.concept.reader
       ? `${heading}${this.status()}${this.document()}${this.audioStrip()}`
       : `${heading}${this.status()}${this.audioStrip()}${this.document()}${id === "a" ? `<div class="bottom-actions">${this.transcriptActions()}</div>` : ""}`;
     this.root.innerHTML = `<div class="proposal-heading"><span class="letter">${id.toUpperCase()}</span><h2>${title}</h2>${recommendation ? `<span class="recommendation">${recommendation}</span>` : ""}</div>
@@ -183,7 +192,7 @@ class DialogPreview {
   }
 
   fitHeading() {
-    if (this.concept.id !== "b") return;
+    if (!this.concept.reader) return;
     const title = this.root.querySelector(".dialog-heading h3");
     // Reset to the CSS maximum so widening the phone restores normal type size.
     // Both bounds include comparison zoom, which cancels out in their ratio.
@@ -337,15 +346,16 @@ class DialogPreview {
 class DesignStudy {
   static concepts = [
     { id: "a", title: "Quiet focus", recommendation: "Recommended", caption: "<strong>A familiar rhythm.</strong> Audio above, transcript in the centre, everyday actions within easy thumb reach." },
-    { id: "b", title: "Open page", recommendation: "Most reading space", caption: "<strong>The document comes first.</strong> Actions move into the header. A compact footer gives the words more room." },
+    { id: "b", title: "Open page", reader: true, recommendation: "Most reading space", caption: "<strong>The document comes first.</strong> Actions move into the header. A compact footer gives the words more room." },
     { id: "c", title: "Reading rail", recommendation: "Tools beside the text", caption: "<strong>A quiet document workspace.</strong> A slim action rail keeps tools beside the transcript, with a narrower reading column." },
+    { id: "d", title: "Within reach", reader: true, recommendation: "Thumb-friendly", caption: "<strong>Your most-used actions, closer.</strong> B’s spacious reader with pin, copy, and share at the bottom. Audio tools move to the header." },
   ];
 
   constructor() {
     this.gallery = document.querySelector(".gallery");
     this.previews = DesignStudy.concepts.map(concept => {
       const root = document.createElement("article");
-      root.className = "proposal";
+      root.className = `proposal${concept.reader ? " reader-proposal" : ""}`;
       root.dataset.concept = concept.id;
       this.gallery.append(root);
       return new DialogPreview(root, concept);
@@ -378,7 +388,7 @@ class DesignStudy {
         if (!preview.root.contains(event.target)) preview.closeMenu();
       });
     });
-    // One observer for the three bounded mockups; no polling or animation loop.
+    // One observer for the bounded mockups; no polling or animation loop.
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.previews.forEach(preview => this.resizeObserver.observe(preview.root));
     window.addEventListener("resize", () => this.resize());

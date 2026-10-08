@@ -1,9 +1,10 @@
-# Transcription dialog — three design proposals
+# Transcription dialog — four design proposals
 
 ## Approved brief
 
-Produce three polished browser mockups of the existing Android transcription
-dialog. The user approved these directions on 2026-10-08:
+Produce polished browser mockups of the existing Android transcription dialog.
+The user approved the initial three directions on 2026-10-08 and subsequently
+requested D as a thumb-friendly variation of B:
 
 - **A · Quiet focus:** a balanced reading surface with a compact bottom toolbar.
   Recommended for familiar placement and full-width text.
@@ -11,15 +12,19 @@ dialog. The user approved these directions on 2026-10-08:
   Best for long transcripts; the header is more densely populated.
 - **C · Reading rail:** a document surface with a narrow vertical action rail.
   Keeps actions close to the text, exchanging some line width for reading height.
+- **D · Within reach:** B's exact reading layout with the right-hand action groups
+  swapped. Retranscribe, audio download/share, and delete occupy the top right;
+  pin/unpin, copy, and transcript share occupy the bottom right beside playback.
+  This puts the most frequently used transcript actions closer to the thumbs.
 
 Use the existing [Blue harmony palette](../blue-harmony-spec.md), system fonts,
 thin rounded borders, and consistent outline icons. The pin uses the app's
 Material PushPin silhouette, filled when retained. Every icon has an accessible
 name, tooltip, and at least a 48-pixel interactive target. A red outline trash icon
-sits at the far right of the audio-control row, after retranscribe and download;
+sits after retranscribe and download (on the audio row in A–C, in D's header);
 a top-left back arrow is the sole dismissal control in each open dialog.
 This follow-up revision separates dismissal from pin/copy/share, particularly in
-B's header, to reduce accidental exits. The title separates Back from these tools.
+B/D's header, to reduce accidental exits. The title separates Back from these tools.
 Back, the title, and all three actions stay vertically centered on one header row,
 including at 320 pixels. The title's actual rendered width determines its font
 size, shrinking below the normal 22 pixels only as needed while preserving the
@@ -52,12 +57,12 @@ Checked against `TranscriptionDialog.kt`, `AudioPlaybackControls.kt`, and
 | Copy and share transcript | Outline copy and share icons; preview-only feedback |
 | Pin / unpin transcript | First tap fills the pin; second tap restores its outline |
 | Read the complete transcript | Continuous scrolling; pagination controls removed at the user's request |
-| Delete transcript / delete audio / discard | Red trash icon on the audio row, followed by source-specific confirmation |
+| Delete transcript / delete audio / discard | Red trash icon beside retranscribe/download, followed by source-specific confirmation |
 | Progress, retention, recovery information | Preview state selector and compact inline status |
 | Optional processing statistics | Separate review toggle; rendered only while processing |
 | Transcript without retained audio | Text-only preview; audio-dependent controls are disabled |
 
-The user explicitly requested reversible pinning in revision 4. All three mockups
+The user explicitly requested reversible pinning in revision 4. All four mockups
 now toggle between pinned and unpinned on successive taps, updating the icon,
 tooltip, accessible pressed state, and feedback. Unpinning does not delete the
 sample transcript or change the audio-history status. Native implementation will
@@ -66,8 +71,8 @@ baseline dialog's save action only pins.
 
 ## Artifact plan and verification
 
-1. Create `index.html` for the review controls and the three phone-sized canvases.
-2. Create `styles.css` for shared tokens, three layout variants, responsive
+1. Create `index.html` for the review controls and the four phone-sized canvases.
+2. Create `styles.css` for shared tokens, four layout variants, responsive
    comparison/focus views, and light/dark appearance.
 3. Create `preview.js` with a shared dialog renderer/controller, local sample
    transcript, icon definitions, accessible menus, and simulated interactions.
@@ -90,7 +95,7 @@ Open `index.html` directly, or run from this directory:
 python -m http.server 8773 --bind 127.0.0.1
 ```
 
-Then open <http://127.0.0.1:8773/>. Compare all three, or focus one at full size.
+Then open <http://127.0.0.1:8773/>. Compare all four, or focus one at full size.
 Use the review controls to change appearance, phone width, text size, and state.
 Scroll inside the transcript, tap the pin, open audio/retranscription menus, and
 try the close/reopen and delete/cancel interactions. Compare **Complete**,
@@ -160,5 +165,21 @@ verification measured about 17.2 pixels at 320-pixel phone width and a restored
 22 pixels at 392-pixel width. The complete title fits at both widths, with a
 single 52-pixel header row and unchanged 48-pixel icon targets.
 
-The three layouts are proposals for selection, not an approved native redesign.
+Revision 6 introduces D through the shared reader layout and audio/transcript
+action renderers. It retains B's full-size bordered transcript, visible scrollbar,
+auto-fitting single-row title, playback controls, and source-specific deletion
+confirmation. Header menus open downward from D's upper-right tools; B's footer
+menus continue to open upward. All four designs are available in comparison and
+individual focus views.
+
+Revision 6 browser checks covered all four concepts together in light and dark
+appearance, D's full-size focus view, and 392/320-pixel phones. B and D have matching
+reading viewports at equal widths, including 275 × 544 pixels in the 320-pixel
+comparison. D's header stays on one row and fits its complete title. Pin/unpin,
+copy/share feedback, playback with Stop visible, both relocated menus, and header
+deletion confirmation/cancellation were exercised. Menus and icon targets fit
+inside the narrow phone. Asset URLs now carry the study revision to prevent a
+revisited page from mixing updated HTML with cached JavaScript or styles.
+
+The four layouts are proposals for selection, not an approved native redesign.
 No Android runtime behavior is established by this browser-only review.

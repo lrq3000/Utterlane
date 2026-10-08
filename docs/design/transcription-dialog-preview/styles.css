@@ -69,7 +69,7 @@ h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.
 .stats-toggle { cursor: pointer; }
 .stats-toggle input { accent-color: var(--blue); }
 .reset { border: 0; background: transparent; padding: 10px 4px; font-size: 12px; color: var(--muted); }
-.gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; padding-top: 28px; align-items: start; }
+.gallery { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; padding-top: 28px; align-items: start; }
 .proposal { min-width: 0; }
 .proposal-heading { display: flex; align-items: center; gap: 10px; max-width: var(--phone-width); margin: 0 auto 15px; }
 .letter { width: 29px; height: 29px; display: grid; place-items: center; border: 1px solid var(--document-line); border-radius: 8px; font-size: 12px; font-weight: 700; }
@@ -118,7 +118,10 @@ h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.
 .seek-group input::-moz-range-thumb { width: 11px; height: 11px; border: 0; border-radius: 50%; background: var(--blue); }
 .seek-group input:disabled { opacity: .35; cursor: default; }
 .seek-time { font-size: 10px; font-variant-numeric: tabular-nums; color: var(--muted); display: block; text-align: center; white-space: nowrap; }
-.audio-strip .tools { display: flex; border-left: 1px solid var(--line); margin-left: 4px; }
+.tools { display: flex; }
+.audio-strip .tools { border-left: 1px solid var(--line); margin-left: 4px; }
+.audio-strip .transcript-actions .icon-button { padding: 12px; }
+.audio-strip .transcript-actions .icon { width: 24px; height: 24px; }
 .tool-holder { display: flex; }
 .reading-layout { display: flex; gap: 4px; min-height: 0; flex: 1; }
 .document { min-height: 0; min-width: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--document-line); border-radius: 14px; background: var(--document); }
@@ -159,19 +162,19 @@ h1 { font-size: clamp(25px, 3vw, 35px); letter-spacing: -1.15px; line-height: 1.
 .proposal-caption strong { font-weight: 600; color: var(--ink); }
 .measurement { font-size: 11px; color: var(--blue); margin: 8px 0 0; }
 
-/* B trades separate action rows for a denser header. Audio tools share one
-   compact footer, leaving the largest full-width text region. */
-.proposal[data-concept="b"] .screen { padding: 6px 5px 3px; }
-.proposal[data-concept="b"] .dialog { padding: 6px 8px 0; border-radius: 21px; }
+/* B and D share their full-width reading surface and compact footer. D only
+   swaps the header/footer tool groups to put transcript actions in thumb reach. */
+.reader-proposal .screen { padding: 6px 5px 3px; }
+.reader-proposal .dialog { padding: 6px 8px 0; border-radius: 21px; }
 /* Keep one row and full 48 px icon targets by fitting the title into the rest.
    The preview measures the actual title glyphs to shrink its font only as needed. */
-.proposal[data-concept="b"] .dialog-heading h3 { font-size: 22px; letter-spacing: -.5px; min-width: 0; padding-left: 0; margin-right: 6px; overflow: hidden; white-space: nowrap; }
-.proposal[data-concept="b"] .dialog-heading h3 span { display: inline-block; }
-.proposal[data-concept="b"] .dialog-heading { flex-wrap: nowrap; }
-.proposal[data-concept="b"] .header-actions { display: flex; flex: 0 0 auto; }
-.proposal[data-concept="b"] .dialog-heading > .close { margin-left: -4px; margin-right: 0; }
-.proposal[data-concept="b"] .document { border-radius: 10px; }
-.proposal[data-concept="b"] .audio-strip { border: 0; }
+.reader-proposal .dialog-heading h3 { font-size: 22px; letter-spacing: -.5px; min-width: 0; padding-left: 0; margin-right: 6px; overflow: hidden; white-space: nowrap; }
+.reader-proposal .dialog-heading h3 span { display: inline-block; }
+.reader-proposal .dialog-heading { flex-wrap: nowrap; }
+.reader-proposal .header-actions { position: relative; display: flex; flex: 0 0 auto; }
+.reader-proposal .dialog-heading > .close { margin-left: -4px; margin-right: 0; }
+.reader-proposal .document { border-radius: 10px; }
+.reader-proposal .audio-strip { border: 0; }
 .proposal[data-concept="b"] .menu { top: auto; bottom: calc(100% + 3px); }
 @container phone (max-width: 355px) {
   /* When Stop is visible, preserve all 48 px targets on the same action row.
