@@ -301,6 +301,9 @@ class HomeController(private val app: UtterlaneApp) {
         var observer: Job? = null
         private var audioLease: Closeable? = lease
         private var leasedId: String? = if (lease != null) input.audioId else null
+        private var metadata = input.metadata ?: TranscriptMetadata()
+        private var wasRunning = false
+        private var previousStore: TranscriptStore? = null
         fun observe() {
             observer = scope.launch { model.state.collect { result ->
                 if (slot !== this@ResultOwner) return@collect
@@ -315,14 +318,22 @@ class HomeController(private val app: UtterlaneApp) {
                     leasedId = result.audio?.id
                     audioLease = leasedId?.let { runCatching { app.recordingHistory.acquire(it) }.getOrNull() }
                 }
+                if (metadata.created == null) result.audio?.let { metadata = TranscriptMetadata(it) }
+                if (wasRunning && !result.running && result.store !== previousStore) {
+                    // Snapshot only our completed retry, not arbitrary later audio
+                    // history revisions. Text metadata must survive source deletion
+                    // and unrelated retranscriptions of the same source recording.
+                    val savedText = result.transcriptId?.let { runCatching { app.transcriptHistory.get(it) }.getOrNull() }
+                    val audio = leasedId?.let { runCatching { app.recordingHistory.get(it) }.getOrNull() }
+                    metadata = savedText?.let(::TranscriptMetadata) ?: audio?.let(::TranscriptMetadata) ?: metadata
+                }
+                if (!result.running) previousStore = result.store
+                wasRunning = result.running
                 val saved = Bundle().also(model::saveInstanceState)
                 journal.write(input.copy(uri = null, path = null, automatic = false,
                     audioId = saved.getString("owned_audio"), transcriptId = saved.getString("saved_text"),
                     transcriptPath = saved.getString("working_text"), modelName = saved.getString("result_model").orEmpty(),
-                    modelId = saved.getString("result_model_id"),
-                    metadata = input.metadata?.let { metadata ->
-                        metadata.copy(speakerLabels = result.audio?.speakerLabels ?: metadata.speakerLabels)
-                    } ?: result.audio?.let(::TranscriptMetadata)))
+                    modelId = saved.getString("result_model_id"), metadata = metadata))
             } }
         }
         fun preserve() { model.state.value.store?.keepForRecovery() }
