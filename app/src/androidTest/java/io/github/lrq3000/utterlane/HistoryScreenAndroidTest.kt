@@ -27,8 +27,8 @@ class HistoryScreenAndroidTest {
     private val app get() = instrumentation.targetContext.applicationContext as UtterlaneApp
     private val ui = OnboardingTestUi()
 
-    @Test fun settingsOpensFullScreenAudioHistoryWithLogoAndBackNavigation() = verifyPage(false)
-    @Test fun settingsOpensFullScreenTranscriptHistoryWithLogoAndBackNavigation() = verifyPage(true)
+    @Test fun settingsOpensFullScreenAudioHistoryWithTitleAndBackNavigation() = verifyPage(false)
+    @Test fun settingsOpensFullScreenTranscriptHistoryWithTitleAndBackNavigation() = verifyPage(true)
     @Test fun audioScrollsBeyondTheWindowAndRestoresAfterDetailsAndRecreation() = verifyLongHistory(false)
     @Test fun transcriptsScrollBeyondTheWindowAndRestoreInDarkTheme() = verifyLongHistory(true)
 
@@ -65,9 +65,12 @@ class HistoryScreenAndroidTest {
             // Reach beyond the 90-row paging window, forcing automatic append and
             // page eviction. Pin refresh must keep the older entry under the finger.
             val target = ordered[130]
-            ui.scrollTo("history_pin_$target")
-            ui.click("history_pin_$target")
-            ui.awaitChecked("history_pin_$target", false)
+            ui.scrollTo("history_entry_$target")
+            val beforeRefresh = rowBounds(target)
+            if (transcripts) app.transcriptHistory.setPinned(target, false, HistoryRetention.FOREVER, launch)
+            else app.recordingHistory.setPinned(target, false, HistoryRetention.FOREVER, launch)
+            HistoryTestUi(ui).awaitPinned(target, false)
+            assertRowPosition(beforeRefresh, target)
             val before = rowBounds(target)
             ui.click("history_entry_$target")
             detail = detailMonitor.waitForActivityWithTimeout(5000)
@@ -135,13 +138,17 @@ class HistoryScreenAndroidTest {
             ui.node("history_screen").let { node -> node.getBoundsInScreen(bounds); node.recycle() }
             val display = history.resources.displayMetrics
             assertTrue("The history must fill the available width", bounds.width() >= display.widthPixels * 0.95)
-            assertTrue("The history must fill the available height", bounds.height() >= display.heightPixels * 0.85)
-            ui.node("brand_wordmark").recycle()
+            // Persistent primary navigation now owns the bottom of the window.
+            assertTrue("History must fill the content above navigation", bounds.height() >= display.heightPixels * 0.65)
+            ui.node("home_navigation").recycle()
+            ui.node("home_settings").recycle()
             ui.textNode(title).recycle()
+            HistoryTestUi(ui).assertAbsent("brand_wordmark")
+            HistoryTestUi(ui).assertAbsent("home_load_audio")
             assertFalse(ui.hasVisibleText(app.getString(R.string.stream_previous)))
             assertFalse(ui.hasVisibleText(app.getString(R.string.stream_next)))
             ui.screenshot(if (transcripts) "fullscreen-transcript-history" else "fullscreen-audio-history")
-            ui.click("history_back")
+            ui.click("home_back")
             instrumentation.waitForIdleSync()
             assertTrue("Back returns to the original Settings Activity", history.isFinishing || history.isDestroyed)
             assertFalse(settings.isFinishing)

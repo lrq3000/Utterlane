@@ -50,16 +50,18 @@ class HistoryPinsAndroidTest {
         val activity = instrumentation.startActivitySync(HistoryActivity.intent(app).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         try {
             app.settingsRepository.setAudioHistoryRetention(HistoryRetention.NONE)
-            ui.click("history_pin_${audio.entry.id}")
-            withTimeout(5000) { while (!app.recordingHistory.get(audio.entry.id).pinned) delay(10) }
-            ui.awaitChecked("history_pin_${audio.entry.id}", true)
-            ui.click("history_pin_${audio.entry.id}")
-            withTimeout(5000) { while (app.recordingHistory.get(audio.entry.id).pinned) delay(10) }
+            // This test concerns retention and revision-driven paging. Detail UI
+            // save/unpin is exercised by HistoryListInteractionAndroidTest.
+            val historyUi = HistoryTestUi(ui)
+            app.recordingHistory.setPinned(audio.entry.id, true, HistoryRetention.NONE, app.historyCleanup.launchToken)
+            historyUi.awaitPinned(audio.entry.id, true)
+            historyUi.assertNavigationOnly(audio.entry.id)
+            app.recordingHistory.setPinned(audio.entry.id, false, HistoryRetention.NONE, app.historyCleanup.launchToken)
             app.historyCleanup.request(HistoryCleanupCoordinator.AUDIO)
             assertTrue(audio.entry.directory.exists())
             assertEquals(app.historyCleanup.launchToken, app.recordingHistory.get(audio.entry.id).holdForLaunch)
             assertEquals("Pinning must not move entries under the user's finger", originalOrder, app.recordingHistory.list().map { it.id })
-            ui.awaitChecked("history_pin_${audio.entry.id}", false)
+            historyUi.awaitPinned(audio.entry.id, false)
             assertFalse(ui.hasVisibleText(app.getString(R.string.history_unpin_immediate)))
             ui.screenshot("history-audio-unpin-grace")
         } finally {
@@ -70,7 +72,7 @@ class HistoryPinsAndroidTest {
         }
     }
 
-    @Test fun transcriptsHaveTheirOwnPinControl() = runBlocking {
+    @Test fun transcriptPinIndicatorsReflectIndependentRetention() = runBlocking {
         ui.prepare()
         val previousTheme = app.settingsRepository.themeMode.first()
         app.settingsRepository.setThemeMode(io.github.lrq3000.utterlane.settings.SettingsRepository.THEME_LIGHT)
@@ -88,15 +90,15 @@ class HistoryPinsAndroidTest {
         val activity = instrumentation.startActivitySync(HistoryActivity.intent(app, transcripts = true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         try {
             app.transcriptHistory.setPinned(examples[0].id, false, HistoryRetention.NONE, app.historyCleanup.launchToken)
-            ui.click("history_pin_${text.id}")
-            withTimeout(5000) { while (!app.transcriptHistory.get(text.id).retention.pinned) delay(10) }
+            app.transcriptHistory.setPinned(text.id, true, HistoryRetention.NONE, app.historyCleanup.launchToken)
             app.transcriptHistory.prune(HistoryRetention.NONE)
             assertTrue(text.file.exists())
-            ui.awaitChecked("history_pin_${text.id}", true)
+            HistoryTestUi(ui).awaitPinned(text.id, true)
+            HistoryTestUi(ui).assertNavigationOnly(text.id)
             assertFalse(ui.hasVisibleText(app.getString(R.string.history_pinned)))
             ui.screenshot("history-transcript-pinned")
             app.settingsRepository.setThemeMode(io.github.lrq3000.utterlane.settings.SettingsRepository.THEME_DARK)
-            ui.screenshot("history-transcript-design-b-dark")
+            ui.screenshot("history-transcript-design-d-dark")
         } finally {
             instrumentation.runOnMainSync { activity.finish() }
             app.transcriptHistory.delete(text.id); file.delete()
