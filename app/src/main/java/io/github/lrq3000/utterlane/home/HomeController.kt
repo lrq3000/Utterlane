@@ -123,8 +123,9 @@ class HomeController(private val app: UtterlaneApp) {
             }
             pendingRetry -> {
                 pendingRetry = false
-                slot?.model?.retry(useCurrentModel = true)
-                mutable.update { it.copy(preparing = false) }
+                val model = slot?.model
+                HomeRetryHandoff.run(mutable, retry = { model?.retry(useCurrentModel = true) },
+                    snapshot = { model?.state?.value ?: mutable.value.result })
             }
             else -> captureDriver?.begin()
         }
