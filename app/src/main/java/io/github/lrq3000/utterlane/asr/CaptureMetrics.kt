@@ -19,7 +19,8 @@ data class CaptureSnapshot(
     val error: String? = null,
     val modelPreparing: Boolean = false,
     val recognitionFailure: String? = null,
-    val recognition: RecognitionStatus = RecognitionStatus.from(RecognitionActivity())
+    val recognition: RecognitionStatus = RecognitionStatus.from(RecognitionActivity()),
+    val input: io.github.lrq3000.utterlane.audio.CaptureInputState = io.github.lrq3000.utterlane.audio.CaptureInputState()
 ) {
     val capturedSeconds: Double get() = capturedSamples.coerceAtLeast(0) / 16000.0
     val processedSeconds: Double get() = processedSamples.coerceIn(0, capturedSamples.coerceAtLeast(0)) / 16000.0
@@ -33,6 +34,11 @@ data class CaptureSnapshot(
  * The clock is monotonic, the waveform is bounded, and no raw recording is retained here.
  */
 class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 1000000 }) {
+    @Synchronized fun input(value: io.github.lrq3000.utterlane.audio.CaptureInputState) {
+        if (terminal()) return
+        pending = pending.copy(input = value)
+        publish(true)
+    }
     private val mutable = MutableStateFlow(CaptureSnapshot())
     val state: StateFlow<CaptureSnapshot> = mutable
     private var pending = mutable.value

@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="audio_input_fallback_failed">The phone microphone could not resume capture after the external microphone became unavailable.</string>
+    <string name="audio_input_phone_unavailable">The phone microphone is unavailable.</string>
     <string name="app_name">Utterlane</string>
     <string name="settings_title">Settings</string>
 

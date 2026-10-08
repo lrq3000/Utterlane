@@ -8,6 +8,31 @@ import java.io.File
 import java.nio.file.Files
 
 class SleepRecoveryTest {
+    @Test fun routeRecoveryDrainsExistingAudioAndStopWinsBeforeReopen() {
+        var requests = 0
+        var reopened = 0
+        val samples = mutableListOf<Short>()
+        var reads = 0
+        CaptureReadLoop(clock = { 0 }, waitForFrames = {}).run(
+            read = { if (++reads == 1) { it[0] = 42; 1 } else 0 },
+            reopen = { reopened++ }, onSamples = { samples.add(it.single()) },
+            shouldContinue = { requests == 0 && reads < 4 }, routeRecoveryRequested = { requests++; true })
+        assertEquals(listOf(42.toShort()), samples)
+        assertEquals(1, requests)
+        assertEquals("A recovery request may race with Stop", 0, reopened)
+    }
+
+    @Test fun routeRecoveryReopensOnceOnTheCaptureWorkerAndContinuesTheSameStream() {
+        var reopened = 0
+        var reads = 0
+        val samples = mutableListOf<Short>()
+        CaptureReadLoop(clock = { 0 }, waitForFrames = {}).run(
+            read = { reads++; if (reopened == 0) 0 else { it[0] = 99; 1 } },
+            reopen = { reopened++ }, onSamples = { samples.add(it.single()) },
+            shouldContinue = { samples.isEmpty() && reads < 4 }, routeRecoveryRequested = { reopened == 0 })
+        assertEquals(1, reopened)
+        assertEquals(listOf(99.toShort()), samples)
+    }
     @Test fun stopWithoutIncomingFramesDoesNotNeedToUnblockANativeRead() {
         var running = true
         var reads = 0

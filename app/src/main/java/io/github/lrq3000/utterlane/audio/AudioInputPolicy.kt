@@ -16,6 +16,7 @@ data class InputPreferences(val selectedKey: String = AudioInput.PHONE_KEY, val 
 
 data class AudioInputState(val inputs: List<AudioInput>, val preferences: InputPreferences) {
     val byKey = inputs.associateBy { it.key }
+    val byInputId = inputs.mapNotNull { input -> input.inputId?.let { it to input } }.toMap()
     val selected: AudioInput get() = byKey[preferences.selectedKey] ?: AudioInput(AudioInput.PHONE_KEY, "", false)
 }
 
