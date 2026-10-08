@@ -2,16 +2,24 @@ package io.github.lrq3000.utterlane.asr
 
 /** Corrections own wording; speaker labels are formatting metadata applied afterward. */
 class SpeakerText(private val corrections: StreamingCorrections, private val label: (Int) -> String) {
+    /** Describes this emission, not earlier turns or whether storage committed it. */
+    data class Emission(val text: String, val hasSpeakerLabels: Boolean)
+
     private var speaker: Int? = null
     private var emitted = false
 
-    fun accept(spans: List<SpeechSpan>): List<String> = format(corrections.acceptSpans(spans))
+    fun accept(spans: List<SpeechSpan>): List<String> = acceptEmission(spans).text
         .takeIf { it.isNotEmpty() }?.let { listOf(it) }.orEmpty()
 
-    fun finish(): String = format(corrections.finishSpans())
+    fun finish(): String = finishEmission().text
 
-    private fun format(spans: List<SpeechSpan>): String {
+    fun acceptEmission(spans: List<SpeechSpan>): Emission = format(corrections.acceptSpans(spans))
+
+    fun finishEmission(): Emission = format(corrections.finishSpans())
+
+    private fun format(spans: List<SpeechSpan>): Emission {
         val output = StringBuilder()
+        var hasSpeakerLabels = false
         for (span in spans) {
             val lexicalStart = span.text.indexOfFirst { it.isLetterOrDigit() }
             // A correction can change a word's owner while its original trailing
@@ -31,11 +39,12 @@ class SpeakerText(private val corrections: StreamingCorrections, private val lab
                     text = text.drop(incomingStart)
                 }
                 output.append(label(span.speaker)).append(": ").append(text.trimStart())
+                hasSpeakerLabels = true
                 speaker = span.speaker
             } else output.append(span.text)
             emitted = true
         }
-        return output.toString()
+        return Emission(output.toString(), hasSpeakerLabels)
     }
 
     private fun incomingPrefixStart(text: String, lexicalStart: Int): Int {
