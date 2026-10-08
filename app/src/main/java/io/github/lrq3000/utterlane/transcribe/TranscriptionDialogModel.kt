@@ -317,6 +317,9 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                 task?.cancelAndJoin()
                 saving?.join()
                 withContext(Dispatchers.IO) {
+                    // Keep may publish a replacement after the early deletion
+                    // marker. Explicit Delete also owns that final saved result.
+                    if (input.transcriptOrigin && delete) mutable.value.transcriptId?.let(app.transcriptHistory::delete)
                     // Import completion can race dismissal; ownership was published
                     // on IO before returning so this second pass cannot orphan it.
                     if (!input.transcriptOrigin) ownedAudioId?.let { if (delete) app.recordingHistory.delete(it) else app.recordingHistory.dismiss(it) }
