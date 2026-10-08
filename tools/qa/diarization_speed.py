@@ -7,6 +7,7 @@ tags. Outputs can contain private speech and belong in ignored qa-artifacts.
 from __future__ import annotations
 
 import argparse
+import csv
 from datetime import datetime, timezone
 import json
 import math
@@ -95,22 +96,73 @@ class DiarizationSpeedRun:
         }
 
 
+class DiarizationSpeedReport:
+    """Publish numeric evidence without copying transcripts or posterior arrays."""
+    def __init__(self, source, destination):
+        self.source = source
+        self.destination = destination
+
+    def execute(self):
+        observations = []
+        for path in self.source.glob("*/analysis.json"):
+            report = json.loads(path.read_text(encoding="utf-8"))
+            invocation = json.loads((path.parent / "invocation.json").read_text(encoding="utf-8"))
+            observations.append((invocation["started_utc"], report))
+        if not observations:
+            raise ValueError("No completed benchmark observations found")
+        rows = []
+        for _, report in sorted(observations, key=lambda item: item[0]):
+            options = report["options"]
+            rows.append({
+                "tag": report["tag"], "fixture": report["fixture"], "repeats": report["repeats"],
+                "asr_source_tag": report.get("asr_source_tag"),
+                "batch": options["diarization_batch"], "threads": options["diarization_threads"],
+                "cache": options["native_cache_frames"], "fifo": options["native_fifo_frames"],
+                "update": options["native_update_frames"], "attention": report["native_attention"],
+                "audio_s": report["audio_seconds"], "elapsed_s": report["elapsed_ms"] / 1000,
+                "speaker_s": report["stage_totals_ms"].get("speaker", 0) / 1000,
+                "asr_s": report["stage_totals_ms"].get("asr", 0) / 1000,
+                "native_forwards": report["native_forwards"],
+                "chunk_p50_s": report["chunk_p50_ms"] / 1000,
+                "chunk_p95_s": report["chunk_p95_ms"] / 1000,
+                "warm_rtf": report["warm_rtf"],
+                "turns": report["turns"]["candidate_turn_count"],
+                "unknown_words": report["speakers"]["unknown_words"],
+                "matched_speaker_accuracy": report["speakers"]["matched_word_accuracy"],
+                "wer": report["text"]["wer"],
+                "tail_deletions": report["text"]["trailing_reference_deletions"],
+            })
+        # The caller chooses the tracked destination explicitly; private run
+        # artifacts remain in the ignored source directory.
+        with self.destination.open("w", encoding="utf-8", newline="") as output:
+            writer = csv.DictWriter(output, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+        print(f"Exported {len(rows)} observations to {self.destination}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--adb", default="adb")
-    parser.add_argument("--serial", required=True)
+    parser.add_argument("--serial")
     parser.add_argument("--package", default="io.github.lrq3000.utterlane.diarspeed")
-    parser.add_argument("--tag", required=True)
+    parser.add_argument("--tag")
     parser.add_argument("--fixture", choices=("test-1-speaker-french", "test-2-speakers-french-3-turns"), default="test-2-speakers-french-3-turns")
     parser.add_argument("--repeats", type=int, choices=range(1, 9), default=1)
     parser.add_argument("--attention", choices=("default", "flash", "manual"), default="default")
     parser.add_argument("--asr-source-tag", help="Reuse PCM-checked ASR evidence; elapsed time then excludes neural ASR")
     parser.add_argument("--option", action="append", default=[])
     parser.add_argument("--output", type=Path, default=Path("qa-artifacts/diarization-speed"))
+    parser.add_argument("--report", type=Path, help="Export completed local observations as a content-free CSV; no ADB action")
     parser.add_argument("--references", type=Path, default=Path("test_material/streaming_diarization_accuracy"))
     parser.add_argument("--plain-baseline", type=Path)
     parser.add_argument("--timeout", type=int, default=1200)
     args = parser.parse_args()
+    if args.report:
+        DiarizationSpeedReport(args.output, args.report).execute()
+        return
+    if not args.serial or not args.tag:
+        parser.error("--serial and --tag are required for a benchmark run")
     for tag in (args.tag, args.asr_source_tag):
         if tag is not None and not re.fullmatch(r"[a-zA-Z0-9_-]+", tag):
             parser.error("Run/source tags must contain only letters, digits, underscores or hyphens")
