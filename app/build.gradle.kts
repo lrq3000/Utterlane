@@ -99,6 +99,18 @@ android {
         compose = true
         viewBinding = true
     }
+    // JVM Android tests execute routing adapters on several SDK levels without
+    // booting an emulator or initializing the app's native recognition models.
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.maxHeapSize = "1g"
+            it.systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
+            // Android 16's simulated shared-memory setup uses this JDK access
+            // bridge. These flags affect the test JVM only, never the APK.
+            it.jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED", "-XX:+EnableDynamicAgentLoading")
+        }
+    }
     externalNativeBuild {
         cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" }
     }
@@ -149,6 +161,8 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation("io.mockk:mockk:1.13.13")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }
