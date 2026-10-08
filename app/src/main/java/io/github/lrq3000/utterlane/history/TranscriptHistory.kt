@@ -3,7 +3,6 @@ package io.github.lrq3000.utterlane.history
 import java.io.Closeable
 import java.io.File
 import java.util.Properties
-import java.util.TreeSet
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -11,12 +10,13 @@ import kotlinx.coroutines.flow.StateFlow
 data class TranscriptEntry(val id: String, val directory: File, val created: Long, val model: String,
     val audioId: String?, val retention: RetentionMark, val modelId: String? = null) {
     val file get() = File(directory, "transcript.txt")
+    val cursor get() = HistoryCursor(created, id)
 }
 
 /** Text history owns independent copies; deleting source audio cannot cascade into it. */
 class TranscriptHistory(private val root: File, private val clock: () -> Long = System::currentTimeMillis) {
     private val entries = mutableMapOf<String, TranscriptEntry>()
-    private val ordered = TreeSet(compareByDescending<TranscriptEntry> { it.created }.thenBy { it.id })
+    private val ordered = HistoryIndex<TranscriptEntry>()
     private val expiry = RetentionIndex()
     private val leases = mutableMapOf<String, Int>()
     private val deleted = mutableSetOf<String>()
@@ -64,7 +64,13 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
     @Synchronized fun get(id: String): TranscriptEntry = checkNotNull(entries[id]?.takeIf { id !in deleted }) { "Transcript is unavailable" }
     @Synchronized fun list(page: Int = 0, pageSize: Int = 30): List<TranscriptEntry> {
         initialize()
-        return ordered.asSequence().filter { it.id !in deleted }.drop(page * pageSize).take(pageSize).toList()
+        return ordered.list(page, pageSize)
+    }
+
+    @Synchronized fun page(anchor: HistoryCursor? = null, direction: HistoryDirection = HistoryDirection.REFRESH,
+        limit: Int = 30): HistoryPage<TranscriptEntry> {
+        initialize()
+        return ordered.page(anchor, direction, limit)
     }
 
     @Synchronized fun setPinned(id: String, value: Boolean, duration: HistoryRetention, launch: String) {
@@ -88,7 +94,7 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
     @Synchronized fun delete(id: String) {
         val entry = entries[id] ?: return
         persist(entry, discarded = true)
-        deleted.add(id); expiry.remove(id); changes.value++
+        deleted.add(id); ordered.remove(entry.cursor); expiry.remove(id); changes.value++
         if ((leases[id] ?: 0) == 0) remove(id)
     }
     @Synchronized fun acquire(id: String): Closeable {
@@ -104,13 +110,14 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
         } }
     }
     private fun put(entry: TranscriptEntry) {
-        entries.put(entry.id, entry)?.let(ordered::remove)
-        ordered.add(entry); expiry.put(entry.id, entry.retention); changes.value++
+        entries.put(entry.id, entry)?.let { ordered.remove(it.cursor) }
+        if (entry.id !in deleted) ordered.put(entry.cursor, entry)
+        expiry.put(entry.id, entry.retention); changes.value++
     }
     private fun remove(id: String) {
         val entry = entries[id] ?: return
         if (!entry.directory.deleteRecursively()) return
-        entries.remove(id); ordered.remove(entry); deleted.remove(id); expiry.remove(id); changes.value++
+        entries.remove(id); ordered.remove(entry.cursor); deleted.remove(id); expiry.remove(id); changes.value++
     }
     private fun persist(entry: TranscriptEntry, discarded: Boolean = false) {
         val p = Properties().apply {

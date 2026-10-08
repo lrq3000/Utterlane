@@ -4,7 +4,6 @@ import android.content.Intent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.lrq3000.utterlane.history.*
-import io.github.lrq3000.utterlane.settings.SettingsActivity
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.*
@@ -48,8 +47,7 @@ class HistoryPinsAndroidTest {
         audio.append(ShortArray(1600)); audio.finish(true)
         val examples = listOf(2, 9, 36).map(::savedRecording)
         val originalOrder = app.recordingHistory.list().map { it.id }
-        val activity = instrumentation.startActivitySync(Intent(app, SettingsActivity::class.java)
-            .putExtra(RecordingRecovery.EXTRA_RECOVERY, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val activity = instrumentation.startActivitySync(HistoryActivity.intent(app).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         try {
             app.settingsRepository.setAudioHistoryRetention(HistoryRetention.NONE)
             ui.click("history_pin_${audio.entry.id}")
@@ -87,12 +85,8 @@ class HistoryPinsAndroidTest {
             val source = File.createTempFile("history-list-", ".txt", app.cacheDir).apply { writeText(content) }
             try { app.transcriptHistory.save(source, model, pinned = true) } finally { source.delete() }
         }
-        val activity = instrumentation.startActivitySync(Intent(app, SettingsActivity::class.java)
-            .putExtra(RecordingRecovery.EXTRA_RECOVERY, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val activity = instrumentation.startActivitySync(HistoryActivity.intent(app, transcripts = true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         try {
-            // Close the audio browser, then open the independent text browser.
-            instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
-            ui.clickText(app.getString(R.string.transcript_history_title))
             app.transcriptHistory.setPinned(examples[0].id, false, HistoryRetention.NONE, app.historyCleanup.launchToken)
             ui.click("history_pin_${text.id}")
             withTimeout(5000) { while (!app.transcriptHistory.get(text.id).retention.pinned) delay(10) }

@@ -27,6 +27,11 @@ internal class OnboardingTestUi {
         }
 
     fun node(id: String): AccessibilityNodeInfo = awaitNode(id) { it.viewIdResourceName == id }
+    fun scrollTo(id: String, backwards: Boolean = false) {
+        val action = if (backwards) AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+        val node = awaitNode(id, timeout = 40_000, scrollAction = action) { it.viewIdResourceName == id && it.isVisibleToUser }
+        @Suppress("DEPRECATION") node.recycle()
+    }
     fun textNode(text: String): AccessibilityNodeInfo = awaitNode(text, 150_000) { it.text?.toString() == text }
     fun awaitChecked(id: String, checked: Boolean) {
         val node = awaitNode("$id checked=$checked") { it.viewIdResourceName == id && it.isCheckable && it.isChecked == checked }
@@ -91,7 +96,7 @@ internal class OnboardingTestUi {
             // or guessing coordinates. Allow layout to settle between actions.
             if (scrollAction != null && android.os.SystemClock.uptimeMillis() >= nextScroll) {
                 roots().forEach { root ->
-                    val container = find(root) { it.isScrollable }
+                    val container = find(root) { it.isScrollable && it.isVisibleToUser }
                     container?.performAction(scrollAction)
                     @Suppress("DEPRECATION") container?.recycle()
                     @Suppress("DEPRECATION") root.recycle()

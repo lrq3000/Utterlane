@@ -8,6 +8,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.AbsoluteAlignment
@@ -17,16 +21,17 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.ui.theme.LocalBrandPalette
 
 /** Source-derived lettering, not a font approximation of the supplied wordmark. */
 @Composable
-fun BrandHeader() {
+fun BrandHeader(title: String = stringResource(R.string.settings_title), onBack: (() -> Unit)? = null) {
     val palette = LocalBrandPalette.current
     Box(Modifier.fillMaxWidth().background(Brush.horizontalGradient(palette.header))) {
-        Column(Modifier.statusBarsPadding().padding(horizontal = 24.dp, vertical = 20.dp)) {
+        Column(Modifier.statusBarsPadding().padding(horizontal = 24.dp, vertical = if (onBack == null) 20.dp else 12.dp)) {
             Box(Modifier.fillMaxWidth().heightIn(min = 64.dp), contentAlignment = Alignment.Center) {
                 // Symmetric icon-sized gutters center the wordmark on the banner
                 // itself, not just the space remaining beside the right-side icon.
@@ -34,14 +39,18 @@ fun BrandHeader() {
                 Image(
                     painterResource(if (palette.dark) R.drawable.utterlane_wordmark_dark else R.drawable.utterlane_wordmark),
                     stringResource(R.string.app_name),
-                    Modifier.padding(horizontal = 54.dp).widthIn(max = 290.dp)
+                    Modifier.testTag("brand_wordmark").padding(horizontal = 54.dp).widthIn(max = 290.dp)
                         .fillMaxWidth().aspectRatio(1190f / 326f)
                 )
+                if (onBack != null) IconButton(onClick = onBack,
+                    modifier = Modifier.align(Alignment.CenterStart).size(48.dp).testTag("history_back")) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.history_back), tint = palette.text)
+                }
                 Image(painterResource(R.drawable.utterlane_icon), null,
-                    Modifier.align(AbsoluteAlignment.CenterRight).size(42.dp))
+                    Modifier.align(if (onBack == null) AbsoluteAlignment.CenterRight else Alignment.CenterEnd).size(42.dp))
             }
-            Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.labelLarge,
-                color = palette.muted, modifier = Modifier.padding(top = 12.dp))
+            Text(title, style = if (onBack == null) MaterialTheme.typography.labelLarge else MaterialTheme.typography.headlineSmall,
+                color = if (onBack == null) palette.muted else palette.text, modifier = Modifier.padding(top = 12.dp))
         }
         // Decorative identity only; unlike the recording waveform, these bars
         // never represent audio or imply a live microphone.

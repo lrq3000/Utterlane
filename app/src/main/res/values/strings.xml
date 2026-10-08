@@ -252,7 +252,7 @@
     <string name="stream_next">Next page</string>
     <string name="stream_overload">Audio storage could not keep up. Recording stopped; buffered audio is being saved and completed text remains available.</string>
     <string name="stream_busy">Another microphone session is active.</string>
-    <string name="history_title">Microphone recording history</string>
+    <string name="history_title">Audio history</string>
     <string name="history_change">Change</string>
     <string name="history_retention">Keep microphone audio</string>
     <string name="history_description">Microphone audio is buffered privately while processing. With history off, successful recordings are deleted; unfinished recordings remain available for recovery until retried or explicitly deleted. Active recordings keep their starting retention policy.</string>
@@ -264,7 +264,7 @@
     <string name="history_month">30 days</string>
     <string name="history_three_months">90 days</string>
     <string name="history_forever">Forever</string>
-    <string name="history_empty">No saved microphone recordings</string>
+    <string name="history_empty">No saved audio</string>
     <string name="history_play">Play / stop</string>
     <string name="history_delete">Delete recording</string>
     <string name="history_retranscribe">Transcribe again</string>
@@ -321,7 +321,7 @@
     <string name="app_language">App language</string>
     <string name="app_language_system">System (device language)</string>
     <string name="recording_recovery_title">Unfinished recordings</string>
-    <string name="recording_recovery_saved">Audio saved privately. Open Recordings to retry, export, or delete it.</string>
+    <string name="recording_recovery_saved">Audio saved privately. Open Audio history to retry, export, or delete it.</string>
     <string name="recording_recovery_count">Recover unfinished recordings (%1$d)</string>
     <string name="recording_recovery_explanation">Crash leftovers can be recovered. Closing or discarding a temporary dialog deletes its working audio; use Save to keep it.</string>
     <string name="recording_recovery_pending">Awaiting recovery</string>
@@ -373,8 +373,10 @@
     <string name="audio_resume">Resume</string>
     <string name="audio_stop">Stop playback</string>
     <string name="audio_duration_unknown">Unknown duration</string>
-    <string name="history_recordings_heading">Recordings</string>
-    <string name="history_transcripts_heading">Transcripts</string>
+    <string name="history_back">Back</string>
+    <string name="history_retry">Retry</string>
+    <string name="history_loading">Loading history…</string>
+    <string name="history_load_failed">Could not load history. Please try again.</string>
     <string name="history_today">Today</string>
     <string name="history_yesterday">Yesterday</string>
     <string name="history_under_second">&lt;1 s</string>

@@ -243,6 +243,13 @@ Audio uses approximately **115 MB per hour** for microphone PCM; saved text is
 independent and remains usable after its source audio expires. Deleting a text
 entry does not delete audio, and deleting audio does not delete saved text.
 
+**Audio history** and **Transcript history** open full-screen pages with the app
+logo and a Back arrow. Scroll to browse: older entries load automatically as you
+approach the bottom, and earlier pages load again when you scroll back up. There
+are no page buttons. Opening a record and returning, or recreating the screen,
+retains the browsing position. The list keeps a small window of previews in memory
+instead of reading every transcript while you explore a large history.
+
 ### Pins and manual saves
 
 Manual saving to history **pins the item forever**, without duplicating an already
