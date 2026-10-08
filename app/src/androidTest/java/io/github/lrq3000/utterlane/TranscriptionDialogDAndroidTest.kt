@@ -45,6 +45,14 @@ class TranscriptionDialogDAndroidTest {
                     if (transcript) first.id else recording.id)
                 .putExtra(HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
+        fun workingCopy(entry: TranscriptEntry?): TranscriptStore {
+            val directory = File(app.cacheDir, "transcripts").apply { mkdirs() }
+            val file = File.createTempFile("version-d-", ".txt", directory)
+            if (entry != null) entry.file.copyTo(file, overwrite = true) else file.writeText("Unsaved recovery result")
+            return TranscriptStore(file).also {
+                it.attachSource(TranscriptSource(recording.id, entry?.id, entry?.model ?: "Unsaved model"))
+            }
+        }
         override fun close() {
             screen?.let { instrumentation.runOnMainSync { it.finish() } }
             app.recordingHistory.delete(recording.id)
@@ -95,14 +103,8 @@ class TranscriptionDialogDAndroidTest {
 
     @Test fun transcriptDeletionCleansSelectedRecoveryCopiesButPreservesUnselectedVersions() = runBlocking {
         for (single in listOf(false, true)) Fixture().use { fixture ->
-            val directory = File(app.cacheDir, "transcripts").apply { mkdirs() }
-            fun working(entry: TranscriptEntry): TranscriptStore {
-                val file = File.createTempFile("version-d-", ".txt", directory)
-                entry.file.copyTo(file, overwrite = true)
-                return TranscriptStore(file).also { it.attachSource(TranscriptSource(fixture.recording.id, entry.id, entry.model)) }
-            }
-            val old = working(fixture.first).also { it.keepForRecovery() }
-            val next = working(fixture.second)
+            val old = fixture.workingCopy(fixture.first).also { it.keepForRecovery() }
+            val next = fixture.workingCopy(fixture.second)
             val owners = ViewModelStore()
             lateinit var model: TranscriptionDialogModel
             instrumentation.runOnMainSync {
@@ -129,6 +131,58 @@ class TranscriptionDialogDAndroidTest {
             } finally {
                 instrumentation.runOnMainSync { owners.clear() }
                 TranscriptStore.deleteArtifacts(old.file); TranscriptStore.deleteArtifacts(next.file)
+            }
+        }
+    }
+
+    @Test fun deletingOneTranscriptAlsoInvalidatesItsCopiesFromEarlierDialogs() = runBlocking {
+        Fixture().use { fixture ->
+            val old = fixture.workingCopy(fixture.first).also { it.keepForRecovery() }
+            val other = fixture.workingCopy(fixture.second).also { it.keepForRecovery() }
+            val owners = ViewModelStore()
+            lateinit var model: TranscriptionDialogModel
+            instrumentation.runOnMainSync {
+                model = TranscriptionDialogModel(app, DialogInput(transcriptId = fixture.first.id))
+                owners.put("dialog", model)
+            }
+            try {
+                withTimeout(5000) { model.state.first { !it.importing } }
+                instrumentation.runOnMainSync { model.requestDeletion() }
+                withTimeout(5000) { model.state.first { it.deletion != null } }
+                instrumentation.runOnMainSync { model.chooseDeletion(HistoryDeletionTarget.TRANSCRIPTS); model.confirmDeletion() }
+                withTimeout(5000) { model.state.first { !it.deleting && it.preview.isEmpty() } }
+                assertFalse("The confirmed transcript must not remain recoverable through an earlier session", old.file.exists())
+                assertTrue(other.file.exists()); assertTrue(fixture.second.file.exists())
+            } finally {
+                instrumentation.runOnMainSync { owners.clear() }
+                TranscriptStore.deleteArtifacts(old.file); TranscriptStore.deleteArtifacts(other.file)
+            }
+        }
+    }
+
+    @Test fun audioOriginFindsUnsavedRecoveryFromAnEarlierSession() = runBlocking {
+        Fixture().use { fixture ->
+            app.transcriptHistory.delete(fixture.first.id); app.transcriptHistory.delete(fixture.second.id)
+            val old = fixture.workingCopy(null).also { it.keepForRecovery() }
+            val owners = ViewModelStore()
+            lateinit var model: TranscriptionDialogModel
+            instrumentation.runOnMainSync {
+                model = TranscriptionDialogModel(app, DialogInput(audioId = fixture.recording.id))
+                owners.put("dialog", model)
+            }
+            try {
+                val loaded = withTimeout(5000) { model.state.first { !it.importing } }
+                assertEquals("Unsaved recovery result", loaded.preview)
+                instrumentation.runOnMainSync { model.requestDeletion() }
+                val ready = withTimeout(5000) { model.state.first { it.deletion != null } }
+                assertEquals(1, ready.deletion!!.plan.transcriptIds.size)
+                assertEquals(3, ready.deletion!!.plan.choices.size)
+                instrumentation.runOnMainSync { model.chooseDeletion(HistoryDeletionTarget.TRANSCRIPTS); model.confirmDeletion() }
+                withTimeout(5000) { model.state.first { !it.deleting && it.preview.isEmpty() } }
+                assertFalse(old.file.exists()); assertTrue(fixture.recording.part(0).exists())
+            } finally {
+                instrumentation.runOnMainSync { owners.clear() }
+                TranscriptStore.deleteArtifacts(old.file)
             }
         }
     }

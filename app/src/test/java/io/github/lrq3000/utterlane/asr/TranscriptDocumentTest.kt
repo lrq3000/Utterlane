@@ -86,6 +86,9 @@ class TranscriptDocumentTest {
             assertThrows(IllegalStateException::class.java) {
                 TranscriptStore(file).keepForRecovery()
             }
+            assertThrows(IllegalStateException::class.java) {
+                store.attachSource(store.source.copy(modelName = "Late producer metadata"))
+            }
             // A different directory has no in-memory cache registry entry,
             // reproducing the durable-disposition side of a process restart.
             val restarted = folder.newFolder()

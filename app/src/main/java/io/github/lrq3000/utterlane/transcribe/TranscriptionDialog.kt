@@ -45,7 +45,7 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
     val scope = rememberCoroutineScope()
     val view = LocalView.current
     val busy = state.importing || state.saving || state.closing || state.deleting
-    val working = busy || state.running
+    val working = busy || state.running || state.checkingDeletion
     DisposableEffect(view, working) {
         val previous = view.keepScreenOn
         view.keepScreenOn = working
@@ -114,6 +114,7 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                                 state.closing -> R.string.dialog_closing
                                 state.saving -> R.string.dialog_saving
                                 state.importing -> R.string.dialog_importing
+                                state.checkingDeletion -> R.string.dialog_checking_items
                                 else -> R.string.transcribe_transcribing
                             }), style = MaterialTheme.typography.bodySmall)
                         }

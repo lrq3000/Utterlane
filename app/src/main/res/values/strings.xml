@@ -411,6 +411,7 @@
     <string name="dialog_deletion_changed">Available items changed. Review the updated deletion before confirming.</string>
     <string name="dialog_nothing_to_delete">No audio or transcript is available to delete.</string>
     <string name="dialog_deleting">Deleting…</string>
+    <string name="dialog_checking_items">Checking available items…</string>
     <string name="dialog_deleted">Deleted.</string>
     <string name="dialog_pin_options">Pin or unpin audio and transcript</string>
     <string name="dialog_pin_audio">Pin audio recording</string>

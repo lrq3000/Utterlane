@@ -90,6 +90,11 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                             exposeStore(store)
                         }
                     } else if (input.transcriptId != null || input.transcriptPath != null) error("Transcript is unavailable")
+                    else if (!input.automatic) {
+                        // History can be disabled or a recognition attempt can fail
+                        // before autosaving. Its durable working copy is still linked.
+                        linkedWorkingCopies().maxByOrNull { it.file.lastModified() }?.let { exposeStore(TranscriptStore(it.file)) }
+                    }
                 }
                 if (ownedAudioId == null && (input.uri != null || input.path != null)) {
                     mutable.update { it.copy(importing = true) }
@@ -314,6 +319,11 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
 
     private fun workingFiles(): List<File> = synchronized(temporaryResults) { temporaryResults.toList() }
     private fun workingId(file: File): String = TranscriptSource.read(file).transcriptId ?: TranscriptHistory.idForAttempt(file.name)
+    private fun cachedWorkingCopies() = TranscriptSource.copies(File(app.cacheDir, "transcripts"))
+    private fun linkedWorkingCopies(): List<WorkingTranscriptCopy> {
+        val audioId = ownedAudioId ?: return emptyList()
+        return cachedWorkingCopies().filter { it.source.audioId == audioId }
+    }
 
     private fun deletionPlan(): HistoryDeletionPlan {
         val plan = linkedHistory.plan(ownedAudioId, mutable.value.transcriptId, input.transcriptOrigin, workingTranscriptId())
@@ -323,12 +333,16 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         val ids = plan.transcriptIds.toMutableSet()
         workingFiles().filter { it.isFile && it.length() > 0 && !TranscriptSource.read(it).discarded }
             .forEach { ids.add(workingId(it)) }
+        linkedWorkingCopies().forEach { ids.add(it.id) }
         return plan.copy(transcriptIds = ids.toSet())
     }
 
     private fun deleteWorkingCopies(ids: Set<String>) {
         val selected = workingFiles().filter { it.isFile && workingId(it) in ids }
-        selected.filter { it != currentStore?.file }.forEach(TranscriptStore::deleteArtifacts)
+        // A saved transcript can also have recovery copies from an earlier dialog.
+        // Mark all confirmed identities before deleting the authoritative history.
+        val copies = cachedWorkingCopies().filter { it.id in ids }.map { it.file }
+        (selected + copies).toSet().forEach(TranscriptStore::deleteArtifacts)
         synchronized(temporaryResults) { temporaryResults.removeAll(selected.toSet()) }
     }
 
@@ -372,8 +386,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                             message = app.getString(R.string.dialog_deletion_changed)) }
                         return@withContext
                     }
-                    linkedHistory.delete(request.plan, target)
                     if (target != HistoryDeletionTarget.AUDIO) deleteWorkingCopies(request.plan.transcriptIds)
+                    linkedHistory.delete(request.plan, target)
                     if (target != HistoryDeletionTarget.AUDIO && workingTranscriptId() in request.plan.transcriptIds) {
                         document.show(null)
                         currentStore?.dispose(); currentStore = null; latestPreview = ""

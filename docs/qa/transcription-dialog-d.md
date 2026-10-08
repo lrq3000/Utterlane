@@ -108,3 +108,26 @@ available item is pinned, and its accessible state identifies which kind.
   batch contains 16 D-specific tests plus the same 14 existing regressions.
 - The native submenu screenshot was inspected at
   `app/build/outputs/transcription-dialog-d-pin-menu.png` (local/ignored).
+
+## Cross-session recovery verification
+
+The follow-up review identified an older-session recovery copy outside the current
+ViewModel's tracked files. Two native regressions reproduced that copy surviving
+deletion and an unsaved linked recovery result being absent from audio history's
+detail view. Both now pass:
+
+- Confirmed IDs invalidate matching copies across the private transcript-cache
+  directory before their history entries are removed, preserving other versions.
+- Recording-origin availability/counts include linked unsaved recovery results;
+  the latest recovery text is shown when no saved transcript is available.
+- Provenance updates are serialized and cannot clear a durable discard marker;
+  a late-producer JVM regression verifies that boundary.
+
+Saved-history relationship lookup remains indexed O(k). Recovery lookup is an
+IO-only metadata scan of the retained working-cache directory on these cold paths,
+not a transcript-body read or a per-frame scan. This avoids adding a second mutable
+global cache index while covering files from prior processes. The dialog reports
+"Checking available items…" during availability checks.
+
+The final cross-session batch passed **315 JVM tests and 32 Android tests**,
+including 18 D-specific cases and 14 existing dialog/playback/history regressions.
