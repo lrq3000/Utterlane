@@ -8,6 +8,24 @@ import java.io.File
 import java.nio.file.Files
 
 class SleepRecoveryTest {
+    @Test fun continuousOldRouteFramesCannotStarveFallbackReopenAndEveryDeliveredBlockSurvives() {
+        var now = 0L
+        var reads = 0
+        var reopened = 0
+        val samples = mutableListOf<Short>()
+        val route = io.github.lrq3000.utterlane.audio.CaptureRoutePolicy(
+            io.github.lrq3000.utterlane.audio.AudioInput("headset", "Headset", true), { now })
+        route.fallback(io.github.lrq3000.utterlane.audio.InputFallbackReason.DISCONNECTED)
+        CaptureReadLoop(clock = { now }, waitForFrames = {}).run(
+            read = { it[0] = (++reads).toShort(); now += 100; 1 },
+            reopen = {
+                assertEquals("Deliver the just-read block before reopening", reads, samples.size)
+                reopened++
+            }, onSamples = { samples.add(it.single()) }, shouldContinue = { reads < 20 },
+            routeRecoveryRequested = route::takeReopenRequest)
+        assertEquals("Continuously readable stale PCM must not prevent recovery", 1, reopened)
+        assertEquals((1..20).map(Int::toShort), samples)
+    }
     @Test fun routeRecoveryDrainsExistingAudioAndStopWinsBeforeReopen() {
         var requests = 0
         var reopened = 0
