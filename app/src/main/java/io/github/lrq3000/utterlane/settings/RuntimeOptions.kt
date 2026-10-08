@@ -34,9 +34,11 @@ data class RuntimeOptions(
     val wakeReopenMs: Int = 5000,
     val downloadConnectSeconds: Long = 30,
     val downloadReadSeconds: Long = 60,
-    val nativeCacheFrames: Int = 264,
-    val nativeFifoFrames: Int = 264,
-    val nativeUpdateFrames: Int = 222,
+    // Retain less context for each low-latency transformer forward. The measured
+    // profile and accuracy coverage are recorded in docs/qa/diarization-speed-20261008.md.
+    val nativeCacheFrames: Int = 192,
+    val nativeFifoFrames: Int = 192,
+    val nativeUpdateFrames: Int = 160,
     val diagnostics: Boolean = false,
     val strongSpeakerThreshold: Float = 0.7f,
     val strongSpeakerMargin: Float = 0.2f,

@@ -2,10 +2,15 @@
 
 ## Outcome
 
+**Adoption follow-up:** After reviewing these results, the maintainer requested
+the **192 / 192 / 160** profile as the default. It is now used for unset/reset
+context settings; explicitly saved profiles are preserved. The measurements
+below remain the original study, whose baseline was **264 / 264 / 222**.
+
 Keep **Low latency, batch 16, four diarization threads** as the baseline.
 The most promising additional settings on this LDPlayer target are:
 
-| Setting | Current default | Experimental profile |
+| Setting | Baseline at study time | Measured profile (now default) |
 | --- | ---: | ---: |
 | Speaker cache frames | 264 | **192** |
 | FIFO frames | 264 | **192** |
@@ -17,7 +22,8 @@ The candidate used approximately **20% less diarization time**. It preserved all
 12 expected speaker turns, with zero unknown words and 100% speaker accuracy on
 matched words. This is a measured **experimental profile**, not an established
 safe default for eight-speaker meetings or speakers returning after long absences.
-Production defaults were not changed by this investigation.
+Production defaults were not changed during the measurement phase; the adoption
+follow-up above is a separate maintainer-approved change.
 
 The full numeric evidence is in [the generated CSV](diarization-speed-20261008.csv).
 Raw local evidence is under
@@ -191,7 +197,7 @@ copying private inputs into the repository.
 
 ```text
 gradlew.bat assembleDebug assembleDebugAndroidTest -PqaApplicationIdSuffix=.diarspeed --console=plain --quiet
-python tools/qa/diarization_speed.py --serial emulator-5556 --tag baseline --repeats 2 --option diarization_mode=low_latency --option diarization_batch=16 --option diarization_threads=4
+python tools/qa/diarization_speed.py --serial emulator-5556 --tag baseline --repeats 2 --option diarization_mode=low_latency --option diarization_batch=16 --option diarization_threads=4 --option native_cache_frames=264 --option native_fifo_frames=264 --option native_update_frames=222
 python tools/qa/diarization_speed.py --serial emulator-5556 --tag candidate --repeats 2 --asr-source-tag baseline --option native_cache_frames=192 --option native_fifo_frames=192 --option native_update_frames=160
 python tools/qa/diarization_speed.py --report docs/qa/diarization-speed-20261008.csv
 ```

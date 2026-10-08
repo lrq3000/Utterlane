@@ -192,8 +192,10 @@ together; active operations retain their starting snapshot.
   must fit the fixed 12-second transport limit.
 - **Downloads:** connection and read timeouts, including disabling a timeout;
   cancellation still interrupts blocked network I/O.
-- **Experimental:** bounded speaker cache, FIFO and update cadence, plus local
-  diagnostics. Cache reductions can hurt returning-speaker accuracy.
+- **Experimental:** bounded speaker cache, FIFO and update cadence (defaults:
+  **192 / 192 / 160 frames**), plus local diagnostics. Cache reductions can hurt
+  returning-speaker accuracy. Saved choices are preserved; reset this group to
+  adopt the current defaults.
 
 Under **Appearance**, **Show transcription stream statistics** is off by default.
 Enable it to show the latest processing stage, awake elapsed time, time since

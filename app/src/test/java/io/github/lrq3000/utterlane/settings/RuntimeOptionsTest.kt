@@ -20,11 +20,14 @@ class RuntimeOptionsTest {
         assertEquals(50, options.captureBlockMs)
         assertEquals(1500, options.wakeRecoveryMs)
         assertEquals(5000, options.wakeReopenMs)
-        assertEquals(264, options.nativeCacheFrames)
-        assertEquals(264, options.nativeFifoFrames)
-        assertEquals(222, options.nativeUpdateFrames)
+        assertEquals(192, options.nativeCacheFrames)
+        assertEquals(192, options.nativeFifoFrames)
+        assertEquals(160, options.nativeUpdateFrames)
         assertEquals(options, RuntimeOptions.fromMap(emptyMap()))
         assertEquals(options, options.copy(diarizationMode = "very_low_latency").resetGroup(RuntimeOptionGroup.DIARIZATION))
+        val saved = options.copy(nativeCacheFrames = 264, nativeFifoFrames = 264, nativeUpdateFrames = 222).requireValid()
+        assertEquals(saved, RuntimeOptions.fromMap(saved.toMap()))
+        assertEquals(options, saved.resetGroup(RuntimeOptionGroup.EXPERIMENTAL))
     }
 
     @Test fun everyFieldRoundTripsWithStableKeys() {
