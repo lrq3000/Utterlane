@@ -118,6 +118,28 @@ export class HistoryNavigation {
   }
 }
 
+/** Primary destinations belong to the phone shell, not the scrolling home route.
+ * Keeping one component alive also preserves keyboard focus when a route changes.
+ */
+export class PrimaryNavigation {
+  static render() {
+    return [
+      ['home', 'mic', 'Record', 'Record'],
+      ['audio', 'audio', 'Audio history', 'Audio history'],
+      ['transcripts', 'document', 'Transcripts', 'Transcript history'],
+    ].map(([action, glyph, label, accessibleLabel]) =>
+      `<button data-action="${action}" aria-label="${accessibleLabel}">${icon(glyph)}${label}</button>`).join('');
+  }
+  static update(route) {
+    document.querySelectorAll('#primary-nav button').forEach(button => {
+      const selected = button.dataset.action === route;
+      button.classList.toggle('selected', selected);
+      if (selected) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
+    });
+  }
+}
+
 export function brandHeader(back = false, title = '') {
   return `<header class="app-header">${back ? `${iconButton('home', 'Back to home', 'back')}<h1>${escapeHtml(title)}</h1>` : '<img class="wordmark light-wordmark" src="../../../app/src/main/res/drawable-nodpi/utterlane_wordmark.png" alt="Utterlane"><img class="wordmark dark-wordmark" src="../../../app/src/main/res/drawable-nodpi/utterlane_wordmark_dark.png" alt="Utterlane">'}${iconButton('settings', 'Settings', 'gear')}</header>`;
 }

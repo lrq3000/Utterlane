@@ -145,8 +145,8 @@ button:active:not(:disabled) { filter: brightness(.94); }
 .notebook { --background: #fff; }
 .notebook[data-theme="dark"] { --background: #101b2c; }
 .notebook .app { display: flex; flex-direction: column; }
-.notebook .app-header { border-bottom: 1px solid var(--border); }
-.notebook .home-content { flex: 1; padding: 0 20px; gap: 0; }
+.notebook .app-header { flex-shrink: 0; border-bottom: 1px solid var(--border); }
+.notebook .home-content { flex: 1; min-height: 0; padding: 0 20px; gap: 0; }
 .notebook .home-intro { margin: 22px 0 15px; align-items: flex-start; }
 .notebook .home-intro h1 { font-size: calc(25px * var(--font-scale)); }
 .notebook .home-intro p { margin-top: 5px; }
@@ -161,14 +161,34 @@ button:active:not(:disabled) { filter: brightness(.94); }
 .notebook .transcript-actions .copy-button { flex: none; width: 98px; }
 .notebook .transcript-actions .share-button { flex: none; width: 98px; background: transparent; }
 .notebook .transcript-actions .icon-button { margin-left: auto; }
-.notebook .capture-dock { border-top: 1px solid var(--border); background: var(--background); padding: 5px 20px 13px; }
+.notebook .capture-dock { flex-shrink: 0; border-top: 1px solid var(--border); background: var(--background); padding: 5px 20px 13px; }
 .notebook .speaker-toggle { margin-bottom: 8px; }
 .notebook .waveform { min-height: 126px; border-radius: 18px; }
 .notebook .capture-note { margin-top: 7px; }
-.bottom-nav { min-height: 62px; display: flex; justify-content: space-around; border-top: 1px solid var(--border); padding: 7px 10px 2px; background: var(--surface); }
+/* The navigation pane is a non-shrinking sibling of the scroll region. Its opaque
+ * surface stays above scrolled content without covering the final content row. */
+.bottom-nav { flex: 0 0 auto; position: relative; z-index: 3; min-height: 62px; display: flex; justify-content: space-around; border-top: 1px solid var(--border); padding: 7px 10px 2px; background: var(--surface); }
 .bottom-nav button { display: flex; flex-direction: column; align-items: center; gap: 4px; background: transparent; border: 0; color: var(--muted); min-width: 86px; font-size: calc(10px * var(--font-scale)); border-radius: 12px; padding: 6px 8px; }
 .bottom-nav button.selected { color: var(--primary); background: var(--container); }
 .bottom-nav .icon { height: 18px; width: 18px; }
+.notebook .toast { bottom: 89px; }
+
+/* D inherits B's geometry while using A's existing canvas and surface tokens.
+ * These are visual overrides; the transcript and capture logic remain shared. */
+.blue-notebook { --background: #f1f5fb; }
+.blue-notebook[data-theme="dark"] { --background: #0e1727; }
+.blue-notebook .app-header { border-bottom: 0; }
+.blue-notebook .transcript-panel { border: 1px solid var(--border); border-radius: 20px; background: var(--surface); padding: 0 15px; margin-bottom: 12px; }
+.blue-notebook .transcript-body { padding-top: 12px; }
+.blue-notebook .empty-transcript { align-items: center; justify-content: center; text-align: center; padding-top: 0; }
+.blue-notebook .empty-mark { display: block; }
+.blue-notebook .empty-transcript h3 { font-size: calc(15px * var(--font-scale)); color: var(--text); font-weight: 550; }
+.blue-notebook .transcript-actions .copy-button, .blue-notebook .transcript-actions .share-button { flex: 1; width: auto; }
+.blue-notebook .transcript-actions .share-button { background: var(--container); }
+.blue-notebook .transcript-actions button:disabled { background: var(--background); }
+.blue-notebook .capture-dock { border-top: 0; background: transparent; padding-top: 0; }
+.blue-notebook .speaker-toggle { border: 1px solid var(--border); border-radius: 16px; background: var(--surface); padding: 12px; margin-bottom: 10px; }
+.blue-notebook .waveform { border-radius: 22px; }
 
 /* C: library strip, a tighter session workspace, and an edge-aligned
  * recording console. Restrained rules replace extra rounded surface layers. */
@@ -220,4 +240,5 @@ button:active:not(:disabled) { filter: brightness(.94); }
 @media (max-width: 1060px) { .review { gap: 45px; padding-inline: 30px; grid-template-columns: 320px 1fr; } }
 @media (max-width: 800px) { .review { display: flex; flex-direction: column; align-items: center; padding: 24px 16px; gap: 24px; } .review-panel { width: min(100%, 490px); } .review-intro { margin: 25px 0 20px; } .review-intro h1 { font-size: 32px; } .review-intro h1 br { display: none; } .review-intro p { margin-bottom: 12px; } .concepts { grid-template-columns: repeat(3, 1fr); gap: 5px; } .concepts a { padding: 12px 8px; gap: 6px; min-height: 52px; } .concepts small, .concept-arrow { display: none; } .concepts strong { font-size: 13px; } .concept-letter { width: 16px; font-size: 11px; } .direction { padding: 5px 0; } .preview-controls { grid-template-columns: 1fr 1fr; gap: 10px 15px; } .control-row { flex-wrap: wrap; } .demo-note { margin-top: 12px; } .preview-stage { max-width: 100%; width: 490px; } }
 @media (max-width: 420px) { .review { padding-inline: 8px; } .review-panel { padding-inline: 12px; } .device { border-width: 3px; border-radius: 24px; } .stage-caption { padding-inline: 8px; } .stage-hint { padding: 0 20px; line-height: 1.6; } .control-row select { max-width: 155px; } }
+@media (max-width: 800px) { .concepts { grid-template-columns: repeat(2, 1fr); } }
 @media (prefers-reduced-motion: reduce) { *, *:before, *:after { transition: none !important; scroll-behavior: auto !important; } }
