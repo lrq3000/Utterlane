@@ -17,10 +17,23 @@ internal class CaptureReadLoop(
     fun resumeAfterSleep() { wakeRequested.set(true) }
 
     fun run(read: (ShortArray) -> Int, reopen: () -> Unit, onSamples: (ShortArray) -> Unit,
-        shouldContinue: () -> Boolean, canRecover: () -> Boolean = { true }) {
+        shouldContinue: () -> Boolean, canRecover: () -> Boolean = { true },
+        routeRecoveryRequested: () -> Boolean = { false }) {
         val buffer = ShortArray(buffers.blockSamples)
         var recoveryDeadline: Long? = null
         var restarted = false
+        fun recoverRoute(): Boolean {
+            if (!routeRecoveryRequested()) return false
+            // The route policy gives the old recorder a bounded drain interval.
+            // After that, even continuously readable stale/silenced PCM must not
+            // starve the one recovery attempt until its terminal deadline.
+            if (shouldContinue()) {
+                reopen()
+                recoveryDeadline = null
+                restarted = false
+            }
+            return true
+        }
         while (shouldContinue()) {
             if (wakeRequested.getAndSet(false)) {
                 // First drain any PCM already in AudioRecord. Reopening immediately
@@ -36,6 +49,8 @@ internal class CaptureReadLoop(
                     // resumed. Keep watching for new frames after draining it.
                     if (recoveryDeadline != null) recoveryDeadline = clock() + snapshot.wakeRecoveryMs
                     restarted = false
+                    // Preserve the just-read block before any native recreation.
+                    if (recoverRoute()) continue
                 }
                 count == AudioRecord.ERROR_DEAD_OBJECT && !canRecover() -> {
                     recoveryDeadline = null
@@ -50,6 +65,9 @@ internal class CaptureReadLoop(
                 }
                 count < 0 -> error("AudioRecord read error: $count")
                 else -> {
+                    // Route recovery also works with the screen off. Callbacks
+                    // never release native resources and Stop always wins.
+                    if (recoverRoute()) continue
                     val deadline = recoveryDeadline
                     if (deadline != null && clock() >= deadline) {
                         if (!canRecover()) {

@@ -17,4 +17,5 @@ interface AudioCapture {
 interface CaptureObserver {
     fun onStarted() {}
     fun onSilenced(silenced: Boolean) {}
+    fun onInputChanged(state: io.github.lrq3000.utterlane.audio.CaptureInputState) {}
 }

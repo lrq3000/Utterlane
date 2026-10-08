@@ -5,6 +5,22 @@ import org.junit.Test
 import kotlinx.coroutines.runBlocking
 
 class CaptureMetricsTest {
+    @Test fun inputWarningSurvivesSamplesRecognitionFailureAndFinalizationButIgnoresLateCallbacks() {
+        val meter = CaptureMetrics { 0L }
+        val warning = io.github.lrq3000.utterlane.audio.CaptureInputState(
+            actual = io.github.lrq3000.utterlane.audio.AudioInput("phone", "", false),
+            fallbackFrom = io.github.lrq3000.utterlane.audio.AudioInput("headset", "Headset", true),
+            fallbackReason = io.github.lrq3000.utterlane.audio.InputFallbackReason.DISCONNECTED,
+            receivingFallback = true)
+        meter.started()
+        meter.input(warning)
+        meter.samples(ShortArray(800), true)
+        meter.recognitionFailed("Model failed independently")
+        meter.stopping(); meter.captureEnded(); meter.completed(null)
+        assertEquals(warning, meter.state.value.input)
+        meter.input(io.github.lrq3000.utterlane.audio.CaptureInputState())
+        assertEquals(warning, meter.state.value.input)
+    }
     @Test fun waveformReflectsActualPcmAndSilenceClearsOnSignal() {
         var clock = 0L
         val meter = CaptureMetrics { clock }

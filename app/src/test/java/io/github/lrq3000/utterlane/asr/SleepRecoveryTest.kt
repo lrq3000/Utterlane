@@ -8,6 +8,49 @@ import java.io.File
 import java.nio.file.Files
 
 class SleepRecoveryTest {
+    @Test fun continuousOldRouteFramesCannotStarveFallbackReopenAndEveryDeliveredBlockSurvives() {
+        var now = 0L
+        var reads = 0
+        var reopened = 0
+        val samples = mutableListOf<Short>()
+        val route = io.github.lrq3000.utterlane.audio.CaptureRoutePolicy(
+            io.github.lrq3000.utterlane.audio.AudioInput("headset", "Headset", true), { now })
+        route.fallback(io.github.lrq3000.utterlane.audio.InputFallbackReason.DISCONNECTED)
+        CaptureReadLoop(clock = { now }, waitForFrames = {}).run(
+            read = { it[0] = (++reads).toShort(); now += 100; 1 },
+            reopen = {
+                assertEquals("Deliver the just-read block before reopening", reads, samples.size)
+                reopened++
+            }, onSamples = { samples.add(it.single()) }, shouldContinue = { reads < 20 },
+            routeRecoveryRequested = route::takeReopenRequest)
+        assertEquals("Continuously readable stale PCM must not prevent recovery", 1, reopened)
+        assertEquals((1..20).map(Int::toShort), samples)
+    }
+    @Test fun routeRecoveryDrainsExistingAudioAndStopWinsBeforeReopen() {
+        var requests = 0
+        var reopened = 0
+        val samples = mutableListOf<Short>()
+        var reads = 0
+        CaptureReadLoop(clock = { 0 }, waitForFrames = {}).run(
+            read = { if (++reads == 1) { it[0] = 42; 1 } else 0 },
+            reopen = { reopened++ }, onSamples = { samples.add(it.single()) },
+            shouldContinue = { requests == 0 && reads < 4 }, routeRecoveryRequested = { requests++; true })
+        assertEquals(listOf(42.toShort()), samples)
+        assertEquals(1, requests)
+        assertEquals("A recovery request may race with Stop", 0, reopened)
+    }
+
+    @Test fun routeRecoveryReopensOnceOnTheCaptureWorkerAndContinuesTheSameStream() {
+        var reopened = 0
+        var reads = 0
+        val samples = mutableListOf<Short>()
+        CaptureReadLoop(clock = { 0 }, waitForFrames = {}).run(
+            read = { reads++; if (reopened == 0) 0 else { it[0] = 99; 1 } },
+            reopen = { reopened++ }, onSamples = { samples.add(it.single()) },
+            shouldContinue = { samples.isEmpty() && reads < 4 }, routeRecoveryRequested = { reopened == 0 })
+        assertEquals(1, reopened)
+        assertEquals(listOf(99.toShort()), samples)
+    }
     @Test fun stopWithoutIncomingFramesDoesNotNeedToUnblockANativeRead() {
         var running = true
         var reads = 0

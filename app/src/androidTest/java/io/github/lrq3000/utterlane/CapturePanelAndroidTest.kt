@@ -14,9 +14,77 @@ import org.junit.runner.RunWith
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.compose.ui.graphics.toArgb
 
 @RunWith(AndroidJUnit4::class)
 class CapturePanelAndroidTest {
+    @Test fun actualInputAndRedWarningSurvivePanelRecreationWithStatisticsOff() = runBlocking {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val app = instrumentation.targetContext.applicationContext as UtterlaneApp
+        val previous = app.settingsRepository.showTranscriptionStreamStatistics.first()
+        val previousTheme = app.settingsRepository.themeMode.first()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        val metrics = CaptureMetrics { 0L }
+        val input = io.github.lrq3000.utterlane.audio.CaptureInputState(
+            actual = io.github.lrq3000.utterlane.audio.AudioInput("phone", "", false),
+            fallbackFrom = io.github.lrq3000.utterlane.audio.AudioInput("headset", "Headset", true),
+            fallbackReason = io.github.lrq3000.utterlane.audio.InputFallbackReason.DISCONNECTED,
+            receivingFallback = true)
+        metrics.started(); metrics.input(input)
+        var panel: RecordingPanel? = null
+        try {
+            app.settingsRepository.setShowTranscriptionStreamStatistics(false)
+            repeat(2) {
+                val dark = it == 1
+                app.settingsRepository.setThemeMode(if (dark) "dark" else "light")
+                instrumentation.runOnMainSync {
+                    panel?.release()
+                    panel = RecordingPanel(app, {}, {}).also { it.bind(scope, metrics.state) }
+                    assertNotNull("Always-visible actual-input caption", panel!!.findViewById<TextView>(R.id.recording_input))
+                    assertNotNull("Separate persistent warning", panel!!.findViewById<TextView>(R.id.recording_input_warning))
+                }
+                val caption = app.getString(R.string.audio_input_caption, app.getString(R.string.audio_input_phone))
+                awaitPanel { panel!!.findViewById<TextView>(R.id.recording_input).text.toString() == caption }
+                val warningColor = (if (dark) io.github.lrq3000.utterlane.ui.theme.RecordingRedLight
+                    else io.github.lrq3000.utterlane.ui.theme.RecordingRed).toArgb()
+                awaitPanel { panel!!.findViewById<TextView>(R.id.recording_input_warning).currentTextColor == warningColor }
+                instrumentation.runOnMainSync {
+                    val warning = panel!!.findViewById<TextView>(R.id.recording_input_warning)
+                    assertEquals(View.VISIBLE, warning.visibility)
+                    assertEquals(app.getString(R.string.audio_input_continuing,
+                        app.getString(R.string.audio_input_bt_disconnected)), warning.text.toString())
+                    assertTrue(warning.currentTextColor in listOf(
+                        io.github.lrq3000.utterlane.ui.theme.RecordingRed.toArgb(),
+                        io.github.lrq3000.utterlane.ui.theme.RecordingRedLight.toArgb()))
+                }
+                if (androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("captureEvidence") == "true") {
+                    instrumentation.runOnMainSync {
+                        val view = panel!!
+                        val width = (360 * app.resources.displayMetrics.density).toInt()
+                        view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                        view.layout(0, 0, width, view.measuredHeight)
+                        val image = android.graphics.Bitmap.createBitmap(width, view.measuredHeight, android.graphics.Bitmap.Config.ARGB_8888)
+                        view.draw(android.graphics.Canvas(image))
+                        java.io.File(app.getExternalFilesDir(null), "bluetooth-panel-${if (dark) "dark" else "light"}.png")
+                            .outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                        image.recycle()
+                    }
+                }
+                metrics.samples(ShortArray(800), true)
+            }
+            metrics.stopping(); metrics.captureEnded()
+            awaitPanel {
+                panel!!.findViewById<TextView>(R.id.recording_input_warning).text.toString() ==
+                    app.getString(R.string.audio_input_fallback_previous, app.getString(R.string.audio_input_bt_disconnected))
+            }
+        } finally {
+            instrumentation.runOnMainSync { panel?.release() }
+            scope.cancel()
+            app.settingsRepository.setShowTranscriptionStreamStatistics(previous)
+            app.settingsRepository.setThemeMode(previousTheme)
+        }
+    }
     @Test fun initialPanelDoesNotShowStreamStatistics() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp
