@@ -84,20 +84,20 @@ options and advice on switching between distribution channels.
    share the transcript directly. Use the gear for Settings and the bottom tabs
    for **Audio history** and **Transcripts**. No keyboard or overlay setup is needed.
 
-For dictation **into another app**, configure a shortcut in Settings:
+For dictation **into another app**, just configure one of the available shortcuts in our settings:
 - **Keyboard mic:** open **Keyboard Integration → Voice Input Method**, enable
   Utterlane, and enable the voice-input key in a compatible keyboard such as
-  [HeliBoard](https://github.com/Helium314/HeliBoard).
+  [FUTO Keyboard](https://keyboard.futo.tech/) or [HeliBoard](https://github.com/Helium314/HeliBoard).
 - **Accessibility button:** enable Utterlane's text-input accessibility service
   in Android Settings.
 - **Floating mic:** allow **Display over other apps** and enable the floating
   button in Utterlane.
 
-Focus a text field, tap the microphone, and speak. Tap the recording panel to
-finish. If text cannot be inserted, use the clipboard or transcript export.
+Any of these shortcuts will allow to write in any text field in any app. They can also be enabled all at once, they are useful in different ways, and you can try to see which suits you best.
 
-**Have an audio file?** Use the icon beside **New transcript** on Record, share it
-with Utterlane, or choose **Open with → Utterlane** in your file manager.
+Focus a text field, tap the microphone on the keyboard's mic, floating mic or using the accessibility shortcut, and speak. Tap the recording panel to finish. If text cannot be inserted, use the clipboard or transcript export.
+
+**Have an audio file?** Use the icon beside **New transcript** on Record, share it with Utterlane, or choose **Open with → Utterlane** in your file manager.
 
 ## Privacy
 
