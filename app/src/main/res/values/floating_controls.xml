@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="floating_size_custom">Custom (%1$d dp)</string>
+    <string name="floating_size_pinch_hint">Pinch the floating button to resize it. Recording continues while you resize.</string>
+</resources>

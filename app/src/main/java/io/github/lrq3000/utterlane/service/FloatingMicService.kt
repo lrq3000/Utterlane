@@ -9,19 +9,25 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
+import android.hardware.display.DisplayManager
+import android.os.Handler
+import android.os.Looper
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
 import android.view.LayoutInflater
-import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.ImageView
 import androidx.core.app.NotificationCompat
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.asr.MicrophoneSession
@@ -32,11 +38,13 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import io.github.lrq3000.utterlane.settings.SettingsRepository
+import io.github.lrq3000.utterlane.settings.FloatingButtonSize
 import io.github.lrq3000.utterlane.ui.theme.NativeBrandStyle
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.roundToInt
 
 class FloatingMicService : Service() {
     override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(io.github.lrq3000.utterlane.settings.AppLanguage.wrap(base))
@@ -59,10 +67,20 @@ class FloatingMicService : Service() {
     private val isRecording = AtomicBoolean(false)
     private var themeMode = SettingsRepository.THEME_SYSTEM
     private var isIntentionalStop = false
-    private var initialX = 0
-    private var initialY = 0
-    private var initialTouchX = 0f
-    private var initialTouchY = 0f
+    private var preferredDiameterDp = FloatingButtonSize.DEFAULT_DP
+    private var floatingAttached = false
+    private var legacyInsets = Insets.NONE
+    private lateinit var touchListener: FloatingControlTouchListener
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = Unit
+        override fun onDisplayRemoved(displayId: Int) = Unit
+        override fun onDisplayChanged(displayId: Int) {
+            if (floatingAttached) {
+                touchListener.cancel()
+                updateFloatingLayout()
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -75,6 +93,7 @@ class FloatingMicService : Service() {
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         setupFloatingView()
+        getSystemService(DisplayManager::class.java).registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -130,7 +149,7 @@ class FloatingMicService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // Only sync preference to false if intentionally stopped (not restarting for size change)
+        // Only an explicit Stop disables the preference; unexpected teardown keeps recovery intact.
         if (isIntentionalStop) {
             UtterlaneApp.instance.applicationScope.launch {
                 UtterlaneApp.instance.settingsRepository.setServiceEnabled(false)
@@ -139,13 +158,15 @@ class FloatingMicService : Service() {
         microphoneSession?.cancel(discard = false)
         microphoneSession = null
         hideCapturePanel()
-        if (::floatingView.isInitialized) {
+        getSystemService(DisplayManager::class.java).unregisterDisplayListener(displayListener)
+        if (floatingAttached) {
+            floatingAttached = false
             windowManager.removeView(floatingView)
         }
         serviceScope.cancel()
     }
 
-    @SuppressLint("InflateParams", "ClickableViewAccessibility")
+    @SuppressLint("InflateParams")
     private fun setupFloatingView() {
         floatingView = LayoutInflater.from(this).inflate(R.layout.floating_mic, null)
         micButton = floatingView.findViewById(R.id.floating_mic_button)
@@ -154,24 +175,6 @@ class FloatingMicService : Service() {
             UtterlaneApp.instance.settingsRepository.themeMode.collect { mode ->
                 themeMode = mode
                 updateMicButtonState()
-            }
-        }
-
-        // Apply button size from settings
-        serviceScope.launch {
-            val size = UtterlaneApp.instance.settingsRepository.floatingButtonSize.first()
-            val sizeDp = when (size) {
-                SettingsRepository.BUTTON_SIZE_SMALL -> 44
-                SettingsRepository.BUTTON_SIZE_LARGE -> 72
-                else -> 56  // MEDIUM (default)
-            }
-            val sizePx = (sizeDp * resources.displayMetrics.density).toInt()
-
-            withContext(Dispatchers.Main) {
-                val params = micButton.layoutParams
-                params.width = sizePx
-                params.height = sizePx
-                micButton.layoutParams = params
             }
         }
 
@@ -185,63 +188,102 @@ class FloatingMicService : Service() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             layoutFlag,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = defaultX
             y = defaultY
+            // Use the full-display frame, then account for bars/cutouts in one place.
+            // Otherwise WindowManager and our clamp can each subtract the same inset.
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+            if (Build.VERSION.SDK_INT >= 30) {
+                setFitInsetsTypes(0)
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            } else if (Build.VERSION.SDK_INT >= 28) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
         }
 
+        floatingView.layoutDirection = resources.configuration.layoutDirection
+        touchListener = FloatingControlTouchListener(
+            ViewConfiguration.get(this).scaledTouchSlop,
+            position = { layoutParams.x to layoutParams.y },
+            diameterDp = { micButton.layoutParams.width / resources.displayMetrics.density },
+            isRtl = { floatingView.layoutDirection == View.LAYOUT_DIRECTION_RTL },
+            onMove = { x, y -> layoutParams.x = x; layoutParams.y = y; updateFloatingLayout() },
+            onResize = { dp -> preferredDiameterDp = FloatingButtonSize.bounded(dp); updateFloatingLayout() },
+            onFinish = { resized -> persistFloatingGeometry(resized) }
+        )
+        micButton.setOnClickListener { toggleRecording() }
+        micButton.setOnTouchListener(touchListener)
+        // Do not let a late asynchronous restore override the user's first drag.
+        micButton.isEnabled = false
+        ViewCompat.setOnApplyWindowInsetsListener(floatingView) { _, insets ->
+            legacyInsets = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            updateFloatingLayout()
+            insets
+        }
+        updateFloatingLayout()
         windowManager.addView(floatingView, layoutParams)
+        floatingAttached = true
+        ViewCompat.requestApplyInsets(floatingView)
 
-        // Load saved position asynchronously and update layout
+        // Observe presentation continuously: neither the service nor its capture
+        // session is restarted when a preset or custom diameter changes.
         serviceScope.launch {
             val (savedX, savedY) = UtterlaneApp.instance.settingsRepository.buttonPosition.first()
-            if (savedX >= 0 && savedY >= 0) {
-                withContext(Dispatchers.Main) {
-                    layoutParams.x = savedX
-                    layoutParams.y = savedY
-                    windowManager.updateViewLayout(floatingView, layoutParams)
-                }
+            if (savedX != -1) layoutParams.x = savedX
+            if (savedY != -1) layoutParams.y = savedY
+            UtterlaneApp.instance.settingsRepository.floatingButtonSizeDp.distinctUntilChanged().collect { dp ->
+                // A settings edit supersedes an unfinished gesture, without writing
+                // that older gesture back over the newly selected preference.
+                if (dp != preferredDiameterDp) touchListener.cancel(persist = false)
+                preferredDiameterDp = dp
+                updateFloatingLayout()
+                micButton.isEnabled = true
             }
         }
+    }
 
-        micButton.setOnTouchListener { _, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    initialX = layoutParams.x
-                    initialY = layoutParams.y
-                    initialTouchX = event.rawX
-                    initialTouchY = event.rawY
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    layoutParams.x = initialX + (event.rawX - initialTouchX).toInt()
-                    layoutParams.y = initialY + (event.rawY - initialTouchY).toInt()
-                    windowManager.updateViewLayout(floatingView, layoutParams)
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    val deltaX = event.rawX - initialTouchX
-                    val deltaY = event.rawY - initialTouchY
-                    if (kotlin.math.abs(deltaX) < 10 && kotlin.math.abs(deltaY) < 10) {
-                        // This was a tap, not a drag
-                        toggleRecording()
-                    } else {
-                        // Save new position
-                        serviceScope.launch {
-                            UtterlaneApp.instance.settingsRepository.setButtonPosition(
-                                layoutParams.x,
-                                layoutParams.y
-                            )
-                        }
-                    }
-                    true
-                }
-                else -> false
-            }
+    private fun persistFloatingGeometry(resized: Boolean) {
+        val x = layoutParams.x
+        val y = layoutParams.y
+        val dp = preferredDiameterDp
+        serviceScope.launch {
+            val settings = UtterlaneApp.instance.settingsRepository
+            if (resized) settings.setFloatingButtonSizeDp(dp)
+            settings.setButtonPosition(x, y)
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun displayGeometry(): FloatingControlGeometry {
+        if (Build.VERSION.SDK_INT >= 30) {
+            val metrics = windowManager.currentWindowMetrics
+            val insets = metrics.windowInsets.getInsetsIgnoringVisibility(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+            return FloatingControlGeometry(metrics.bounds.width(), metrics.bounds.height(), insets.left, insets.top, insets.right, insets.bottom)
+        }
+        val metrics = android.util.DisplayMetrics()
+        windowManager.defaultDisplay.getRealMetrics(metrics)
+        return FloatingControlGeometry(metrics.widthPixels, metrics.heightPixels,
+            legacyInsets.left, legacyInsets.top, legacyInsets.right, legacyInsets.bottom)
+    }
+
+    private fun updateFloatingLayout() {
+        val density = resources.displayMetrics.density
+        val padding = (4 * density).roundToInt()
+        floatingView.setPadding(padding, padding, padding, padding)
+        val geometry = displayGeometry()
+        val diameter = geometry.diameterPx(preferredDiameterDp, density, 2 * padding, 2 * padding)
+        micButton.layoutParams = micButton.layoutParams.apply { width = diameter; height = diameter }
+        layoutParams.width = diameter + 2 * padding
+        layoutParams.height = diameter + 2 * padding
+        val (x, y) = geometry.clampPosition(layoutParams.x, layoutParams.y, layoutParams.width, layoutParams.height,
+            floatingView.layoutDirection == View.LAYOUT_DIRECTION_RTL)
+        layoutParams.x = x
+        layoutParams.y = y
+        if (floatingAttached) windowManager.updateViewLayout(floatingView, layoutParams)
     }
 
     private fun initializeRecognizer() {
@@ -330,7 +372,13 @@ class FloatingMicService : Service() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (::micButton.isInitialized) updateMicButtonState()
+        if (::micButton.isInitialized) {
+            touchListener.cancel()
+            floatingView.layoutDirection = resources.configuration.layoutDirection
+            updateFloatingLayout()
+            updateMicButtonState()
+            ViewCompat.requestApplyInsets(floatingView)
+        }
     }
 
     private fun showFailureNotification() {

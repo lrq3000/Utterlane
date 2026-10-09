@@ -187,7 +187,6 @@ class SettingsActivity : LocalizedActivity() {
                     },
                     onStopService = { stopFloatingService() },
                     onStartAudioMonitor = { requestNotificationPermissionIfNeeded() },
-                    onRestartService = { restartFloatingService() },
                     onPickFolder = { callback -> openFolderPicker(callback) },
                     onPickModelFolder = { callback ->
                         onModelFolderSelected = callback
@@ -299,12 +298,6 @@ class SettingsActivity : LocalizedActivity() {
         startService(intent)
     }
 
-    private fun restartFloatingService() {
-        // Stop without ACTION_STOP so preference isn't cleared, then start
-        stopService(Intent(this, FloatingMicService::class.java))
-        startFloatingService()
-    }
-
     private fun hasMicPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
             this, Manifest.permission.RECORD_AUDIO
@@ -343,7 +336,6 @@ fun SettingsScreen(
     onOpenAppSettings: () -> Unit,
     onStartService: () -> Unit,
     onStopService: () -> Unit,
-    onRestartService: () -> Unit,
     onStartAudioMonitor: () -> Unit,
     onPickFolder: ((String) -> Unit) -> Unit,
     onPickModelFolder: ((Uri) -> Unit) -> Unit,
@@ -380,7 +372,7 @@ fun SettingsScreen(
 
     val audioMonitorEnabled by settingsRepository.audioMonitorEnabled.collectAsStateWithLifecycle(initialValue = false)
     val monitoredFolders by settingsRepository.monitoredFolders.collectAsStateWithLifecycle(initialValue = emptySet())
-    val floatingButtonSize by settingsRepository.floatingButtonSize.collectAsStateWithLifecycle(initialValue = SettingsRepository.BUTTON_SIZE_MEDIUM)
+    val floatingButtonSizeDp by settingsRepository.floatingButtonSizeDp.collectAsStateWithLifecycle(initialValue = FloatingButtonSize.DEFAULT_DP)
     val transcribeManager = UtterlaneApp.instance.transcribeManager
 
     val hasMicPermission = remember { mutableStateOf(false) }
@@ -674,14 +666,10 @@ fun SettingsScreen(
                 )
 
                 ButtonSizeSettingItem(
-                    selectedSize = floatingButtonSize,
+                    selectedSizeDp = floatingButtonSizeDp,
                     onSizeSelected = { size ->
                         scope.launch {
                             settingsRepository.setFloatingButtonSize(size)
-                            // Restart service to apply new size (without clearing preference)
-                            if (serviceEnabled) {
-                                onRestartService()
-                            }
                         }
                     }
                 )
@@ -1138,7 +1126,7 @@ fun ThemeSettingItem(
 
 @Composable
 fun ButtonSizeSettingItem(
-    selectedSize: String,
+    selectedSizeDp: Int,
     onSizeSelected: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -1147,11 +1135,18 @@ fun ButtonSizeSettingItem(
         SettingsRepository.BUTTON_SIZE_MEDIUM to stringResource(R.string.floating_size_medium),
         SettingsRepository.BUTTON_SIZE_LARGE to stringResource(R.string.floating_size_large)
     )
-    val selectedSizeName = sizes.find { it.first == selectedSize }?.second ?: stringResource(R.string.floating_size_medium)
+    val selectedSize = FloatingButtonSize.preset(selectedSizeDp)
+    val selectedSizeName = sizes.find { it.first == selectedSize }?.second
+        ?: stringResource(R.string.floating_size_custom, selectedSizeDp)
 
     ListItem(
         headlineContent = { Text(stringResource(R.string.floating_button_size)) },
-        supportingContent = { Text(selectedSizeName) },
+        supportingContent = {
+            Column {
+                Text(selectedSizeName)
+                Text(stringResource(R.string.floating_size_pinch_hint))
+            }
+        },
         leadingContent = { Icon(Icons.Default.PhotoSizeSelectLarge, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
         modifier = Modifier.clickable { expanded = true }
     )

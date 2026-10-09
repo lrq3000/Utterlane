@@ -40,6 +40,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         private val AUDIO_MONITOR_ENABLED_KEY = booleanPreferencesKey("audio_monitor_enabled")
         private val MONITORED_FOLDERS_KEY = stringSetPreferencesKey("monitored_folders")
         private val FLOATING_BUTTON_SIZE_KEY = stringPreferencesKey("floating_button_size")
+        private val FLOATING_BUTTON_SIZE_DP_KEY = intPreferencesKey("floating_button_size_dp")
         private val HISTORY_RETENTION_KEY = stringPreferencesKey("history_retention")
         private val AUDIO_HISTORY_ENABLED_KEY = booleanPreferencesKey("audio_history_enabled")
         private val AUDIO_HISTORY_RETENTION_KEY = stringPreferencesKey("audio_history_retention")
@@ -217,13 +218,29 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         preferences[MONITORED_FOLDERS_KEY] ?: emptySet()
     }
 
-    val floatingButtonSize: Flow<String> = dataStore.data.map { preferences ->
-        preferences[FLOATING_BUTTON_SIZE_KEY] ?: BUTTON_SIZE_MEDIUM
+    private fun readFloatingButtonSizeDp(preferences: Preferences): Int {
+        val raw = preferences.asMap()
+        return FloatingButtonSize.diameter(raw[FLOATING_BUTTON_SIZE_KEY] as? String, raw[FLOATING_BUTTON_SIZE_DP_KEY] as? Int)
     }
 
+    val floatingButtonSizeDp: Flow<Int> = dataStore.data.map(::readFloatingButtonSizeDp)
+    val floatingButtonSize: Flow<String> = floatingButtonSizeDp.map { FloatingButtonSize.preset(it) ?: "custom" }
+
     suspend fun setFloatingButtonSize(size: String) {
+        require(size in setOf(BUTTON_SIZE_SMALL, BUTTON_SIZE_MEDIUM, BUTTON_SIZE_LARGE))
         dataStore.edit { preferences ->
             preferences[FLOATING_BUTTON_SIZE_KEY] = size
+            preferences.remove(FLOATING_BUTTON_SIZE_DP_KEY)
+        }
+    }
+
+    suspend fun setFloatingButtonSizeDp(dp: Int) {
+        val bounded = FloatingButtonSize.bounded(dp)
+        dataStore.edit { preferences ->
+            // Publish mode and size together; a collector must never see a stale
+            // custom diameter paired with a newly selected preset (or vice versa).
+            preferences[FLOATING_BUTTON_SIZE_KEY] = FloatingButtonSize.preset(bounded) ?: "custom"
+            preferences[FLOATING_BUTTON_SIZE_DP_KEY] = bounded
         }
     }
 
