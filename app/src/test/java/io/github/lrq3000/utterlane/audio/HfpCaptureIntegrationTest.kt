@@ -6,6 +6,7 @@ import android.bluetooth.*
 import android.content.*
 import android.content.pm.PackageManager
 import android.media.AudioManager
+import android.media.AudioDeviceInfo
 import android.os.Build
 import android.os.Handler
 import io.mockk.*
@@ -98,6 +99,54 @@ class HfpCaptureIntegrationTest {
                 assertTrue(platform.state.receivingFallback)
                 verify(exactly = 0) { context.adapter.getProfileProxy(any(), any(), any()) }
                 verify(exactly = 0) { platform.manager.setCommunicationDevice(any()) }
+            } finally { route.detach(platform.record); route.close() }
+        }
+    }
+
+    @Test @Config(sdk = [31, 36]) fun hfpCannotRelabelAnInputAfterAnInferredTargetIsDisproved() = runBlocking {
+        AudioRoutingPlatform().use { platform ->
+            val source = AudioRoutingPlatform.device(7, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, ADDRESS, true)
+            val target = AudioRoutingPlatform.device(8, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, "")
+            platform.inputDevices = listOf(platform.phone, source)
+            platform.communicationDevices = listOf(target)
+            val choice = platform.devices.inputs().single { it.bluetooth }
+            val context = BluetoothContext(platform.context)
+            platform.controller().select(choice.key)
+            val route = AndroidCaptureRoute(context, platform.controller(), platform.controller().snapshotForRecording(),
+                { platform.running }, { platform.state = it }, MicrophoneOptions.HFP)
+            try {
+                route.attach(platform.record); route.started()
+                context.listener.captured.onServiceConnected(BluetoothProfile.HEADSET, context.proxy)
+                context.connected(); platform.capture(route)
+                val other = AudioRoutingPlatform.device(18, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, ADDRESS)
+                platform.communicationDevices = listOf(target, other)
+                platform.changed(added = listOf(other))
+                platform.capture(route) // Actual input is still Phone at this point.
+                assertTrue("Positive contrary endpoint evidence invalidates an inferred HFP association", route.isFallback)
+                platform.observeRoute(source)
+                platform.capture(route)
+                assertNotEquals(choice.key, platform.state.actual?.key)
+            } finally { route.detach(platform.record); route.close() }
+        }
+    }
+
+    @Test @Config(sdk = [31, 36]) fun aMatchedDualModeHeadsetPrefersItsClassicInputForHfp() = runBlocking {
+        AudioRoutingPlatform().use { platform ->
+            val ble = platform.addHeadset(10, 8, ADDRESS, AudioDeviceInfo.TYPE_BLE_HEADSET)
+            val classic = platform.addHeadset(17, 18, ADDRESS, AudioDeviceInfo.TYPE_BLUETOOTH_SCO)
+            val context = BluetoothContext(platform.context)
+            platform.controller().select(ble.choice.key)
+            val route = AndroidCaptureRoute(context, platform.controller(), platform.controller().snapshotForRecording(),
+                { platform.running }, { platform.state = it }, MicrophoneOptions.HFP)
+            try {
+                route.attach(platform.record); route.started()
+                context.listener.captured.onServiceConnected(BluetoothProfile.HEADSET, context.proxy)
+                context.connected(); platform.capture(route)
+                assertEquals("HFP must not pin the BLE input that its verifier rejects", classic.source.id, platform.preferred?.id)
+                platform.observeRoute(classic.source); platform.capture(route)
+                assertEquals(ble.choice.key, platform.state.actual?.key)
+                assertFalse(platform.state.connecting)
+                assertFalse(route.isFallback)
             } finally { route.detach(platform.record); route.close() }
         }
     }
