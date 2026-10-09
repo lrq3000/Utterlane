@@ -28,7 +28,7 @@ internal data class HomeState(
     val permissionDenied: Boolean = false,
     val message: String? = null
 ) {
-    val busy get() = capture.active || preparing || result.running || result.importing || result.saving || result.closing
+    val busy get() = capture.active || preparing || result.running || result.importing || result.saving || result.closing || result.deleting || result.checkingDeletion
     val canStop get() = capture.phase in setOf(HomeCapturePhase.STARTING, HomeCapturePhase.RECORDING, HomeCapturePhase.STOPPING)
 
     // Loading/retrying owned audio never opens the microphone. Scope a denial to
@@ -46,6 +46,9 @@ class HomeController(private val app: UtterlaneApp) {
     private val mutable = MutableStateFlow(HomeState())
     internal val state: StateFlow<HomeState> = mutable
     private val scope get() = app.applicationScope
+    // The live microphone has no dialog model yet; it uses the same bounded
+    // document implementation until the result model takes ownership.
+    internal val liveDocument = TranscriptPager(scope)
     private var captureDriver: CaptureDriver? = null
     private var slot: ResultOwner? = null
     private var pendingFile: Uri? = null
@@ -237,7 +240,10 @@ class HomeController(private val app: UtterlaneApp) {
             if (!events.input(spooledSamples, preview)) return
             inputAccepted = true
             rawStore = store
-            if (store != null) mutable.update { it.copy(result = it.result.copy(store = store, preview = preview)) }
+            if (store != null) {
+                if (state.value.result.store !== store) liveDocument.show(store) else liveDocument.refresh()
+                mutable.update { it.copy(result = it.result.copy(store = store, preview = preview, transcriptBytes = store.bytes)) }
+            }
             // Acceptance synchronously retires the old owner before this new
             // checkpoint is published. Neither empty Ready nor stale IO can erase
             // the previous descriptor; final completion remains a fallback.
@@ -293,6 +299,7 @@ class HomeController(private val app: UtterlaneApp) {
     }
 
     private fun installResult(input: DialogInput, lease: Closeable? = null) {
+        liveDocument.show(null)
         val owner = ResultOwner(input, lease)
         slot = owner
         mutable.update { it.copy(model = owner.model, result = owner.model.state.value) }
@@ -300,16 +307,19 @@ class HomeController(private val app: UtterlaneApp) {
     }
 
     /** Explicit Next/Dismiss only. Navigation and Activity destruction never call this. */
-    fun dismiss(delete: Boolean = false) {
+    fun dismiss() {
         if (state.value.capture.active || state.value.preparing) return
         val owner = slot ?: return
-        owner.model.dismiss(delete) {
+        val done = {
             if (slot === owner) {
                 slot = null; journal.clear()
                 mutable.update { HomeState() }
             }
             owner.clear()
         }
+        // Confirmed deletion already disposed exactly the selected identities.
+        // Do not run another dismissal against surviving independent history.
+        if (owner.model.state.value.finished) done() else owner.model.dismiss(done)
     }
 
     private fun releaseResult() {
@@ -337,8 +347,6 @@ class HomeController(private val app: UtterlaneApp) {
         var observer: Job? = null
         private var audioLease: Closeable? = lease
         private var leasedId: String? = if (lease != null) input.audioId else null
-        private var metadata = input.metadata ?: TranscriptMetadata()
-        private var previousStore: TranscriptStore? = null
         private val descriptor = HomeResultDescriptor(input)
         fun observe() {
             observer = HomeResultObserver(scope).observe(mutable, model.state,
@@ -348,27 +356,23 @@ class HomeController(private val app: UtterlaneApp) {
                 if (service.needsStart && !state.value.capture.active) {
                     try { requestService(microphone = false) } catch (error: Exception) { showError(error) }
                 }
-            }) { result, wasRunning ->
+            }) { result, _ ->
+                if (result.finished && !result.deleting) {
+                    dismiss()
+                    return@observe
+                }
                 if (!result.importing && result.audio?.id != leasedId) {
                     audioLease?.let { lease -> scope.launch(Dispatchers.IO) { lease.close() } }
                     leasedId = result.audio?.id
                     audioLease = leasedId?.let { runCatching { app.recordingHistory.acquire(it) }.getOrNull() }
                 }
-                if (metadata.created == null) result.audio?.let { metadata = TranscriptMetadata(it) }
-                if (wasRunning && !result.running && result.store !== previousStore) {
-                    // Snapshot only our completed retry, not arbitrary later audio
-                    // history revisions. Text metadata must survive source deletion
-                    // and unrelated retranscriptions of the same source recording.
-                    val savedText = result.transcriptId?.let { runCatching { app.transcriptHistory.get(it) }.getOrNull() }
-                    val audio = leasedId?.let { runCatching { app.recordingHistory.get(it) }.getOrNull() }
-                    metadata = savedText?.let(::TranscriptMetadata) ?: audio?.let(::TranscriptMetadata) ?: metadata
-                }
-                if (!result.running) previousStore = result.store
                 val saved = Bundle().also(model::saveInstanceState)
                 journal.write(descriptor.update(input.copy(uri = null, path = null, automatic = false,
                     audioId = saved.getString("owned_audio"), transcriptId = saved.getString("saved_text"),
                     transcriptPath = saved.getString("working_text"), modelName = saved.getString("result_model").orEmpty(),
-                    modelId = saved.getString("result_model_id"), metadata = metadata), importing = result.importing))
+                    // The model owns result metadata independently of source
+                    // history revisions, retention and other model attempts.
+                    modelId = saved.getString("result_model_id"), metadata = model.metadata), importing = result.importing))
             }
         }
         fun clear() {

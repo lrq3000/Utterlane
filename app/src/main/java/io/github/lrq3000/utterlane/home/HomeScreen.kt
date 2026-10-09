@@ -38,7 +38,7 @@ import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.asr.CapturePhase
 import io.github.lrq3000.utterlane.asr.CaptureSignal
 import io.github.lrq3000.utterlane.history.RecordingRecovery
-import io.github.lrq3000.utterlane.transcribe.TranscriptText
+import io.github.lrq3000.utterlane.transcribe.TranscriptReader
 import io.github.lrq3000.utterlane.transcribe.TranscriptTransferActions
 import io.github.lrq3000.utterlane.transcribe.TranscriptionDialog
 import io.github.lrq3000.utterlane.ui.RecognitionStatusText
@@ -73,9 +73,10 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 15.dp)) {
                     if (state.result.preview.isEmpty()) EmptyTranscript(Modifier.heightIn(min = previewHeight).padding(vertical = 20.dp))
-                    else TranscriptText(state.result.preview, Modifier.heightIn(min = previewHeight).padding(vertical = 12.dp))
+                    else TranscriptReader(model?.document ?: controller.liveDocument, state.result,
+                        Modifier.height(previewHeight).fillMaxWidth(), followTail = state.capture.active || state.result.running)
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    TranscriptTransferActions(state.result.store, enabled = !state.result.closing,
+                    TranscriptTransferActions(state.result.store, enabled = !state.result.closing && !state.result.deleting,
                         modifier = Modifier.padding(vertical = 8.dp)) {
                         Box {
                             IconButton(onClick = { menu = true }, enabled = model != null && !state.busy,
@@ -134,7 +135,7 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
     if (details && model != null) Dialog(onDismissRequest = { details = false },
         properties = DialogProperties(usePlatformDefaultWidth = false)) {
         TranscriptionDialog(model, onClose = { details = false; controller.dismiss() },
-            onDelete = { details = false; controller.dismiss(delete = true) })
+            onEmpty = { details = false; controller.dismiss() })
     }
 }
 
@@ -297,14 +298,7 @@ private fun HomeFeedback(state: HomeState, onModels: () -> Unit, onRetry: () -> 
     if (state.busy && !state.canStop) {
         if (metrics.recognition.active) Text(RecognitionStatusText.activity(context, metrics.recognition), style = MaterialTheme.typography.bodySmall)
     }
-    // Recovery protection is also used by successfully completed temporary Home
-    // results. It is not evidence that capture was interrupted. The shared detail
-    // model still owns its wording; keep this inline surface factually accurate.
-    val resultMessage = state.result.message?.takeUnless {
-        it == context.getString(R.string.dialog_recovery_info) && state.result.audio?.status == "saved" &&
-            state.result.audio?.failureKind == null
-    }
-    val messages = listOfNotNull(state.message, resultMessage).distinct()
+    val messages = listOfNotNull(state.message, state.result.message).distinct()
     messages.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     if (state.permissionDenied) TextButton(onClick = {
         context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,

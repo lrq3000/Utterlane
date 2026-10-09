@@ -32,14 +32,21 @@ import kotlinx.coroutines.flow.first
 import kotlin.math.floor
 
 @Composable
-internal fun TranscriptReader(model: TranscriptionDialogModel, state: TranscriptionDialogState, modifier: Modifier) {
-    val pages = model.document.pages.collectAsLazyPagingItems()
+internal fun TranscriptReader(document: TranscriptPager, state: TranscriptionDialogState, modifier: Modifier,
+    followTail: Boolean = false) {
+    val pages = document.pages.collectAsLazyPagingItems()
     val list = rememberLazyListState()
     val shape = RoundedCornerShape(12.dp)
     val colors = MaterialTheme.colorScheme
     // Conflate thumb moves instead of queuing a scroll coroutine for every pixel.
     val seeks = remember { Channel<Float>(Channel.CONFLATED) }
     DisposableEffect(Unit) { onDispose { seeks.close() } }
+    // Home follows committed input without requiring focus or a tap. Reading a
+    // completed result remains ordinary bidirectional paging; no whole-text copy.
+    LaunchedEffect(state.transcriptBytes, pages.itemSnapshotList, followTail) {
+        if (followTail && state.transcriptBytes > 0 && pages.loadState.refresh is LoadState.NotLoading)
+            seeks.trySend(1f)
+    }
     LaunchedEffect(pages.itemCount) {
         for (fraction in seeks) {
             val count = pages.itemCount

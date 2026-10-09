@@ -1,8 +1,5 @@
 package io.github.lrq3000.utterlane.transcribe
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -30,9 +27,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.history.RecordingRecovery
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /** D: infrequent audio actions above the document, common text actions by the
  * user's thumbs. The reader alone consumes the remaining height and scrolls. */
@@ -42,7 +36,6 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
     val state by model.state.collectAsStateWithLifecycle()
     val app = UtterlaneApp.instance
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val view = LocalView.current
     val busy = state.importing || state.saving || state.closing || state.deleting
     val working = busy || state.running || state.checkingDeletion
@@ -131,19 +124,11 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                         }), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.height(8.dp))
-                    TranscriptReader(model, state, Modifier.weight(1f).fillMaxWidth())
+                    TranscriptReader(model.document, state, Modifier.weight(1f).fillMaxWidth())
                     AudioPlaybackControls(model) {
                         val hasText = state.transcriptBytes > 0
                         DialogPinControl(model, state, busy)
-                        DialogAction(Icons.Outlined.ContentCopy, stringResource(R.string.transcribe_copy), "dialog_copy", hasText && !state.deleting,
-                            onClick = { scope.launch {
-                                val text = withContext(Dispatchers.IO) { state.store?.readForTransfer() }
-                                if (text != null) (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                                    .setPrimaryClip(ClipData.newPlainText("Transcript", text))
-                                else android.widget.Toast.makeText(context, R.string.stream_use_export, android.widget.Toast.LENGTH_LONG).show()
-                            } })
-                        DialogAction(Icons.Outlined.Share, stringResource(R.string.dialog_share_text), "dialog_share", hasText && !state.deleting,
-                            onClick = { state.store?.let { shareTranscript(context, it) } })
+                        TranscriptTransferActions(state.store, enabled = hasText && !state.deleting, iconsOnly = true)
                     }
                 }
             }

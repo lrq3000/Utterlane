@@ -29,7 +29,6 @@ class HistoryListInteractionAndroidTest {
         val textFile = File.createTempFile("list-interaction-", ".txt", app.cacheDir).apply { writeText("Readable transcript preview for the compact history list.") }
         val text = app.transcriptHistory.save(textFile, "QA model", pinned = true)
         val id = if (transcripts) text.id else audio.entry.id
-        val deletion = app.getString(if (transcripts) R.string.dialog_delete_text else R.string.history_delete)
         val activity = instrumentation.startActivitySync(HistoryActivity.intent(app, transcripts)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         val monitor = instrumentation.addMonitor(TranscribeActivity::class.java.name, null, false)
@@ -38,7 +37,7 @@ class HistoryListInteractionAndroidTest {
             val historyUi = HistoryTestUi(ui)
             historyUi.awaitPinned(id, true)
             historyUi.assertNavigationOnly(id)
-            assertFalse("Deletion must not be exposed by the history listing", ui.hasVisibleText(deletion))
+            assertFalse("Deletion must not be exposed by the history listing", ui.hasVisibleText(app.getString(R.string.history_delete)))
             assertFalse("Opening is the whole entry's action, not another button", ui.hasVisibleText(app.getString(R.string.history_open)))
             assertFalse("Pin state must not consume another text row", ui.hasVisibleText(app.getString(R.string.history_pinned)))
             assertEquals("Passive indicators must not open a detail", 0, monitor.hits)

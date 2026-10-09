@@ -75,7 +75,7 @@ class HistoryScreenAndroidTest {
             ui.click("history_entry_$target")
             detail = detailMonitor.waitForActivityWithTimeout(5000)
             assertNotNull(detail)
-            ui.textNode(app.getString(if (transcripts) R.string.dialog_delete_text else R.string.history_delete)).recycle()
+            ui.node("dialog_delete").recycle()
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
             withTimeout(5000) { while (!detail!!.isDestroyed) delay(20) }
             assertRowPosition(before, target)

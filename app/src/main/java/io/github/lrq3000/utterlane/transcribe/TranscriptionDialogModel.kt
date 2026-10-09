@@ -82,7 +82,17 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         require(file.parentFile == File(app.cacheDir, "transcripts").canonicalFile) { "Transcript is unavailable" }
                         file.isFile
                     }
-                    if (restored != null) exposeStore(TranscriptStore(restored))
+                    if (restored != null) {
+                        val store = TranscriptStore(restored)
+                        // Pre-provenance Home journals carried these identities in
+                        // DialogInput. Migrate that association without replacing
+                        // newer sidecar identities or clearing a discard marker.
+                        store.attachSource(store.source.copy(audioId = store.source.audioId ?: ownedAudioId,
+                            transcriptId = store.source.transcriptId ?: entry?.id,
+                            modelName = store.source.modelName.ifBlank { chosenModel },
+                            modelId = store.source.modelId ?: resultModelId))
+                        exposeStore(store)
+                    }
                     else if (entry != null) {
                         app.transcriptHistory.acquire(entry.id).use {
                             val directory = File(app.cacheDir, "transcripts").apply { mkdirs() }
@@ -155,6 +165,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         resultModelId = store.source.modelId ?: resultModelId
         lastRequestedModelId = resultModelId ?: lastRequestedModelId
         val entry = app.transcriptHistory.find(store.source.transcriptId)
+        if (entry != null) resultMetadata = TranscriptMetadata(entry)
         latestPreview = store.preview()
         document.show(store)
         mutable.update { it.copy(store = store, preview = latestPreview, transcriptBytes = store.bytes,
@@ -458,9 +469,6 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                 task?.cancelAndJoin()
                 saving?.join()
                 withContext(Dispatchers.IO) {
-                    // Keep may publish a replacement after the early deletion
-                    // marker. Explicit Delete also owns that final saved result.
-                    if (input.transcriptOrigin && delete) mutable.value.transcriptId?.let(app.transcriptHistory::delete)
                     // Import completion can race dismissal; ownership was published
                     // on IO before returning so this second pass cannot orphan it.
                     if (!input.transcriptOrigin) ownedAudioId?.let(app.recordingHistory::dismiss)

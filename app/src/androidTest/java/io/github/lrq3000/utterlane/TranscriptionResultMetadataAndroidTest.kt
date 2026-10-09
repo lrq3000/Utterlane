@@ -133,7 +133,30 @@ class TranscriptionResultMetadataAndroidTest {
         } finally { app.transcriptHistory.delete(saved.id); source.delete() }
     }
 
-    @Test fun explicitDeleteRemovesReplacementPublishedByPendingKeep() = runBlocking {
+    @Test fun explicitKeepInAnotherOwnerCannotUndoConfirmedWorkingSourceDeletion() = runBlocking {
+        val source = workingText()
+        val saved = metadata.save(app.transcriptHistory, source, "Fixture model", pinned = true)
+        try {
+            DialogOwner(DialogInput(transcriptId = saved.id, transcriptPath = source.absolutePath)).use { producer ->
+                producer.ready()
+                DialogOwner(DialogInput(transcriptId = saved.id)).use { deletion ->
+                    deletion.ready()
+                    instrumentation.runOnMainSync { deletion.model.requestDeletion() }
+                    withTimeout(5000) { deletion.model.state.first { !it.checkingDeletion && it.deletion != null } }
+                    instrumentation.runOnMainSync { deletion.model.confirmDeletion() }
+                    withTimeout(5000) { deletion.model.state.first { !it.deleting && it.finished } }
+                    assertTrue("The other owner's reader still leases the bytes", source.isFile)
+                    producer.pin(true)
+                    assertNull(app.transcriptHistory.find(saved.id))
+                    assertNull(app.transcriptHistory.find(producer.model.state.value.transcriptId))
+                    assertTrue(io.github.lrq3000.utterlane.asr.TranscriptSource.read(source).discarded)
+                    assertNotNull(producer.model.state.value.message)
+                }
+            }
+        } finally { app.transcriptHistory.delete(saved.id); source.delete() }
+    }
+
+    @Test fun confirmedDeleteReconfirmsReplacementPublishedByPendingKeep() = runBlocking {
         dismissDuringPendingKeep(delete = true)
     }
 
@@ -157,7 +180,8 @@ class TranscriptionResultMetadataAndroidTest {
             }
             System.currentTimeMillis()
         }
-        val original = metadata.save(history, source, "Fixture model", pinned = true)
+        val original = metadata.save(history, source, "Fixture model", audioId = "pending-keep-audio", pinned = true)
+        val sibling = history.save(source, "Other model", audioId = original.audioId, attempt = "sibling-${source.name}")
         val originalLease = history.acquire(original.id)
         val originalHistory = app.transcriptHistory
         // Scope the singleton dependency swap to this fixture. Background cleanup
@@ -171,44 +195,47 @@ class TranscriptionResultMetadataAndroidTest {
             val dialog = DialogOwner(DialogInput(transcriptId = original.id, transcriptPath = source.absolutePath))
             owner = dialog
             dialog.ready()
+            if (delete) {
+                instrumentation.runOnMainSync { dialog.model.requestDeletion() }
+                withTimeout(5000) { dialog.model.state.first { !it.checkingDeletion && it.deletion != null } }
+                assertEquals(setOf(original.id), dialog.model.state.value.deletion!!.plan.transcriptIds)
+                assertFalse(dialog.model.state.value.deletion!!.plan.allLinked)
+            }
             // The dialog still owns working text and the old ID. A prior cleanup
             // makes the next Keep exercise the missing-entry replacement path.
             history.delete(original.id)
             pauseNextSave.set(true)
-            instrumentation.runOnMainSync { dialog.model.setTranscriptPinned(true) }
+            instrumentation.runOnMainSync { dialog.model.setPinned(DialogPinTarget.TRANSCRIPT, true) }
             assertTrue("Keep never reached replacement publication", saveEntered.await(5, TimeUnit.SECONDS))
-            instrumentation.runOnMainSync { dialog.model.dismiss(delete) { dismissed.complete(Unit) } }
-            if (delete) {
-                // Save holds the repository monitor. Observe dismissal blocked at
-                // its early delete call, proving it already captured the OLD ID
-                // before allowing Keep to publish its replacement. This condition
-                // removes dependence on thread scheduling or arbitrary delays.
-                withTimeout(5000) {
-                    while (!Thread.getAllStackTraces().any { (thread, stack) ->
-                        thread.state == Thread.State.BLOCKED &&
-                            stack.any { it.className == TranscriptHistory::class.java.name && it.methodName == "delete" } &&
-                            stack.any { it.className.startsWith(TranscriptionDialogModel::class.java.name + "\$dismiss") }
-                    }) delay(10)
-                }
-                val marker = java.util.Properties().apply {
-                    File(original.directory, "transcript.properties").inputStream().use { load(it) }
-                }
-                assertEquals("true", marker.getProperty("discarded"))
+            instrumentation.runOnMainSync {
+                if (delete) dialog.model.confirmDeletion()
+                else dialog.model.dismiss { dismissed.complete(Unit) }
             }
+            // The confirmation now waits for Keep, then compares exact identities.
+            // A new ID is a changed scope, requiring a fresh confirmation rather
+            // than silently extending the original deletion to the replacement.
+            if (delete) assertTrue(dialog.model.state.value.deleting)
             releaseSave.countDown()
-            withTimeout(5000) { dismissed.await() }
+            withTimeout(5000) {
+                if (delete) dialog.model.state.first { !it.saving && !it.deleting && it.deletion != null }
+                else dismissed.await()
+            }
             val replacementId = checkNotNull(dialog.model.state.value.transcriptId)
             assertNotEquals("The pending operation must really create a new copy", original.id, replacementId)
             assertThrows(IllegalStateException::class.java) { history.get(original.id) }
             originalLease.close()
             assertFalse(original.directory.exists())
             if (delete) {
+                assertEquals(setOf(replacementId), dialog.model.state.value.deletion!!.plan.transcriptIds)
+                assertNotNull(history.find(replacementId))
+                instrumentation.runOnMainSync { dialog.model.confirmDeletion() }
+                withTimeout(5000) { dialog.model.state.first { !it.deleting && it.finished } }
                 assertThrows("Explicit Delete must win over the pending Keep", IllegalStateException::class.java) { history.get(replacementId) }
                 assertFalse(File(root, replacementId).exists())
-                assertTrue(history.list().isEmpty())
+                assertEquals(listOf(sibling.id), history.list().map { it.id })
             } else {
                 assertTrue(history.get(replacementId).retention.pinned)
-                assertEquals(listOf(replacementId), history.list().map { it.id })
+                assertEquals(setOf(replacementId, sibling.id), history.list().map { it.id }.toSet())
             }
         } finally {
             releaseSave.countDown()
@@ -218,7 +245,7 @@ class TranscriptionResultMetadataAndroidTest {
                 owner?.let { dialog ->
                     try {
                         withTimeout(5000) {
-                            dialog.model.state.first { !it.saving }
+                            dialog.model.state.first { !it.saving && !it.deleting }
                             if (dialog.model.state.value.closing) dismissed.await()
                         }
                     } finally { dialog.close() }
@@ -302,7 +329,7 @@ class TranscriptionResultMetadataAndroidTest {
         }
 
         suspend fun pin(value: Boolean) {
-            instrumentation.runOnMainSync { model.setTranscriptPinned(value) }
+            instrumentation.runOnMainSync { model.setPinned(DialogPinTarget.TRANSCRIPT, value) }
             withTimeout(5000) { model.state.first { !it.saving } }
             instrumentation.runOnMainSync { }
         }
