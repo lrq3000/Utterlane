@@ -4,7 +4,6 @@ import android.content.Context
 import android.media.AudioFormat
 import android.media.MediaCodec
 import android.media.MediaExtractor
-import android.media.MediaFormat
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -27,20 +26,25 @@ class AudioDecoder(private val context: Context) {
         withContext(Dispatchers.IO) {
             val extractor = MediaExtractor()
             var codec: MediaCodec? = null
+            var codecStarted = false
+            var failure: Throwable? = null
             try {
                 open(extractor)
-                val track = (0 until extractor.trackCount).firstOrNull {
-                    extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
-                } ?: error("No audio track found")
-                extractor.selectTrack(track)
-                val inputFormat = extractor.getTrackFormat(track)
-                val duration = if (inputFormat.containsKey(MediaFormat.KEY_DURATION)) inputFormat.getLong(MediaFormat.KEY_DURATION) else 0L
-                val decoder = MediaCodec.createDecoderByType(checkNotNull(inputFormat.getString(MediaFormat.KEY_MIME)))
+                val track = AudioDecodeMetadata.audioTrack(extractor)
+                extractor.selectTrack(track.index)
+                val duration = AudioDecodeMetadata.durationUs(track.format)
+                val decoder = MediaCodec.createDecoderByType(track.mime)
                 codec = decoder
-                decoder.configure(inputFormat, null, null, 0)
+                decoder.configure(track.format, null, null, 0)
                 decoder.start()
+                codecStarted = true
                 var converter: StreamingResampler? = null
                 var encoding = AudioFormat.ENCODING_PCM_16BIT
+                fun configureOutput() {
+                    val pcm = AudioDecodeMetadata.pcm(decoder.outputFormat, track.index)
+                    converter = StreamingResampler(pcm.rate, pcm.channels)
+                    encoding = pcm.encoding
+                }
                 var inputDone = false
                 var outputDone = false
                 var lastProgress: Int? = null
@@ -65,15 +69,16 @@ class AudioDecoder(private val context: Context) {
                     val index = decoder.dequeueOutputBuffer(info, 10000)
                     if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                         converter?.finish()?.let { if (it.isNotEmpty()) onSamples(it) }
-                        val format = decoder.outputFormat
-                        converter = StreamingResampler(format.getInteger(MediaFormat.KEY_SAMPLE_RATE), format.getInteger(MediaFormat.KEY_CHANNEL_COUNT))
-                        encoding = if (format.containsKey(MediaFormat.KEY_PCM_ENCODING)) format.getInteger(MediaFormat.KEY_PCM_ENCODING) else AudioFormat.ENCODING_PCM_16BIT
-                        require(encoding == AudioFormat.ENCODING_PCM_16BIT || encoding == AudioFormat.ENCODING_PCM_FLOAT) { "Unsupported decoder PCM encoding: $encoding" }
+                        configureOutput()
                     } else if (index >= 0) {
                         var samples: ShortArray? = null
                         try {
                             val buffer = decoder.getOutputBuffer(index)
                             if (buffer != null && info.size > 0) {
+                                // Some decoders omit the initial format event. Read
+                                // their actual output, including encoding, before
+                                // interpreting bytes; compressed input is not PCM.
+                                if (converter == null) configureOutput()
                                 buffer.position(info.offset)
                                 buffer.limit(info.offset + info.size)
                                 buffer.order(ByteOrder.nativeOrder())
@@ -84,8 +89,6 @@ class AudioDecoder(private val context: Context) {
                                     val shorts = buffer.asShortBuffer()
                                     FloatArray(shorts.remaining()) { shorts.get() / 32768f }
                                 }
-                                // Some decoders do not announce the format before their first output.
-                                if (converter == null) converter = StreamingResampler(inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE), inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT))
                                 samples = converter!!.accept(normalized)
                             }
                             outputDone = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
@@ -100,8 +103,27 @@ class AudioDecoder(private val context: Context) {
                 }
                 converter?.finish()?.let { if (it.isNotEmpty()) onSamples(it) }
                 onProgress(100)
+            } catch (error: Throwable) {
+                failure = error
+                throw error
             } finally {
-                try { codec?.stop() } finally { codec?.release(); extractor.release() }
+                releaseResources(codec, codecStarted, extractor, failure)
             }
         }
+
+    private fun releaseResources(codec: MediaCodec?, started: Boolean, extractor: MediaExtractor, original: Throwable?) {
+        var failure = original
+        fun release(action: () -> Unit) {
+            try { action() } catch (cleanup: Throwable) {
+                if (failure == null) failure = cleanup
+                else if (failure !== cleanup) failure!!.addSuppressed(cleanup)
+            }
+        }
+        // All owners must be released even if stop/release throws. In particular,
+        // cleanup must not turn cancellation or a storage failure into a codec error.
+        if (started) release { codec?.stop() }
+        release { codec?.release() }
+        release { extractor.release() }
+        if (original == null) failure?.let { throw it }
+    }
 }
