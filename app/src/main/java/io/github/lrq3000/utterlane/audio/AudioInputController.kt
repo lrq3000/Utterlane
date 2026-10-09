@@ -63,6 +63,9 @@ class AudioInputController(
     // not a queued add/remove delta which may already have become obsolete.
     suspend fun snapshotForRecording(): AudioInputState = refresh()
 
+    /** Live routing evidence must not wait for an unrelated suspended settings write. */
+    internal fun currentInputs(): List<AudioInput> = devices.inputs()
+
     suspend fun select(key: String): Boolean = mutex.withLock {
         val inputs = devices.inputs()
         val input = inputs.firstOrNull { it.key == key } ?: return@withLock false

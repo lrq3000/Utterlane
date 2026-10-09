@@ -35,6 +35,11 @@ class AndroidCaptureRoute(
 ) : Closeable {
     private val manager = context.getSystemService(AudioManager::class.java)
     private val target = initial.selected
+    private class SourceBinding(val input: AudioInput) { var removed = false }
+    private val bindingLock = Any()
+    private var sourceBinding = target.takeIf { it.inputId != null }?.let(::SourceBinding)
+    private val deviceVersion = AtomicLong()
+    private var inventoryVersion = -1L
     private val policy = CaptureRoutePolicy(target, SystemClock::uptimeMillis)
     private var inventory = initial
     private var inputs = emptyMap<Int, AudioDeviceInfo>()
@@ -68,11 +73,8 @@ class AndroidCaptureRoute(
             // selection may already refer to another device, and reconnection can
             // erase the missing snapshot before the capture worker sees it.
             val listener = object : AudioDeviceCallback() {
-                override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) { dirty.set(true) }
-                override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
-                    if (removedDevices.any { it.id == target.connectionId }) targetRemoved.set(true)
-                    dirty.set(true)
-                }
+                override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = devicePortsChanged(emptyArray())
+                override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) = devicePortsChanged(removedDevices)
             }
             deviceListener = listener
             try { manager.registerAudioDeviceCallback(listener, Handler(Looper.getMainLooper())) }
@@ -151,7 +153,7 @@ class AndroidCaptureRoute(
     fun beforeRead(record: AudioRecord, silenced: Boolean) {
         if (!shouldContinue()) return
         if (targetRemoved.get()) policy.fallback(InputFallbackReason.DISCONNECTED)
-        if (dirty.getAndSet(false) || controller.state.value !== inventory) {
+        if (dirty.getAndSet(false)) {
             refreshInventory()
             refreshActual(record)
         }
@@ -190,7 +192,10 @@ class AndroidCaptureRoute(
     fun takeReopenRequest(): Boolean = policy.takeReopenRequest()
 
     private fun refreshInventory() {
-        controller.state.value?.let { inventory = it }
+        val version = deviceVersion.get()
+        // Resolve native ports independently of the next-session settings Flow.
+        // A routing callback may precede its inventory refresh/persistence job.
+        inventory = AudioInputState(controller.currentInputs(), inventory.preferences)
         inputs = manager.getDevices(AudioManager.GET_DEVICES_INPUTS).associateBy { it.id }
         phoneId = inputs.values.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC }?.id
         communications = if (Build.VERSION.SDK_INT >= 31) {
@@ -203,16 +208,56 @@ class AndroidCaptureRoute(
             target.communicationId != null -> communications.containsKey(target.communicationId)
             else -> target.inputId != null && inputs.containsKey(target.inputId)
         }
+        inventoryVersion = version
     }
 
     private fun refreshActual(record: AudioRecord) {
+        // Native queries stay outside the binding lock. A removal can arrive
+        // during this query, so recheck the inventory generation while publishing
+        // the binding under the same lock used by device callbacks.
         val routed = record.routedDevice
-        actual = when {
-            routed == null -> null
-            routed.type == AudioDeviceInfo.TYPE_BUILTIN_MIC -> AudioInput(AudioInput.PHONE_KEY, "", false, routed.id)
-            else -> inventory.byInputId[routed.id] ?: AudioInput("actual:${routed.id}", routed.productName.toString(),
-                AndroidAudioInputDevices.isBluetooth(routed.type), routed.id)
+        synchronized(bindingLock) {
+            if (inventoryVersion != deviceVersion.get()) {
+                actual = null
+                dirty.set(true)
+                return
+            }
+            val bound = validSourceBindingLocked()
+            actual = when {
+                routed == null -> null
+                routed.type == AudioDeviceInfo.TYPE_BUILTIN_MIC -> AudioInput(AudioInput.PHONE_KEY, "", false, routed.id)
+                !policy.isFallback && bound?.inputId == routed.id -> bound
+                else -> inventory.byInputId[routed.id] ?: AudioInput("actual:${routed.id}", routed.productName.toString(),
+                    AndroidAudioInputDevices.isBluetooth(routed.type), routed.id)
+            }
+            actual?.takeIf { !policy.isFallback && it.key == target.key && it.inputId != null }?.let {
+                if (bound?.inputId != it.inputId) sourceBinding = SourceBinding(it)
+            }
         }
+    }
+
+    private fun devicePortsChanged(removed: Array<out AudioDeviceInfo>) {
+        synchronized(bindingLock) {
+            val bound = sourceBinding
+            if (bound != null && removed.any { it.id == bound.input.inputId }) bound.removed = true
+            if (removed.any { it.id == target.connectionId }) targetRemoved.set(true)
+            deviceVersion.incrementAndGet()
+        }
+        dirty.set(true)
+    }
+
+    /** Caller holds bindingLock and has checked the inventory's generation. */
+    private fun validSourceBindingLocked(): AudioInput? {
+        val bound = sourceBinding?.takeUnless { it.removed } ?: return null
+        val mapped = inventory.byInputId[bound.input.inputId]
+        // Keep a proven source when a new duplicate makes catalogue matching
+        // ambiguous. Positive contrary evidence invalidates it permanently: later
+        // ambiguity must not resurrect a disproved association.
+        if (bound.input.inputId !in inputs || (mapped != null && mapped.connectionId != bound.input.connectionId)) {
+            bound.removed = true
+            return null
+        }
+        return bound.input
     }
 
     private fun communicationReady(): Boolean {
@@ -222,8 +267,11 @@ class AndroidCaptureRoute(
     }
 
     private fun prefer(record: AudioRecord, key: String) {
-        val inputId = if (key == AudioInput.PHONE_KEY) phoneId
-            else inventory.byKey[key]?.inputId ?: target.inputId
+        val inputId = synchronized(bindingLock) {
+            if (inventoryVersion != deviceVersion.get()) { dirty.set(true); return }
+            if (key == AudioInput.PHONE_KEY) phoneId
+            else validSourceBindingLocked()?.inputId ?: inventory.byKey[key]?.inputId
+        }
         val preference = key to inputId
         if (lastPreference == preference) return
         val device = inputId?.let(inputs::get)
