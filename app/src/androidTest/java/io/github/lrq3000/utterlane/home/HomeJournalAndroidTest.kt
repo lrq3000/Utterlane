@@ -13,6 +13,24 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class HomeJournalAndroidTest {
+    @Test fun liveCheckpointUpdatesTheCommittedSpeakerFlagBeforeAudioFinalization() {
+        val base = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "home-journal-live-${UUID.randomUUID()}"
+        val context = object : ContextWrapper(base) {
+            override fun getSharedPreferences(ignored: String, mode: Int) = base.getSharedPreferences(name, mode)
+        }
+        try {
+            val journal = HomeJournal(context)
+            for (labeled in listOf(false, true)) {
+                journal.capture("live-audio", null, null, speakerLabels = labeled)
+                val restored = HomeJournal(context).restore()!!
+                assertEquals(labeled, restored.metadata!!.speakerLabels)
+                assertNull("Chronology comes from recovered audio, not a guessed clock", restored.metadata!!.created)
+                assertFalse(restored.automatic)
+            }
+        } finally { base.deleteSharedPreferences(name) }
+    }
+
     @Test fun checkpointDistinguishesEpochCreationFromUnknownLegacyMetadata() {
         val base = InstrumentationRegistry.getInstrumentation().targetContext
         val name = "home-journal-epoch-${UUID.randomUUID()}"

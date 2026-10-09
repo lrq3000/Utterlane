@@ -11,10 +11,13 @@ internal class HomeJournal(context: Context) {
     private val prefs = context.getSharedPreferences("home_workspace", Context.MODE_PRIVATE)
     private var previous: DialogInput? = null
 
-    fun capture(audioId: String?, store: TranscriptStore?, snapshot: CaptureSnapshot?) {
+    fun capture(audioId: String?, store: TranscriptStore?, snapshot: CaptureSnapshot?, speakerLabels: Boolean = false) {
         if (audioId == null && store == null) return
         write(DialogInput(audioId = audioId, transcriptPath = store?.file?.absolutePath,
-            modelName = snapshot?.modelName.orEmpty()))
+            modelName = snapshot?.modelName.orEmpty(),
+            // Audio's final metadata may not be written before process loss.
+            // Checkpoint the committed-text flag, never the requested setting.
+            metadata = TranscriptMetadata(speakerLabels = speakerLabels)))
     }
     fun write(input: DialogInput) {
         if (input == previous) return

@@ -139,7 +139,12 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         val audio = linkedHistory.availableAudio(ownedAudioId)
         // Source deletion or a later re-transcription must not erase/change the
         // metadata attached to the text this dialog already owns.
-        if (resultMetadata.created == null && audio != null) resultMetadata = TranscriptMetadata(audio)
+        if (resultMetadata.created == null && audio != null) {
+            // Interrupted live text can checkpoint labels before the audio
+            // finalizer updates its index. Hydration fills chronology, not erases
+            // that independent evidence of already-committed labeled output.
+            resultMetadata = TranscriptMetadata(audio, speakerLabels = audio.speakerLabels || resultMetadata.speakerLabels)
+        }
         mutable.update { it.copy(audio = audio) }
     }
 

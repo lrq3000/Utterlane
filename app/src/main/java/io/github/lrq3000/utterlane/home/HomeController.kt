@@ -263,7 +263,10 @@ class HomeController(private val app: UtterlaneApp) {
             // Acceptance synchronously retires the old owner before this new
             // checkpoint is published. Neither empty Ready nor stale IO can erase
             // the previous descriptor; final completion remains a fallback.
-            synchronized(ownerGate) { journal.capture(session?.audioId, store, session?.metrics?.state?.value) }
+            synchronized(ownerGate) {
+                journal.capture(session?.audioId, store, session?.metrics?.state?.value,
+                    speakerLabels = session?.speakerLabels == true)
+            }
         }
         private fun deliverResult(store: TranscriptStore?, failure: SessionFailure?) {
             val audio = session?.audioId?.let { runCatching { app.recordingHistory.get(it) }.getOrNull() }

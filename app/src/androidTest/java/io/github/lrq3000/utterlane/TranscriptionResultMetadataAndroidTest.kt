@@ -24,6 +24,32 @@ class TranscriptionResultMetadataAndroidTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val app get() = instrumentation.targetContext.applicationContext as UtterlaneApp
 
+    @Test fun interruptedLabelCheckpointSurvivesAudioHydrationAndExplicitKeep() = runBlocking {
+        val recording = app.recordingHistory.begin(HistoryRetention.NONE, keepUntilDismissed = true)
+        recording.append(ShortArray(16000)); recording.finish(true)
+        val source = workingText()
+        var savedId: String? = null
+        try {
+            // The process stopped before the microphone finalizer could mark its
+            // audio. The committed text checkpoint is independently authoritative.
+            assertFalse(app.recordingHistory.get(recording.entry.id).speakerLabels)
+            DialogOwner(DialogInput(audioId = recording.entry.id, transcriptPath = source.absolutePath,
+                metadata = TranscriptMetadata(speakerLabels = true))).use { owner ->
+                owner.ready()
+                assertTrue("Audio hydration must not erase committed text labels", owner.model.metadata.speakerLabels)
+                assertEquals(recording.entry.started, owner.model.metadata.created)
+                assertEquals(1000L, owner.model.metadata.durationMs)
+                owner.pin(true)
+                savedId = owner.model.state.value.transcriptId
+                assertTrue(app.transcriptHistory.get(checkNotNull(savedId)).speakerLabels)
+            }
+        } finally {
+            savedId?.let(app.transcriptHistory::delete)
+            app.recordingHistory.delete(recording.entry.id)
+            source.delete()
+        }
+    }
+
     @Test fun cacheOnlyResultMetadataIsWrittenToSavedState() = runBlocking {
         val source = workingText()
         val savedState = Bundle()
