@@ -9,6 +9,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HomeResultObserverTest {
+    @Test fun ownerChangedBetweenEntryCheckAndStateUpdateCannotOverwritePromotedResult() {
+        val root = SupervisorJob()
+        val home = MutableStateFlow(HomeState(result = TranscriptionDialogState(preview = "promoted result")))
+        val obsolete = MutableStateFlow(TranscriptionDialogState(running = true, preview = "obsolete result"))
+        var checks = 0
+        var callbacks = 0
+        try {
+            HomeResultObserver(CoroutineScope(root + Dispatchers.Unconfined), Dispatchers.Unconfined).observe(home, obsolete,
+                isCurrent = { ++checks == 1 }, onStarted = { callbacks++ }, onResult = { _, _ -> callbacks++ })
+            assertEquals("promoted result", home.value.result.preview)
+            assertEquals(0, callbacks)
+        } finally { root.cancel() }
+    }
+
     @Test fun initialHydrationDoesNotEraseAnActualCaptureFailureOrPermissionError() = Fixture().use { f ->
         f.model.value = TranscriptionDialogState(importing = true)
         f.drain()

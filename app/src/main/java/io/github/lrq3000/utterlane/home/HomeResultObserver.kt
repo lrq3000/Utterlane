@@ -19,12 +19,13 @@ internal class HomeResultObserver(
             // Hydration is not a retry. Preserve capture failures while importing,
             // but retire the old capture/permission error when the model actually
             // starts new work. Later progress must not erase a new service error.
-            home.update { it.copy(result = result,
+            home.update { if (!isCurrent()) it else it.copy(result = result,
                 message = if (started) null else it.message,
                 permissionDenied = if (started) false else it.permissionDenied) }
             // Main.immediate observes a dialog's Main.immediate model start before
             // its UI callback returns, so permission-free FGS startup is not left
             // to a later app-scope collector or background onDestroy callback.
+            if (!isCurrent()) return@collect
             if (started) onStarted()
             onResult(result, wasRunning)
             wasRunning = result.running
