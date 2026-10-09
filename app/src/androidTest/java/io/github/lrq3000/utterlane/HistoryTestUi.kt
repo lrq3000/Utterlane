@@ -1,6 +1,7 @@
 package io.github.lrq3000.utterlane
 
 import android.os.SystemClock
+import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.test.platform.app.InstrumentationRegistry
@@ -39,6 +40,32 @@ internal class HistoryTestUi(private val ui: OnboardingTestUi) {
     /** Icons can remain child nodes in the unmerged accessibility tree. Inspect
      * the actual descriptions, not visible text or an assumed merged parent. */
     fun contentDescriptions(id: String): String = rowLabels(id) { it.contentDescription }
+
+    /** Visibility during an accessibility scroll is not a settled anchor. Wait
+     * for unchanged real bounds; keep the callers' strict 2 px comparison intact. */
+    fun settledBounds(id: String): Rect {
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        val deadline = SystemClock.uptimeMillis() + 5000
+        var previous: Rect? = null
+        var unchangedSince = SystemClock.uptimeMillis()
+        while (SystemClock.uptimeMillis() < deadline) {
+            val node = ui.node("history_entry_$id")
+            val current = try {
+                assertTrue("The anchored row must remain visible", node.isVisibleToUser)
+                Rect().also(node::getBoundsInScreen)
+            } finally { node.recycle() }
+            val now = SystemClock.uptimeMillis()
+            if (current != previous) {
+                previous = current
+                unchangedSince = now
+            } else if (now - unchangedSince >= 500) {
+                android.util.Log.i("HistoryTestUi", "Settled anchor $id: $current")
+                return current
+            }
+            Thread.sleep(50)
+        }
+        throw AssertionError("History anchor $id did not settle: $previous")
+    }
 
     private fun rowLabels(id: String, label: (AccessibilityNodeInfo) -> CharSequence?): String {
         val row = ui.node("history_entry_$id")

@@ -16,6 +16,8 @@ import io.github.lrq3000.utterlane.onboarding.OnboardingRepository
 import io.github.lrq3000.utterlane.settings.SettingsActivity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.delay
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -123,10 +125,16 @@ class HistoryNavigationAndroidTest {
             // Record is a real destination in the same saved-state host, not a
             // handoff that discards either history when the Activity is recreated.
             val old = history!!
-            instrumentation.runOnMainSync { old.recreate() }
-            history = historyMonitor.waitForActivityWithTimeout(8000)
-            assertNotNull(history)
-            assertNotSame(old, history)
+            // The launch monitor can still contain the old Activity's later
+            // onResume notification. Observe recreation with its own scoped queue.
+            val recreation = instrumentation.addMonitor(HistoryActivity::class.java.name, null, false)
+            try {
+                instrumentation.runOnMainSync { old.recreate() }
+                history = recreation.waitForActivityWithTimeout(8000)
+                assertNotNull(history)
+                assertNotSame(old, history)
+                withTimeout(5000) { while (!old.isDestroyed) delay(20) }
+            } finally { instrumentation.removeMonitor(recreation) }
             ui.node("home_screen").recycle()
             ui.click("home_nav_audio")
             assertPosition(audioBounds, audioTarget)
@@ -175,12 +183,7 @@ class HistoryNavigationAndroidTest {
         }
     }
 
-    private fun rowBounds(id: String): Rect = ui.node("history_entry_$id").let { node ->
-        try {
-            assertTrue(node.isVisibleToUser)
-            Rect().also(node::getBoundsInScreen)
-        } finally { node.recycle() }
-    }
+    private fun rowBounds(id: String): Rect = HistoryTestUi(ui).settledBounds(id)
 
     private fun assertPosition(before: Rect, id: String) {
         // Match the existing paging regression's 2px accessibility-rounding tolerance.

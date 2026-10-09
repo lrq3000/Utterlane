@@ -213,3 +213,31 @@ owner's text/provenance leases.
 This follow-up is additive on `e5b13af` for parent cherry-picking. The parent's
 reapplied tests, worktree and stash were not touched; no APK, native build or device
 operation was performed.
+
+## Native fixture rerun on the parent's 0397643 target
+
+The parent authorized test-APK-only installation on `emulator-5556` (API 28,
+`.dhome`). Built `:app:assembleDebugAndroidTest` with
+`-x :app:mergeDebugAndroidTestNativeLibs -PqaApplicationIdSuffix=.dhome` and the
+usual offline/in-process/two-worker/quiet flags, then installed only
+`app-debug-androidTest.apk`. The target's last-update timestamp remained
+`2026-10-09 03:43:23`.
+
+- `HomeFlowAndroidTest#eachHistoryRetainsItsOwnScrolledPositionAcrossTabsAndNewIntents`
+  **passed** after reading bounds only once they remain unchanged for 500 ms.
+  The original 2 px assertion is intact. Native log evidence: audio bounds
+  `Rect(28, 530 - 1892, 656)` before/after and transcript bounds
+  `Rect(28, 884 - 1892, 940)` before/after were exactly equal. Power inspection
+  showed Awake/display ON/stay-on with a 2147483647 ms timeout, so no global
+  power/UI modification or test keep-awake override was needed.
+- `HistoryNavigationAndroidTest#legacyAudioTextAndRecordRoundTripRetainsBothAnchorsAndSettingsParent`
+  **passed** with a fresh scoped recreation monitor and a wait for the old
+  Activity's destruction. The launch monitor may still hold an old onResume.
+  Both anchors remained exactly `Rect(28, 462 - 1892, 588)` across navigation
+  and recreation; parent, launch-token and actual-new-instance assertions remain.
+- The three-method batch ran in **44.941 s: 2 passed, 1 failed**. The remaining
+  explicit-Keep/discard case still lost the actual working file despite a new
+  external reader lease. Runtime logging exposed the input alias `/data/user/0/`
+  versus the restored store's canonical `/data/data/` path. This is being
+  investigated at the cache lease identity boundary rather than hidden by a weaker
+  assertion or by leasing an unrelated fixture file.
