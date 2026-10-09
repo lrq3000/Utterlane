@@ -9,6 +9,7 @@ import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.asr.*
 import io.github.lrq3000.utterlane.history.*
 import io.github.lrq3000.utterlane.settings.VisualRefreshRate
+import io.github.lrq3000.utterlane.util.StorageFailure
 import java.io.File
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -441,7 +442,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
 
     private fun showError(error: Exception) {
         Log.e("TranscribeDialog", "Local transcription operation failed", error)
-        mutable.update { it.copy(message = error.message ?: app.getString(R.string.transcribe_error_failed)) }
+        mutable.update { it.copy(message = StorageFailure.userMessage(app, error)
+            ?: error.message ?: app.getString(R.string.transcribe_error_failed)) }
     }
     fun saveInstanceState(out: android.os.Bundle) {
         out.putString("owned_audio", ownedAudioId)

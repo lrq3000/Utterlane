@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="storage_full_actionable">Tallennustilaa ei ole tarpeeksi. Vapauta tilaa ja yritä uudelleen.</string>
+</resources>

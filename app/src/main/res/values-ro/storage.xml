@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="storage_full_actionable">Spațiu de stocare insuficient. Eliberați spațiu și încercați din nou.</string>
+</resources>

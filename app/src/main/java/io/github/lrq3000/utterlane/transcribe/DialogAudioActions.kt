@@ -70,7 +70,10 @@ class DialogAudioActions(private val app: UtterlaneApp) {
                     }
                 } catch (e: Exception) {
                     // Only remove a new file we created in the chosen directory.
-                    if (directory) DocumentFile.fromSingleUri(app, target)?.delete()
+                    // A provider can fail again during cleanup (for example after
+                    // revoking access). Keep the write failure and its errno intact.
+                    if (directory) try { DocumentFile.fromSingleUri(app, target)?.delete() }
+                    catch (cleanup: Exception) { if (cleanup !== e) e.addSuppressed(cleanup) }
                     throw e
                 }
             }

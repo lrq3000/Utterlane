@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="storage_full_actionable">Der er ikke nok lagerplads. Frigør plads, og prøv igen.</string>
+</resources>
