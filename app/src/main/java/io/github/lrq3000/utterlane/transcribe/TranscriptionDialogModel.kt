@@ -175,6 +175,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         }
                         lastRequestedModelId = app.modelManager.selected.value.id
                         val source = app.recordingHistory.get(audioId)
+                        val gain = io.github.lrq3000.utterlane.audio.TranscriptionGain(
+                            source.microphone?.gain ?: io.github.lrq3000.utterlane.audio.PcmGainMode.OFF)
                         val options = app.settingsRepository.runtimeOptions.first()
                         val retainText = app.settingsRepository.transcriptHistoryEnabled.first()
                         val textDuration = app.settingsRepository.transcriptHistoryRetention.first()
@@ -199,7 +201,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         lastRequestedModelId = resultModelId
                         created.store.attachSource(TranscriptSource(audioId, modelName = chosenModel, modelId = resultModelId))
                         exposeStore(created.store)
-                        val accept: suspend (ShortArray) -> Unit = { pcm -> metrics.captured(pcm.size); created.accept(pcm) }
+                        val accept: suspend (ShortArray) -> Unit = { pcm -> metrics.captured(pcm.size); gain.deliver(pcm, created::accept) }
                         if (source.sourceName != null) AudioDecoder(app).decode(source.part(0).absolutePath, accept) { latestProgress = it?.coerceIn(0, 99) }
                         else audioLease.reader().use { reader ->
                             while (reader.offset < source.samples) {
@@ -211,6 +213,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                             }
                         }
                         metrics.captureEnded()
+                        gain.drain(created::accept)
                         created.finish() // Includes the enabled speaker finisher before saving results.
                         if (retainText && textDuration != HistoryRetention.NONE && created.store.segments > 0) {
                             try {
