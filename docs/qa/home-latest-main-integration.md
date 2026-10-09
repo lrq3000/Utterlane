@@ -154,3 +154,27 @@ reported source patterns remained in this integration:
   existing section links. The two affected tests scroll to and click those tags,
   preserving Activity identity, Back, geometry and retained-anchor assertions.
   Navigation callbacks are unchanged. Runtime rerun remains with the parent.
+
+## Borrowed Home detail ownership and final review checks
+
+- Home's detail `onClose` now hides only the overlay, matching system Back's
+  `onDismissRequest`. The Home owner, temporary source and journal survive this
+  navigation. `onEmpty` after confirmed deletion and More -> Dismiss still clean
+  up explicitly; external `TranscribeActivity` still dismisses its own model.
+- Added `HomeDetailOwnershipAndroidTest`: import an invalid local WAV (no model
+  weights required), await its terminal failure, open detail, close by its Back
+  arrow and system Back, and assert the same model, unchanged owned bytes,
+  temporary retention and journal. Finally use More -> Dismiss and await cleanup.
+- Final review command passed **415 JVM tests, zero failures/ignored**, plus Android
+  instrumentation Kotlin compilation:
+
+  ```powershell
+  .\gradlew.bat :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q --offline
+  ```
+
+- The first compilation of the new ownership regression exposed Kotlin's inferred
+  internal `HomeState` return type; declaring `runBlocking<Unit>` corrected the
+  test signature before the successful final command.
+- All review fixes use the same worktree/base; no further rebase was performed.
+  Native two-owner publication, fixture reruns and Home overlay execution remain
+  pending with the parent. The pending-test stash remains untouched.

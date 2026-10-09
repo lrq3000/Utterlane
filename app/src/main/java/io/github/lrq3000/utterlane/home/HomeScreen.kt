@@ -134,7 +134,9 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
     }
     if (details && model != null) Dialog(onDismissRequest = { details = false },
         properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        TranscriptionDialog(model, onClose = { details = false; controller.dismiss() },
+        // This overlay borrows Home's result owner. Both Back paths only navigate;
+        // More -> Dismiss and confirmed deletion remain the explicit cleanup paths.
+        TranscriptionDialog(model, onClose = { details = false },
             onEmpty = { details = false; controller.dismiss() })
     }
 }
