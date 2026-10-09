@@ -207,14 +207,13 @@ class SettingsActivity : LocalizedActivity() {
         val app = UtterlaneApp.instance
         app.applicationScope.launch {
             val serviceEnabled = app.settingsRepository.serviceEnabled.first()
-            // Idle unloading is a memory policy, not a request to disable voice
-            // input. The capture session loads installed model files on demand.
-            val modelInstalled = app.modelManager.isModelReady()
+            // Capture remains useful without recognition. The session loads a
+            // model on demand and preserves audio for recovery if none is usable.
             val hasMic = hasMicPermission()
             val hasOverlay = hasOverlayPermission()
 
             if (serviceEnabled) {
-                if (!modelInstalled || !hasMic || !hasOverlay) {
+                if (!hasMic || !hasOverlay) {
                     // Conditions no longer met - disable
                     app.settingsRepository.setServiceEnabled(false)
                     stopFloatingService()
@@ -479,13 +478,7 @@ fun SettingsScreen(
                             try { recognizerManager.release() }
                             catch (e: Exception) { Toast.makeText(context, e.message, Toast.LENGTH_LONG).show() }
                         }
-                        // Stop floating service when model is unloaded
-                        if (serviceEnabled) {
-                            scope.launch {
-                                settingsRepository.setServiceEnabled(false)
-                            }
-                            onStopService()
-                        }
+                        // Unloading recognition must not interrupt independent capture.
                     }
                 )
                 recognizerFailure?.let { message ->
@@ -653,19 +646,17 @@ fun SettingsScreen(
 
             // Optional Floating Mic Button
             SettingsSection(title = stringResource(R.string.section_floating_mic)) {
-                val modelInstalled = modelManager.isModelReady()
                 SwitchSettingItem(
                     title = stringResource(R.string.floating_enable),
                     subtitle = when {
                         !hasMicPermission.value -> stringResource(R.string.floating_grant_mic_first)
                         !hasOverlayPermission.value -> stringResource(R.string.floating_grant_overlay_first)
-                        !modelInstalled -> stringResource(R.string.floating_install_model_first)
                         serviceEnabled -> stringResource(R.string.floating_shows_red)
                         else -> stringResource(R.string.floating_additional)
                     },
                     icon = Icons.Default.RadioButtonChecked,
                     checked = serviceEnabled,
-                    enabled = hasMicPermission.value && hasOverlayPermission.value && modelInstalled,
+                    enabled = hasMicPermission.value && hasOverlayPermission.value,
                     onCheckedChange = { enabled ->
                         scope.launch {
                             settingsRepository.setServiceEnabled(enabled)
