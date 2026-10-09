@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="storage_full_actionable">Nedostatok miesta v úložisku. Uvoľnite miesto a skúste to znova.</string>
+</resources>

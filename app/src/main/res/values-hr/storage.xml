@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="storage_full_actionable">Nema dovoljno prostora za pohranu. Oslobodite prostor i pokušajte ponovno.</string>
+</resources>
