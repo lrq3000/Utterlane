@@ -38,6 +38,7 @@ internal fun TranscriptReader(model: TranscriptionDialogModel, state: Transcript
     val list = rememberLazyListState()
     val shape = RoundedCornerShape(12.dp)
     val colors = MaterialTheme.colorScheme
+    var processingViewportHeight by remember(state.store) { mutableStateOf(0.dp) }
     // Conflate thumb moves instead of queuing a scroll coroutine for every pixel.
     val seeks = remember { Channel<Float>(Channel.CONFLATED) }
     DisposableEffect(Unit) { onDispose { seeks.close() } }
@@ -76,14 +77,22 @@ internal fun TranscriptReader(model: TranscriptionDialogModel, state: Transcript
     // Keeping this reader/list at the same composition position preserves its
     // anchor when progress collapses and extra space becomes available below.
     Column(modifier.clip(shape).background(colors.surface).border(1.dp, colors.outline.copy(alpha = 0.65f), shape)) {
-        Box(Modifier.weight(1f).fillMaxWidth().testTag("transcript_viewport")) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().testTag("transcript_viewport")) {
+            val complete = state.fileProgress?.stage == FileProgressStage.COMPLETE
+            // LazyColumn clamps its scroll offset at EOF when a larger viewport
+            // would leave trailing space. Retain that released space as padding
+            // inside the current document so the words being read stay anchored.
+            // An already-complete document opened afresh needs no such inset.
+            val completionSpace = if (complete && processingViewportHeight > 0.dp)
+                (maxHeight - processingViewportHeight).coerceAtLeast(0.dp) else 0.dp
+            if (!complete) SideEffect { processingViewportHeight = maxHeight }
             if (state.transcriptBytes == 0L) {
                 Text(stringResource(if (state.running || state.importing) R.string.dialog_waiting_text else R.string.dialog_empty_text),
                     Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant)
             } else {
                 SelectionContainer {
                     LazyColumn(Modifier.fillMaxSize().padding(end = 18.dp).testTag("transcript_reader"), state = list,
-                        contentPadding = PaddingValues(12.dp)) {
+                        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp + completionSpace)) {
                         items(pages.itemCount, key = { it }) { index ->
                             val chunk = pages[index]
                             if (chunk == null) Spacer(Modifier.height(128.dp))

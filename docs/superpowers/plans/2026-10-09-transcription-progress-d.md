@@ -1,8 +1,8 @@
 # Transcription progress D implementation plan
 
 > For agentic workers: use the executing-plans skill for inline execution. The
-> user approved D and implementation; merge/push are deferred while another agent
-> works on main.
+> user approved D and implementation; merge/push were initially deferred while
+> another agent worked on main, then authorized after final verification.
 
 **Goal:** Implement the approved minimal bottom progress dock, preserving the
 reader's top and scroll position while showing useful percentage and ETA.
@@ -91,5 +91,6 @@ adb -s emulator-5556 shell am instrument -w -e onboardingTimeoutSeconds 20 -e cl
 
 Expected: focused tests fail on missing behavior first, then pass; final builds
 and regression checks pass. Inspect the diff, commit each coherent milestone,
-and report hashes/QA evidence. The user explicitly deferred squash merge/push;
-leave main and other agents' worktrees alone.
+and report hashes/QA evidence. The user subsequently authorized squash merge onto
+the latest main and a normal push. Inspect current main before integration and
+preserve unrelated work. See the QA note for the reproduced EOF anchor correction.

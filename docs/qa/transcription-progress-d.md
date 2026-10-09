@@ -6,7 +6,8 @@
   reader footer, plus completion that expands reading space downward.
 - Worktree `.worktrees/transcription-progress-native`, branch
   `feat/transcription-progress-d`, based on local main `9dc33a8` and the two
-  approved mockup commits. User subsequently deferred squash merge and push.
+  approved mockup commits. User initially deferred integration, then authorized
+  squash merge and push after completion of final verification.
 - JDK 21; Android SDK 36; normal incremental Gradle, two workers, offline caches.
 - LDPlayer instance 1, API 28, `emulator-5556`; isolated application identity
   `io.github.lrq3000.utterlane.progressd`, version 2.1.0 / code 210.
@@ -85,5 +86,29 @@ says **+ finishing**. During the finishing/persistence stages it reports the
 stage without a fabricated numeric ETA. New strings use English fallback under
 the release-time translation policy.
 
-No main-branch merge or remote push is part of this delivery: the user deferred
-them to avoid interfering with another agent's ongoing work.
+## EOF anchoring review correction
+
+A read-only review identified that LazyColumn can clamp its scroll offset when
+the viewport grows near EOF, even though the list identity and viewport top stay
+fixed. A native reproduction confirmed the reading-position fraction moving
+from **0.6222651 to 0.5765766** when the progress footer collapsed.
+
+The reader now remembers the processing viewport height per document and adds
+the released height to trailing content padding on completion. This allows the
+viewport to grow downward without pulling the visible words backward at EOF.
+An already-complete document opened afresh receives no compensating inset.
+
+- The regression checks exact EOF and a position just above it, in addition to
+  the existing long-document mid-scroll completion check.
+- The final focused batch passed **26 Android tests**: seven progress tests and
+  19 existing dialog D regressions. Debug/app-test APK builds passed.
+- Review tests moved to idle `emulator-5554` when another agent began UI automation
+  on `emulator-5556`; its instrumentation was left running.
+- The initial long-document seek fixture did not reliably reach its target, so
+  the EOF reproduction uses a single loaded, scrollable chunk to isolate viewport
+  clamping. Existing long-document paging/jump regression coverage still passes.
+- A second read-only review confirmed the correction resolves the finding and
+  identified no remaining blocker. It did not claim additional test execution.
+
+After this correction, the user authorized squash integration onto the latest
+main and a normal push. All commits and checks are retained for that integration.

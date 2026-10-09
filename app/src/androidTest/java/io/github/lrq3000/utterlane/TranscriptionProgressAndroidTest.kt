@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import io.github.lrq3000.utterlane.asr.StreamingCorrections
 import io.github.lrq3000.utterlane.asr.TranscriptStore
+import io.github.lrq3000.utterlane.asr.TranscriptDocument
 import io.github.lrq3000.utterlane.asr.TranscriptionSession
 import io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator
 import io.github.lrq3000.utterlane.history.HistoryRetention
@@ -37,12 +38,12 @@ class TranscriptionProgressAndroidTest {
     private val app get() = instrumentation.targetContext.applicationContext as UtterlaneApp
     private val ui = OnboardingTestUi()
 
-    private inner class Fixture : AutoCloseable {
+    private inner class Fixture(paragraphs: Int = 1000) : AutoCloseable {
         private val recording = app.recordingHistory.begin(HistoryRetention.DAY).also {
             it.append(ShortArray(16000)); it.finish(false)
         }.entry
         private val text = File.createTempFile("progress-d-", ".txt", app.cacheDir).apply {
-            writeText(buildString { repeat(1000) { append("Paragraph $it: Read these already transcribed words comfortably while the rest of the audio is processed.\n\n") } })
+            writeText(buildString { repeat(paragraphs) { append("Paragraph $it: Read these already transcribed words comfortably while the rest of the audio is processed.\n\n") } })
         }
         private val entry = app.transcriptHistory.save(text, "Progress fixture", recording.id, pinned = true)
         val activity: Activity
@@ -124,6 +125,41 @@ class TranscriptionProgressAndroidTest {
             ui.node("transcript_reader").recycle()
             assertTrue(text("transcription_stage").contains("interrupted", ignoreCase = true))
             ui.textNode("Fixture inference failure").recycle()
+        }
+    }
+
+    @Test fun completionPreservesTheTextAnchorAtTheEndOfTheDocument() = runBlocking {
+        // One loaded text chunk isolates viewport anchoring from asynchronous
+        // paging jumps; the separate long-document test exercises paging.
+        for (backoff in listOf(0f, 0.01f)) Fixture(paragraphs = 12).use { fixture ->
+            fixture.show(measured().copy(stage = FileProgressStage.SPEAKERS, percent = null, remainingSeconds = null))
+            ui.node("transcription_progress_bar").recycle()
+            val document = TranscriptDocument(fixture.model.state.value.store!!.file)
+            var last = document.chunkCount - 1
+            while (document.read(last).isEmpty()) last--
+            val scrollbar = ui.node("transcript_scrollbar")
+            try {
+                assertTrue(scrollbar.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id,
+                    Bundle().apply { putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, 1f) }))
+            } finally { scrollbar.recycle() }
+            ui.node("transcript_chunk_$last").recycle()
+            withTimeout(5000) { while (scrollPosition() == 0f) delay(50) }
+            if (backoff > 0) {
+                val end = scrollPosition()
+                val nearEnd = ui.node("transcript_scrollbar")
+                try {
+                    assertTrue(nearEnd.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id,
+                        Bundle().apply { putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, end - backoff) }))
+                } finally { nearEnd.recycle() }
+                withTimeout(5000) { while (scrollPosition() >= end) delay(50) }
+            }
+            ui.screenshot("transcription-progress-d-eof-before")
+            val before = scrollPosition()
+            val viewport = bounds("transcript_viewport")
+            fixture.show(measured().copy(stage = FileProgressStage.COMPLETE, percent = 100, remainingSeconds = null))
+            ui.screenshot("transcription-progress-d-eof-after")
+            assertTrue(bounds("transcript_viewport").height() > viewport.height())
+            assertEquals("Completion must not pull earlier words into view at EOF", before, scrollPosition(), 0.0000001f)
         }
     }
 
