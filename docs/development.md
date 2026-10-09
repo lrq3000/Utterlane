@@ -65,10 +65,40 @@ Microphone / shared file / watched folder
 
 First-party code lives in `app/src/main/java/io/github/lrq3000/utterlane/`:
 `asr/` handles models and recognition, `service/` and `ime/` provide text-input
-surfaces, `transcribe/` handles files, `history/` manages optional recordings,
+surfaces, `home/` owns the launcher/workspace, `transcribe/` handles files, `history/` manages optional recordings,
 and `settings/` and `ui/` provide the interface. Native glue is in
 `app/src/main/cpp/`; [native dependency notices](../app/src/main/assets/native-licenses.txt)
 are also included in the APK.
+
+### Home ownership and shared presentation
+
+`HomeActivity` is the launcher and post-onboarding destination. Settings is a
+subactivity; replayed onboarding returns there. `HistoryActivity` is a thin Home
+host selecting an initial history tab, retaining legacy internal-navigation and
+cleanup-launch markers. Separate cached pagers/saveable tab states retain positions;
+the primary navigation is outside each scrolling page.
+
+The application-owned `HomeController` and foreground `HomeSessionService` outlive
+activity recreation. `HomeCaptureOwner` serializes start/early-Stop/finalization.
+An attempt replaces useful prior work only after writer-published PCM or committed
+text exists. File candidates use the existing dialog model to copy once, validate
+authoritative ownership under history/source guards, atomically promote, then retire
+the prior owner. Missing/empty/revoked input never replaces the prior workspace.
+Only one candidate is retained, and no repository guard waits for Main.
+
+`HomeJournal` persists stable IDs and constant-size independent result metadata;
+contents stay on disk. Unknown/epoch timestamps differ, and live checkpoints retain
+actual committed-label state before the microphone finalizer. Hydration cannot erase
+that evidence. Explicit dismissal and confirmed scoped deletion remain authoritative.
+Fresh Keep publication, provenance migration and delete revalidation share existing
+publication guards; canonical-path cache leases cover Android data-directory aliases.
+
+Home and existing recording surfaces use `ui/WaveformButton`. Home and dialog D use
+the same bounded `TranscriptPager`/continuous reader and full-store leased transfer
+actions. File progress reuses main's completed-PCM footer/qualified ETA; Bluetooth
+caption/warnings reuse `AudioInputText`. These are shared presentation/ownership
+adaptations, not another recognition engine. See [Home QA](qa/blue-notebook-home.md)
+and the [main-first integration checklist](qa/home-latest-main-integration.md).
 
 ### Onboarding module
 
@@ -112,7 +142,8 @@ block that detects writer-queue overflow, then capture stops and the writer drai
 
 Audio is approximately **115 MB per hour**, split into hourly PCM16 WAV parts.
 Recovery metadata is written before the first sample and survives process death.
-Live history-off successes are deleted. Temporary dialogs retain their sources
+Live history-off successes are deleted unless their caller explicitly retains the
+current working result; Home opts into that lifetime. Temporary dialogs retain their sources
 through retries until explicit dismissal; saved recovery audio expires normally.
 Encoded shared inputs are copied once without owning/deleting the sender's original.
 Persisted discard markers prevent resurrection after a crash during deletion.
@@ -127,15 +158,16 @@ uses separate audio/text jobs for finite durations, preserving unchanged schedul
 Temporary and pinned items are absent from the expiration index. Audio reader
 leases can derive a reader after expiry becomes due without authorizing new readers.
 
-`HistoryActivity` hosts the full-screen Audio history and Transcript history
-destinations using the same B-style rows and branded header. `HistoryIndex` keeps
+Home and `HistoryActivity` host the Audio history and Transcripts destinations
+using D-style rows, passive pin indicators and a shared branded header. `HistoryIndex` keeps
 visible metadata in creation-time/ID order, with bidirectional keyset pages in
 O(log n + page size); pins do not change the creation key, and leased deletions leave
 the visible index immediately. `HistoryViewModel` uses AndroidX Paging 3.3.6 with
 30-row pages, six-row prefetch and a 90-row cache target. Source invalidation
 refreshes around the visible anchor, while activity recreation retains the same
 cached window. Only visible date labels use the current UI locale; transcript
-previews are limited to 160 characters and read on IO under a lease. Internal
+previews select the first nonblank line from at most 4096 characters, project at
+most 160 characters, and read on IO under a lease. Internal
 history/detail navigation preserves the cleanup launch token. Legacy Settings
 recovery intents route once to the new audio destination.
 

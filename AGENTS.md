@@ -152,6 +152,7 @@ When bumping a version, update all of these:
 | `TextInjectionService` | Accessibility service for injecting text into focused fields |
 | `DictionaryManager` | Post-processing word corrections/replacements |
 | `SettingsActivity` | Jetpack Compose settings UI |
+| `HomeActivity` / `HomeController` | Launcher, app-owned recording/file workspace and primary histories |
 
 ### Data Flow
 ```
@@ -162,6 +163,7 @@ Tap mic → AudioRecorder (16kHz PCM) → ParakeetRecognizer (ONNX)
 ## Key Directories
 ```
 app/src/main/java/io/github/lrq3000/utterlane/
+├── home/                 # Launcher, foreground recording ownership, recovery journal, primary tabs
 ├── asr/                  # Speech recognition
 │   ├── AudioRecorder.kt
 │   ├── ModelManager.kt       # Downloads Parakeet model from HuggingFace
@@ -318,7 +320,7 @@ OfflineRecognizerConfig(
 ## Package Info
 - **Package and source namespace**: `io.github.lrq3000.utterlane`
 - **App Class**: `UtterlaneApp.kt`
-- **Main Activity**: `SettingsActivity.kt`
+- **Launcher Activity**: `home/HomeActivity.kt` (Settings opens from its gear)
 
 ## Testing
 1. Build and install (see Build section above)

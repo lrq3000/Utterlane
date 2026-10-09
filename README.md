@@ -36,6 +36,8 @@ or share a voice memo to the app to transcribe. No account or subscription is re
 
 - **Offline and private:** speech recognition runs on your device.
 - **Streaming text as you speak:** receive completed speech segments while recording continues.
+- **Record directly in the app:** the Blue Notebook home screen brings recording,
+  local audio-file loading, audio history and transcripts together.
 - **Blazingly fast:** When you stop speaking, the transcription is already done. That's because of clever optimizations, one of which being to start transcribing in the background, and careful memory handling between transcription and audio recording allows to concurrently do both with no performance hit.
 - **SOTA accurate models:** Moondream Parakeet Ultra (Sept 2026, ~670MB) is the default model. For slow devices, Moondream Parakeet Redux with ternary quantization (~160 MB) is available. For more advanced phones, lots of custom SOTA models can be imported via CrispASR (eg, R2T2).
 - **Reliable, robust:** Hardened recording and transcription that leaves no room for failure. Worst case scenario, voice recordings history with autopruning allows you to always recover from a failed transcription.
@@ -80,19 +82,24 @@ options and advice on switching between distribution channels.
    works offline. The guide includes optional in-app dictation and audio-sharing
    tests and can be reopened from Settings.
 2. Grant **Microphone** access.
-3. Choose an input method:
-   - **Keyboard mic:** open **Keyboard Integration → Voice Input Method**, enable
-     Utterlane, and enable the voice-input key in a compatible keyboard such as
-     [HeliBoard](https://github.com/Helium314/HeliBoard).
-   - **Accessibility button:** enable Utterlane's text-input accessibility service
-     in Android Settings.
-   - **Floating mic:** allow **Display over other apps** and enable the floating
-     button in Utterlane.
-4. Focus a text field, tap the microphone, and speak. Tap the recording panel to
-   finish. If text cannot be inserted, use the clipboard or transcript export.
+3. On **Record**, tap the waveform and speak; tap it again to stop. Read, copy or
+   share the transcript directly. Use the gear for Settings and the bottom tabs
+   for **Audio history** and **Transcripts**. No keyboard or overlay setup is needed.
 
-**Have an audio file?** Share it with Utterlane or choose **Open with → Utterlane**
-in your file manager.
+For dictation **into another app**, configure a shortcut in Settings:
+- **Keyboard mic:** open **Keyboard Integration → Voice Input Method**, enable
+  Utterlane, and enable the voice-input key in a compatible keyboard such as
+  [HeliBoard](https://github.com/Helium314/HeliBoard).
+- **Accessibility button:** enable Utterlane's text-input accessibility service
+  in Android Settings.
+- **Floating mic:** allow **Display over other apps** and enable the floating
+  button in Utterlane.
+
+Focus a text field, tap the microphone, and speak. Tap the recording panel to
+finish. If text cannot be inserted, use the clipboard or transcript export.
+
+**Have an audio file?** Use the icon beside **New transcript** on Record, share it
+with Utterlane, or choose **Open with → Utterlane** in your file manager.
 
 ## Privacy
 
