@@ -46,7 +46,12 @@ class HistoryPinsAndroidTest {
         val audio = app.recordingHistory.begin(HistoryRetention.NONE)
         audio.append(ShortArray(1600)); audio.finish(true)
         val examples = listOf(2, 9, 36).map(::savedRecording)
-        val originalOrder = app.recordingHistory.list().map { it.id }
+        // Launch/background cleanup may legitimately expire unrelated QA history.
+        // Compare every fixture's relative order without claiming ownership of it.
+        val fixtureIds = (examples.map { it.id } + audio.entry.id).toHashSet()
+        fun fixtureOrder() = app.recordingHistory.list().map { it.id }.filter { it in fixtureIds }
+        val originalOrder = fixtureOrder()
+        assertEquals(fixtureIds.size, originalOrder.size)
         val activity = instrumentation.startActivitySync(HistoryActivity.intent(app).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         try {
             app.settingsRepository.setAudioHistoryRetention(HistoryRetention.NONE)
@@ -60,7 +65,7 @@ class HistoryPinsAndroidTest {
             app.historyCleanup.request(HistoryCleanupCoordinator.AUDIO)
             assertTrue(audio.entry.directory.exists())
             assertEquals(app.historyCleanup.launchToken, app.recordingHistory.get(audio.entry.id).holdForLaunch)
-            assertEquals("Pinning must not move entries under the user's finger", originalOrder, app.recordingHistory.list().map { it.id })
+            assertEquals("Pinning must not move entries under the user's finger", originalOrder, fixtureOrder())
             historyUi.awaitPinned(audio.entry.id, false)
             assertFalse(ui.hasVisibleText(app.getString(R.string.history_unpin_immediate)))
             ui.screenshot("history-audio-unpin-grace")
