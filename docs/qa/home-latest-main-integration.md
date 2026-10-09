@@ -382,3 +382,29 @@ No HomeScreen, TranscriptContent, parent recognition test, device, APK, native
 build, parent worktree or stash changes were made in this follow-up. The parent's
 successful real-ASR old-target reproduction and new-target native acceptance
 remain parent-owned verification; this commit claims JVM/compile evidence only.
+
+## Keep negative validation and terminal rejection on the same snapshot
+
+Quality review found a second dispatcher boundary: IO could validate an importing
+candidate with no source, then Main could resume after import and a fast decoding
+failure had produced valid nonempty owned audio. Combining the old `false` result
+with the new terminal flags wrongly rejected that retryable candidate.
+
+- Guarded validation now returns the actual immutable state snapshot it inspected
+  alongside its promotion result. Before rejecting, the observer repeats guarded
+  IO validation if current state differs from that snapshot. Terminal flags and
+  error text are read from the validated snapshot, never mixed across phases.
+- Revalidation happens within the current observer iteration rather than waiting
+  for another StateFlow emission. This also handles a change back to a value equal
+  to the last emitted state, which StateFlow can conflate away.
+- Added independently queued Main/IO regression coverage. The reported
+  pending-import -> owned-nonempty-terminal-failure case **failed before the fix**
+  and now accepts the same candidate for retry. A second case verifies an equal-
+  state rebound still completes its correct terminal decision.
+- Existing guarded atomic promotion, latest-running-state publication, bounded
+  candidate cleanup and cancellation behavior remain covered. No guard waits for
+  Main; repeated checks retain only one snapshot and one active observer.
+- **26 focused JVM tests passed**, followed by **442 full JVM tests, zero
+  failures/ignored**, and Android instrumentation Kotlin compilation with the
+  same quiet offline full command recorded above. No UI files, parent worktree,
+  recognition tests, APK/device/native build, or stash were touched.
