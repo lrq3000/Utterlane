@@ -11,7 +11,9 @@ data class CaptureInputState(
 )
 
 /** Capture-worker-confined policy; the session's target never follows settings edits. */
-class CaptureRoutePolicy(private val target: AudioInput, private val clock: () -> Long) {
+class CaptureRoutePolicy(private val target: AudioInput, private val clock: () -> Long,
+    private val activationTimeoutMillis: Long) {
+    constructor(target: AudioInput, clock: () -> Long) : this(target, clock, 5000)
     private val startedAt = clock()
     private var targetConfirmed = false
     private var lastTargetFrames = startedAt
@@ -30,7 +32,7 @@ class CaptureRoutePolicy(private val target: AudioInput, private val clock: () -
                 !targetAvailable -> fallback(InputFallbackReason.DISCONNECTED)
                 targetConfirmed && actual != null && actual.key != target.key -> fallback(InputFallbackReason.ROUTE_CHANGED)
                 frames && !silenced && actual?.key == target.key -> { targetConfirmed = true; lastTargetFrames = now }
-                !targetConfirmed && now - startedAt >= 5000 -> fallback(InputFallbackReason.UNAVAILABLE)
+                !targetConfirmed && now - startedAt >= activationTimeoutMillis -> fallback(InputFallbackReason.UNAVAILABLE)
                 targetConfirmed && now - lastTargetFrames >= 1500 -> fallback(InputFallbackReason.UNAVAILABLE)
             }
         }

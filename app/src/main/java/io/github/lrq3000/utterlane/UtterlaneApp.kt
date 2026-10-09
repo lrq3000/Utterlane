@@ -47,6 +47,7 @@ class UtterlaneApp : Application() {
 
     lateinit var audioInputs: io.github.lrq3000.utterlane.audio.AudioInputController
         private set
+    val microphoneDiagnostics = io.github.lrq3000.utterlane.audio.MicrophoneDiagnostics()
 
     lateinit var modelManager: ModelManager
         private set
