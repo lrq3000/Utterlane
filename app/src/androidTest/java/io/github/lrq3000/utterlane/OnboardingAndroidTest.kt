@@ -102,8 +102,7 @@ class OnboardingAndroidTest {
             waitForNode("home_screen").recycle()
             click("home_settings")
             waitForResumed(SettingsActivity::class.java)
-            instrumentation.startActivitySync(Intent(app, OnboardingActivity::class.java)
-                .putExtra(OnboardingActivity.EXTRA_REPLAY, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            ui.clickText(app.getString(R.string.onboarding_run_again))
             waitForNode("onboarding_page_welcome").recycle()
             assertTrue(repository.progress.first().completed)
             repository.update { it.copy(stepId = OnboardingStep.COMPLETE.id) }

@@ -72,7 +72,8 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
             check(source.isFile && source.length() > 0) { "There is no transcript to save" }
             val directory = File(root, id)
             check(directory.mkdir()) { "Cannot create transcript history" }
-            // Source chronology is independent of saving time; retention starts now.
+            // Source chronology is independent of saving time. Ordinary recovery
+            // handoff supplies its original age; an explicit new save starts now.
             val now = clock()
             val entry = TranscriptEntry(id, directory, created ?: now, model, audioId, RetentionMark(reference ?: now, pinned), modelId,
                 durationMs, speakerLabels, recovered || TranscriptSource.read(source).recovered)

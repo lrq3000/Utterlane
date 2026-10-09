@@ -50,13 +50,13 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
             @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = TranscriptionDialogModel(app, request) as T
         })[TranscriptionDialogModel::class.java]
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() { model.dismiss { finish() } }
+            override fun handleOnBackPressed() { model.requestExit() }
         })
         setContent {
             val theme by app.settingsRepository.themeMode.collectAsStateWithLifecycle(initialValue = SettingsRepository.THEME_SYSTEM)
             val dark = when (theme) { SettingsRepository.THEME_DARK -> true; SettingsRepository.THEME_LIGHT -> false; else -> isSystemInDarkTheme() }
             UtterlaneTheme(darkTheme = dark) {
-                TranscriptionDialog(model, onClose = { model.dismiss { finish() } }, onEmpty = { finish() })
+                TranscriptionDialog(model, onClose = model::requestExit, onEmpty = { finish() })
             }
         }
     }

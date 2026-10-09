@@ -26,7 +26,8 @@ data class TranscriptionDialogState(
     val fileProgress: FileProgressSnapshot? = null,
     val capture: CaptureSnapshot = CaptureSnapshot(), val visualRate: Int = VisualRefreshRate.DEFAULT,
     val deletion: DialogDeletionRequest? = null, val checkingDeletion: Boolean = false,
-    val deleting: Boolean = false, val finished: Boolean = false
+    val deleting: Boolean = false, val finished: Boolean = false,
+    val exitRequest: DialogExitRequest? = null, val checkingExit: Boolean = false, val exited: Boolean = false
 )
 
 data class DialogDeletionRequest(val plan: HistoryDeletionPlan,
@@ -44,6 +45,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     val state: StateFlow<TranscriptionDialogState> = mutable
     private val audioActions = DialogAudioActions(app)
     private val linkedHistory = LinkedHistory(app.recordingHistory, app.transcriptHistory)
+    private val historyOwners = DialogHistoryOwners(app.recordingHistory, app.transcriptHistory)
+    private val exitRetention = DialogExitRetention(app)
     val document = TranscriptPager(viewModelScope)
     private var operation: Job? = null
     private var saving: Job? = null
@@ -137,7 +140,9 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
 
     private fun refreshAudio() {
         if (input.recovered) ownedAudioId?.let(app.recordingHistory::markRecovered)
-        val audio = linkedHistory.availableAudio(ownedAudioId)
+        val id = ownedAudioId
+        val audio = linkedHistory.availableAudio(id)
+        historyOwners.audio(audio?.id) { ownedAudioId == id }
         // Source deletion or a later re-transcription must not erase/change the
         // metadata attached to the text this dialog already owns.
         if (resultMetadata.created == null && audio != null) {
@@ -145,14 +150,19 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
             // finalizer updates its index. Hydration fills chronology, not erases
             // that independent evidence of already-committed labeled output.
             resultMetadata = TranscriptMetadata(audio, speakerLabels = audio.speakerLabels || resultMetadata.speakerLabels)
+                .copy(recovered = audio.recovered || resultMetadata.recovered)
         }
         if (audio?.recovered == true) resultMetadata = resultMetadata.copy(recovered = true)
-        mutable.update { it.copy(audio = audio) }
+        mutable.update { if (ownedAudioId == id) it.copy(audio = audio) else it }
     }
 
     private fun refreshTranscript() {
-        val entry = app.transcriptHistory.find(mutable.value.transcriptId)
-        mutable.update { it.copy(transcriptPinned = entry?.retention?.pinned == true) }
+        val id = mutable.value.transcriptId
+        val entry = app.transcriptHistory.find(id)
+        // Release deleted identities even when the dialog still displays the
+        // independent other kind. A stale refresh cannot release a newer owner.
+        historyOwners.transcript(entry?.id) { mutable.value.transcriptId == id }
+        mutable.update { if (it.transcriptId == id) it.copy(transcriptPinned = entry?.retention?.pinned == true) else it }
     }
 
     private fun latestLinkedTranscript(): TranscriptEntry? = ownedAudioId?.let { id ->
@@ -181,10 +191,11 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         document.show(store)
         mutable.update { it.copy(store = store, preview = latestPreview, transcriptBytes = store.bytes,
             transcriptId = entry?.id, transcriptPinned = entry?.retention?.pinned == true, model = chosenModel) }
+        refreshTranscript()
     }
 
     fun retry(useCurrentModel: Boolean = false) {
-        if (state.value.running || state.value.importing || state.value.saving || state.value.closing || state.value.deleting || operation?.isActive == true) return
+        if (state.value.exitRequest != null || state.value.checkingExit || state.value.running || state.value.importing || state.value.saving || state.value.closing || state.value.deleting || operation?.isActive == true) return
         operation = viewModelScope.launch { transcribe(useCurrentModel) }
     }
 
@@ -274,6 +285,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                                 val saved = resultMetadata.save(app.transcriptHistory, created.store.file, chosenModel, audioId, modelId = resultModelId)
                                 created.store.attachSource(created.store.source.copy(transcriptId = saved.id))
                                 mutable.update { it.copy(transcriptId = saved.id) }
+                                historyOwners.transcript(saved.id)
                             } catch (_: TranscriptDiscardedException) {
                                 Log.i("TranscribeDialog", "Transcript autosave skipped after explicit deletion")
                             }
@@ -381,6 +393,9 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
             } else null
             mutable.update { it.copy(transcriptId = saved?.id, transcriptPinned = saved?.retention?.pinned == true) }
         }
+        // Publication emits a repository revision before state owns the new ID.
+        // Acquire explicitly too, rather than depending on collector scheduling.
+        refreshTranscript()
     }
 
     fun shareAudio(launch: (android.content.Intent) -> Unit) = saveAction(R.string.action_feedback_share) {
@@ -391,7 +406,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         audioActions.export(checkNotNull(ownedAudioId), destination, directory)
     }
     private fun saveAction(successMessage: Int? = R.string.dialog_audio_action_done, action: suspend () -> Unit) {
-        if (state.value.saving || state.value.closing || state.value.deleting) return
+        if (state.value.exitRequest != null || state.value.checkingExit || state.value.saving || state.value.closing || state.value.deleting) return
         saving = viewModelScope.launch {
             mutable.update { it.copy(saving = true) }
             try {
@@ -500,7 +515,64 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         }
     }
 
-    /** Dismissal is an explicit action, never inferred from onStop/onDestroy. */
+    /** Both user Back routes enter here. Merely showing the question does not
+     * cancel processing; Go back can return to the still-running attempt. */
+    fun requestExit() {
+        if (state.value.closing || state.value.deleting || state.value.checkingExit || state.value.exitRequest != null) return
+        mutable.update { it.copy(checkingExit = true) }
+        viewModelScope.launch {
+            try {
+                saving?.join()
+                val request = withContext(Dispatchers.IO) { exitRetention.check(ownedAudioId, currentStore) }
+                if (request.hasLoss) mutable.update { it.copy(exitRequest = request) }
+                else finishExit(pin = false, consent = null)
+            } catch (e: CancellationException) { throw e
+            } catch (e: Exception) { showError(e)
+            } finally { mutable.update { it.copy(checkingExit = false) } }
+        }
+    }
+
+    fun cancelExit() {
+        if (!state.value.closing) mutable.update { it.copy(exitRequest = null) }
+    }
+    fun confirmExit(pin: Boolean) {
+        val request = state.value.exitRequest ?: return
+        if (!state.value.closing) finishExit(pin, request)
+    }
+
+    private fun finishExit(pin: Boolean, consent: DialogExitRequest?) {
+        mutable.update { it.copy(closing = true) }
+        app.audioPlayback.stop(playbackOwner)
+        app.applicationScope.launch {
+            try {
+                // Import and final partial-text publication can race Back. Join
+                // first, then recheck loss against the actual surviving content.
+                operation?.cancelAndJoin(); saving?.join()
+                val renewed = withContext(Dispatchers.IO) {
+                    if (pin) {
+                        if (currentStore?.bytes?.let { it > 0 } == true) persistTranscriptPin(true)
+                        if (linkedHistory.availableAudio(ownedAudioId) != null) persistAudioPin(true)
+                    }
+                    exitRetention.finish(ownedAudioId, currentStore, resultMetadata, if (pin) null else consent)
+                }
+                if (renewed != null) {
+                    mutable.update { it.copy(exitRequest = renewed, closing = false) }
+                    return@launch
+                }
+                withContext(Dispatchers.IO) {
+                    ownedAudioId?.let { RecordingRecovery.dismissNotification(app, it) }
+                    releaseWorkingResults()
+                }
+                if (pin) ActionFeedback.show(app, R.string.action_feedback_exit_pinned)
+                mutable.update { it.copy(exited = true, exitRequest = null) }
+            } catch (e: Exception) {
+                showError(e); mutable.update { it.copy(closing = false) }
+            }
+        }
+    }
+
+    /** Explicit Home Reset/replacement, never inferred from onStop/onDestroy.
+     * Unlike navigation, these callers have already decided to retire an owner. */
     fun dismiss(done: () -> Unit) {
         if (state.value.closing || state.value.deleting) return
         mutable.update { it.copy(closing = true) }
@@ -521,8 +593,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                     // on IO before returning so this second pass cannot orphan it.
                     if (!input.transcriptOrigin) ownedAudioId?.let(app.recordingHistory::dismiss)
                     if (!input.transcriptOrigin) ownedAudioId?.let { RecordingRecovery.dismissNotification(app, it) }
-                    currentStore?.dispose(); currentStore = null
-                    synchronized(temporaryResults) { temporaryResults.toList() }.forEach(TranscriptStore::deleteArtifacts)
+                    releaseWorkingResults()
                 }
                 done()
             } catch (e: Exception) {
@@ -531,7 +602,16 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         }
     }
 
+    /** Release only after disposition is durable, whether navigation retained the
+     * result or an explicit Home action retired it. All payload cleanup is on IO. */
+    private fun releaseWorkingResults() {
+        currentStore?.dispose(); currentStore = null
+        workingFiles().forEach(TranscriptStore::deleteArtifacts)
+        historyOwners.close()
+    }
+
     private fun showError(error: Exception) {
+        if (error is CancellationException) throw error
         Log.e("TranscribeDialog", "Local transcription operation failed", error)
         mutable.update { it.copy(message = error.message ?: app.getString(R.string.transcribe_error_failed)) }
         ActionFeedback.show(app, error.message ?: app.getString(R.string.transcribe_error_failed))
@@ -549,6 +629,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         // Unexpected owner destruction preserves disk-backed input and useful
         // partial text. Explicit dismiss already deleted/released its own work.
         currentStore?.keepForRecovery()
+        app.applicationScope.launch(Dispatchers.IO) { historyOwners.close() }
         app.audioPlayback.stop(playbackOwner)
         super.onCleared()
     }

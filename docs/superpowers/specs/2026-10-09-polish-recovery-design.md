@@ -39,7 +39,7 @@ interactive dialog exit so invisible owners cannot wait for confirmation.
 
 Exit examines current metadata and settings off Main. Temporary material is only
 promoted when automatic history permits it or the user explicitly pins it. Earlier
-useful attempts must not silently vanish while only the latest transcript is shown.
+saved transcript versions remain independent of the displayed result's exit choice.
 Recheck disposition before final close; do not recreate explicitly deleted IDs.
 Unexpected Activity destruction remains recovery, never consent to discard.
 

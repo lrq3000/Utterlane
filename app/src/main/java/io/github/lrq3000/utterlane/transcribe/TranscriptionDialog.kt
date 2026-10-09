@@ -35,14 +35,14 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
     val app = UtterlaneApp.instance
     val context = LocalContext.current
     val view = LocalView.current
-    val busy = state.importing || state.saving || state.closing || state.deleting
+    val busy = state.importing || state.saving || state.closing || state.deleting || state.checkingExit
     val working = busy || state.running || state.checkingDeletion
     DisposableEffect(view, working) {
         val previous = view.keepScreenOn
         view.keepScreenOn = working
         onDispose { view.keepScreenOn = previous }
     }
-    LaunchedEffect(state.finished) { if (state.finished) onEmpty() }
+    LaunchedEffect(state.finished, state.exited) { if (state.finished || state.exited) onEmpty() }
     val stats by app.settingsRepository.showTranscriptionStreamStatistics.collectAsStateWithLifecycle(initialValue = false)
     var audioMenu by remember { mutableStateOf(false) }
     var modelMenu by remember { mutableStateOf(false) }
@@ -115,4 +115,5 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
             }
         }
     }
+    DialogExitConfirmation(model, state)
 }

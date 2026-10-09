@@ -205,9 +205,13 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
 
     /** Ordinary navigation hands temporary ownership to history only if policy
      * allows it. Keep the original reference time, never extend it on viewing. */
-    @Synchronized fun retainOnExit(id: String, policy: HistoryExitPolicy): Boolean {
+    @Synchronized fun retainOnExit(id: String, policy: HistoryExitPolicy, discardIfNeeded: Boolean = false): Boolean {
         val entry = entries[id]?.takeUnless { id in deferred } ?: return true
-        if (!policy.keeps(entry.retention, stored = !entry.temporary, now = clock())) return false
+        if (!policy.keeps(entry.retention, stored = !entry.temporary, now = clock())) {
+            if (!discardIfNeeded) return false
+            delete(id)
+            return true
+        }
         val updated = entry.copy(temporary = false, needsRecovery = false)
         save(updated); put(updated)
         return true

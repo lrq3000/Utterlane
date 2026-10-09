@@ -12,7 +12,7 @@ data class WorkingTranscriptCopy(val file: File, val source: TranscriptSource) {
 class TranscriptDiscardedException : IllegalStateException("Transcript was deleted")
 
 /** Private provenance for working text, including history-disabled/recovery paths.
- * It contains identifiers only; exports and clipboard text never include it. */
+ * It contains identifiers and recovery state; exports and clipboard text never include it. */
 data class TranscriptSource(val audioId: String? = null, val transcriptId: String? = null,
     val modelName: String = "", val modelId: String? = null, val discarded: Boolean = false,
     val recovered: Boolean = false) {

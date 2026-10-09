@@ -144,7 +144,9 @@ Audio is approximately **115 MB per hour**, split into hourly PCM16 WAV parts.
 Recovery metadata is written before the first sample and survives process death.
 Live history-off successes are deleted unless their caller explicitly retains the
 current working result; Home opts into that lifetime. Temporary dialogs retain their sources
-through retries until explicit dismissal; saved recovery audio expires normally.
+through retries; ordinary Back hands eligible work to history and asks before
+policy-driven loss. Explicit Home Reset/replacement retains its retirement semantics.
+Saved recovery audio expires normally.
 Encoded shared inputs are copied once without owning/deleting the sender's original.
 Persisted discard markers prevent resurrection after a crash during deletion.
 
@@ -155,7 +157,13 @@ attempt IDs. Unpin starts a new reference time, and Immediate unpins carry a
 persisted launch-token hold. `HistoryCleanupCoordinator` releases those holds only
 at user entry, coalesces IO requests and never simulates app close. `JobScheduler`
 uses separate audio/text jobs for finite durations, preserving unchanged schedules.
-Temporary and pinned items are absent from the expiration index. Audio reader
+Temporary, pinned and actively viewed items are absent from the expiration index.
+View leases protect the current result while the user chooses Discard/Pin/Go back,
+but never prevent explicit deletion. Persistent `recovered` properties on audio,
+transcripts and working sidecars are independent of pending recovery/notification
+state; old failure/interruption metadata migrates without mislabeling normal
+temporary results. `DialogExitRetention` rechecks identities/policy after joining
+the producer and saves text before releasing input. Audio reader
 leases can derive a reader after expiry becomes due without authorizing new readers.
 
 Home and `HistoryActivity` host the Audio history and Transcripts destinations
