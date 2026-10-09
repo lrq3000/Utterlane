@@ -28,9 +28,7 @@
   <a href="#documentation">Documentation</a> ·
   <a href="#contributing">Contribute</a>
 </p>
-Utterlane is a free, open-source **offline voice-typing and audio-transcription
-app for Android**. Dictate into any app, use your keyboard's microphone button,
-or share a voice memo to the app to transcribe. No account or subscription is required.
+Utterlane is a free, open-source **offline voice-typing and audio-transcription app for Android**. Dictate into any app, use your keyboard's microphone button, or share a voice memo to the app to transcribe. No account or subscription is required.
 
 ## Features
 
