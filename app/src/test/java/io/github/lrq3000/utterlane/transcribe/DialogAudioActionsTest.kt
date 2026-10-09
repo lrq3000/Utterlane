@@ -2,6 +2,7 @@ package io.github.lrq3000.utterlane.transcribe
 
 import android.app.Application
 import android.content.ContentResolver
+import android.database.MatrixCursor
 import android.net.Uri
 import android.system.ErrnoException
 import android.system.OsConstants
@@ -25,6 +26,24 @@ import java.io.OutputStream
 class DialogAudioActionsTest {
     @get:Rule val temporary = TemporaryFolder()
     @After fun tearDown() = unmockkAll()
+
+    @Test fun providerImportDoesNotRequireAKnownSizeAndPreservesOriginalBytes() {
+        val app = mockk<UtterlaneApp>()
+        val resolver = mockk<ContentResolver>()
+        val history = RecordingHistory(temporary.newFolder())
+        val source = Uri.parse("content://source/document/audio")
+        val bytes = byteArrayOf(4, 5, 6)
+        every { app.recordingHistory } returns history
+        every { app.contentResolver } returns resolver
+        every { resolver.query(source, any(), null, null, null) } answers {
+            MatrixCursor(arrayOf(android.provider.OpenableColumns.DISPLAY_NAME)).apply { addRow(arrayOf("audio.opus")) }
+        }
+        every { resolver.getType(source) } returns "audio/ogg"
+        every { resolver.openInputStream(source) } answers { bytes.inputStream() }
+        val imported = DialogAudioActions(app).import(source, null)
+        assertArrayEquals(bytes, imported.part(0).readBytes())
+        assertEquals("ready", imported.status)
+    }
 
     @Test fun failedExportCleanupCannotHideTheOriginalStorageError() {
         val app = mockk<UtterlaneApp>()
