@@ -331,6 +331,20 @@ history is independent of the temporary audio's lifetime.
 
 ### One transcription dialog
 
+While text arrives, a compact progress dock below the reader shows the current
+stage, percentage of audio transcribed, and approximate time remaining. You can
+keep reading and scrolling without moving the progress into the text. Completion
+reduces the dock to a confirmation row, giving space back below the reader rather
+than shifting its top or resetting your reading position.
+
+Imported duration estimates are marked **≈**. If duration is unknown or contradicted
+by decoded audio, the app shows an indeterminate bar until the actual total is
+known. **Estimating time…** means no reliable timing measurement is available yet.
+With speaker labeling, **About … + finishing** estimates the remaining audio
+processing while making additional finishing time explicit; the final drain is
+shown as **Finishing speaker labels…**, not premature 100% completion. Progress
+and ETA remain visible with stream statistics disabled.
+
 Shared audio, history and recovery use the same actions:
 
 - **Re-transcribe:** use the same model, or choose another model and retry.

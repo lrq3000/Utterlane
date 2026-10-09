@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- English fallback during feature development; translate in the release batch. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="progress_preparing">Preparing transcription…</string>
+    <string name="progress_transcribing">Transcribing</string>
+    <string name="progress_finalizing">Finishing transcript…</string>
+    <string name="progress_speakers">Finishing speaker labels…</string>
+    <string name="progress_complete">Transcript complete</string>
+    <string name="progress_interrupted">Transcription interrupted</string>
+    <string name="progress_cancelled">Transcription cancelled</string>
+    <string name="progress_estimating">Estimating time…</string>
+    <string name="progress_unknown_time">Time not yet available</string>
+    <string name="progress_eta">About %1$s left</string>
+    <string name="progress_eta_finishing">About %1$s + finishing</string>
+    <string name="progress_percent">%1$d%%</string>
+    <string name="progress_approximate_percent">≈ %1$d%%</string>
+    <string name="progress_audio">%1$s / %2$s audio</string>
+    <string name="progress_approximate_audio">%1$s / ≈ %2$s audio</string>
+    <string name="progress_unknown_audio">%1$s transcribed · total unknown</string>
+    <string name="progress_seconds">%1$d s</string>
+    <string name="progress_minutes_seconds">%1$d min %2$d s</string>
+    <string name="progress_hours_minutes">%1$d h %2$d min</string>
+</resources>

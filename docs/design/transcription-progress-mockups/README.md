@@ -1,7 +1,8 @@
 # Transcription progress: review concepts and D refinement
 
-Design review requested on 2026-10-09. These are browser mockups, not implemented
-Android behavior or an approved final design. Open `content/progress-layouts.html`
+Design review requested on 2026-10-09. The user subsequently approved refinement D;
+its native implementation is documented in [the QA note](../../qa/transcription-progress-d.md).
+These browser files remain illustrative review artifacts. Open `content/progress-layouts.html`
 directly in a browser; it is self-contained, with inline icons, local fonts, and
 no external dependencies. The brainstorming visual companion can also serve it.
 Its transient review state is ignored by Git.

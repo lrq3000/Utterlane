@@ -57,21 +57,25 @@ After implementation, the same focused 17-test command passed.
 
 ## Milestone 2 — Native integration
 
-- [ ] Wire `TranscriptionDialogModel` to the source total and measured snapshots;
+- [x] Wire `TranscriptionDialogModel` to the source total and measured snapshots;
   remove its input-read percentage. Signal exact EOF, finalization, persistence,
   success and failure. Publish final state even between presentation ticks.
-- [ ] Give `TranscriptionSession.finish` an optional callback after final ASR
+- [x] Give `TranscriptionSession.finish` an optional callback after final ASR
   windows and before the speaker/text finisher. Expose whether the session has a
   speaker finisher; existing callers retain default behavior.
-- [ ] Add `TranscriptionProgressFooter.kt`, English fallback strings, and a footer
+- [x] Add `TranscriptionProgressFooter.kt`, English fallback strings, and a footer
   slot in `TranscriptReader`. Put transient status/diagnostics/errors below the
   reader. Retain the reader's lazy-list identity and existing action controls.
-- [ ] Add native tests that exercise the real dialog at narrow/light/dark/large
+- [x] Add native tests that exercise the real dialog at narrow/light/dark/large
   font configurations, default-visible percentage and ETA, unknown totals,
   interrupted partial text, and the finalization-to-complete geometry/scroll
   transition. Use existing instrumentation patterns and isolated `.progressd` ID.
-- [ ] Build and run focused native tests plus dialog/history/playback regressions.
+- [x] Build and run focused native tests plus dialog/history/playback regressions.
   Inspect native screenshots; record actual results and commit the integration.
+
+Evidence and limitations are recorded in `docs/qa/transcription-progress-d.md`.
+The native percentage-node regression failed before integration. Final validation
+passed 353 JVM tests and 35 Android tests, including actual native processing.
 
 ## Commands and completion
 
