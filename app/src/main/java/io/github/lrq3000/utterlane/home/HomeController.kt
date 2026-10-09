@@ -38,8 +38,9 @@ internal data class HomeState(
 
 /**
  * Application-owned workspace: Activities only observe it. One bounded preview,
- * one capture, and one explicitly owned dialog ViewModelStore survive navigation
- * and recreation. The engine, source copy, retries and saves remain shared with
+ * one capture, and one visible result owner survive navigation and recreation.
+ * At most one file candidate waits for owned input before replacing that result.
+ * The engine, source copy, retries and saves remain shared with
  * external share/open transcription rather than creating a second pipeline.
  */
 class HomeController(private val app: UtterlaneApp) {
@@ -51,6 +52,7 @@ class HomeController(private val app: UtterlaneApp) {
     internal val liveDocument = TranscriptPager(scope)
     private var captureDriver: CaptureDriver? = null
     private var slot: ResultOwner? = null
+    private var fileCandidate: ResultOwner? = null
     private var pendingFile: Uri? = null
     private var pendingRetry = false
     private val service = HomeServiceConnection()
@@ -120,11 +122,14 @@ class HomeController(private val app: UtterlaneApp) {
         when {
             pendingFile != null -> {
                 val uri = pendingFile!!; pendingFile = null
-                // The picker result is now deliberately replacing the old work.
-                // Document providers are copied by DialogAudioActions on IO.
-                releaseResult()
-                installResult(DialogInput(uri = uri, automatic = true))
-                mutable.update { it.copy(preparing = false) }
+                // Picking a URI is only an attempt. Retain the old owner/journal
+                // until this candidate has actually copied nonempty private input.
+                val candidate = ResultOwner(DialogInput(uri = uri, automatic = true), null)
+                fileCandidate = candidate
+                candidate.observer = HomeFileHandoff(scope).observe(candidate.model.state,
+                    isCurrent = { fileCandidate === candidate },
+                    onAccepted = { acceptFile(candidate) },
+                    onRejected = { rejectFile(candidate, it ?: app.getString(R.string.transcribe_error_failed)) })
             }
             pendingRetry -> {
                 pendingRetry = false
@@ -145,7 +150,9 @@ class HomeController(private val app: UtterlaneApp) {
         service.detached(token)
         pendingFile = null; pendingRetry = false
         captureDriver?.reject(error.message ?: app.getString(R.string.toast_recording_error))
-        mutable.update { it.copy(preparing = false) }
+        val candidate = fileCandidate
+        if (candidate != null) rejectFile(candidate, error.message ?: app.getString(R.string.transcribe_error_failed))
+        else mutable.update { it.copy(preparing = false) }
         showError(error)
     }
 
@@ -156,6 +163,12 @@ class HomeController(private val app: UtterlaneApp) {
             // Actual service loss must stop microphone ownership, but it is not
             // permission to discard input. MicrophoneSession writes recovery.
             captureOwner.interrupt()
+            if (pendingFile != null || fileCandidate != null) {
+                pendingFile = null
+                val message = app.getString(R.string.stream_cancelled)
+                fileCandidate?.let { rejectFile(it, message) }
+                    ?: mutable.update { it.copy(preparing = false, message = message) }
+            }
             // The application still owns any prior result. Service destruction
             // must not release its text lease while a new empty attempt closes.
         }
@@ -306,6 +319,38 @@ class HomeController(private val app: UtterlaneApp) {
         owner.observe()
     }
 
+    private fun acceptFile(candidate: ResultOwner) {
+        if (fileCandidate !== candidate) return
+        // If checkpointing fails, the observer can still reject this candidate
+        // without detaching the prior owner or releasing its usable input.
+        candidate.checkpoint(candidate.model.state.value)
+        fileCandidate = null
+        val previous = slot
+        previous?.observer?.cancel()
+        slot = candidate
+        liveDocument.show(null)
+        // The model already owns/imported this input. Transfer that exact owner,
+        // replacing the checkpoint before retiring old temporary work; never
+        // clear the prior journal while a provider is still opening/copying.
+        HomeFileHandoff.publish(mutable, candidate.model, candidate.model.state)
+        candidate.observe()
+        previous?.let { retireResult(it) }
+    }
+
+    private fun rejectFile(candidate: ResultOwner, message: String) {
+        if (fileCandidate !== candidate) return
+        candidate.observer?.cancel()
+        mutable.update { it.copy(message = message) }
+        // Keep the bounded pending slot/preparation hold until cancellation and
+        // cleanup finish. A second attempt cannot accumulate retiring candidates.
+        retireResult(candidate) {
+            if (fileCandidate === candidate) {
+                fileCandidate = null
+                mutable.update { it.copy(preparing = false) }
+            }
+        }
+    }
+
     /** Explicit Next/Dismiss only. Navigation and Activity destruction never call this. */
     fun dismiss() {
         if (state.value.capture.active || state.value.preparing) return
@@ -328,14 +373,27 @@ class HomeController(private val app: UtterlaneApp) {
         previous.observer?.cancel()
         journal.clear()
         mutable.update { it.copy(model = null) }
-        previous.model.dismiss { previous.clear() }
+        retireResult(previous)
+    }
+
+    private fun retireResult(owner: ResultOwner, onRetired: () -> Unit = {}) {
+        owner.observer?.cancel()
+        var retired = false
+        val finish = {
+            if (!retired) {
+                retired = true
+                owner.clear()
+                onRetired()
+            }
+        }
+        owner.model.dismiss(finish)
         // Dismissal can fail on storage. Its model reports that failure rather
         // than calling done. Release runtime owners in that case too, preserving
         // disk recovery instead of accumulating invisible ViewModel collectors.
-        previous.observer = scope.launch {
-            val failed = previous.model.state.first { !it.closing }
+        if (!retired) owner.observer = scope.launch {
+            val failed = owner.model.state.first { !it.closing }
             failed.message?.let(::showMessage)
-            previous.clear()
+            finish()
         }
     }
 
@@ -361,19 +419,22 @@ class HomeController(private val app: UtterlaneApp) {
                     dismiss()
                     return@observe
                 }
-                if (!result.importing && result.audio?.id != leasedId) {
-                    audioLease?.let { lease -> scope.launch(Dispatchers.IO) { lease.close() } }
-                    leasedId = result.audio?.id
-                    audioLease = leasedId?.let { runCatching { app.recordingHistory.acquire(it) }.getOrNull() }
-                }
-                val saved = Bundle().also(model::saveInstanceState)
-                journal.write(descriptor.update(input.copy(uri = null, path = null, automatic = false,
-                    audioId = saved.getString("owned_audio"), transcriptId = saved.getString("saved_text"),
-                    transcriptPath = saved.getString("working_text"), modelName = saved.getString("result_model").orEmpty(),
-                    // The model owns result metadata independently of source
-                    // history revisions, retention and other model attempts.
-                    modelId = saved.getString("result_model_id"), metadata = model.metadata), importing = result.importing))
+                checkpoint(result)
             }
+        }
+        fun checkpoint(result: TranscriptionDialogState) {
+            if (!result.importing && result.audio?.id != leasedId) {
+                audioLease?.let { lease -> scope.launch(Dispatchers.IO) { lease.close() } }
+                leasedId = result.audio?.id
+                audioLease = leasedId?.let { runCatching { app.recordingHistory.acquire(it) }.getOrNull() }
+            }
+            val saved = Bundle().also(model::saveInstanceState)
+            journal.write(descriptor.update(input.copy(uri = null, path = null, automatic = false,
+                audioId = saved.getString("owned_audio"), transcriptId = saved.getString("saved_text"),
+                transcriptPath = saved.getString("working_text"), modelName = saved.getString("result_model").orEmpty(),
+                // The model owns result metadata independently of source
+                // history revisions, retention and other model attempts.
+                modelId = saved.getString("result_model_id"), metadata = model.metadata), importing = result.importing))
         }
         fun clear() {
             observer?.cancel()
