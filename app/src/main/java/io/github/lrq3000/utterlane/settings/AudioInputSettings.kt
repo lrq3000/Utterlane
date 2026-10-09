@@ -58,7 +58,13 @@ fun AudioInputSettings(
         permission.onResult(granted)
         update { controller.refresh() }
     }
-    val requestPermission = { permission.requestIfNeeded { launcher.launch(it) } }
+    val requestPermission = {
+        // A settings write can finish after the user backgrounds the activity.
+        // Keep the explicit grant action available instead of opening UI there.
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            permission.requestIfNeeded { launcher.launch(it) }
+        }
+    }
     val actions = remember(repository, controller, permission, launcher) {
         MicrophoneSettingsActions(repository, controller, requestPermission)
     }

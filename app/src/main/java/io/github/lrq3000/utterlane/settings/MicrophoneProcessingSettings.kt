@@ -87,6 +87,7 @@ internal class MicrophoneSettingsActions(
 
 /** Permission checks are side-effect free; only requestIfNeeded may launch the system UI. */
 internal class HfpPermissionState(private val context: Context) {
+    private var requestInFlight = false
     var granted by mutableStateOf(hasPermission())
         private set
     var denied by mutableStateOf(false)
@@ -97,17 +98,22 @@ internal class HfpPermissionState(private val context: Context) {
 
     fun refresh() {
         granted = hasPermission()
-        if (granted) denied = false
+        if (granted) { denied = false; requestInFlight = false }
     }
 
     fun onResult(granted: Boolean) {
+        requestInFlight = false
         denied = !granted
         refresh()
     }
 
     fun requestIfNeeded(launch: (String) -> Unit) {
         refresh()
-        if (!granted) launch(Manifest.permission.BLUETOOTH_CONNECT)
+        if (!granted && !requestInFlight) {
+            requestInFlight = true
+            try { launch(Manifest.permission.BLUETOOTH_CONNECT) }
+            catch (e: Exception) { requestInFlight = false; throw e }
+        }
     }
 }
 

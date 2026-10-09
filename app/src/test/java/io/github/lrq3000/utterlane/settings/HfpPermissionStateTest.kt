@@ -14,6 +14,18 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28, 31, 36], application = Application::class)
 class HfpPermissionStateTest {
+    @Test @Config(sdk = [31, 36]) fun pendingPermissionRequestIsNotLaunchedTwiceAndDenialAllowsRetry() {
+        val app = RuntimeEnvironment.getApplication()
+        shadowOf(app).denyPermissions(Manifest.permission.BLUETOOTH_CONNECT)
+        val state = HfpPermissionState(app)
+        var launches = 0
+        state.requestIfNeeded { launches++ }
+        state.requestIfNeeded { launches++ }
+        assertEquals(1, launches)
+        state.onResult(false)
+        state.requestIfNeeded { launches++ }
+        assertEquals(2, launches)
+    }
     @Test fun onlyExplicitActionRequestsConnectAndLegacyNeverRequests() {
         val app = RuntimeEnvironment.getApplication()
         shadowOf(app).denyPermissions(Manifest.permission.BLUETOOTH_CONNECT)
