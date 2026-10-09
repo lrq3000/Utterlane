@@ -22,6 +22,7 @@ fun shareTranscript(context: Context, store: TranscriptStore) {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             context.startActivity(Intent.createChooser(intent, context.getString(R.string.transcribe_share_title)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            ActionFeedback.show(context, R.string.action_feedback_share)
         } catch (e: CancellationException) { throw e
         } catch (e: Exception) {
             android.util.Log.e("TranscribeActivity", "Transcript export failed", e)

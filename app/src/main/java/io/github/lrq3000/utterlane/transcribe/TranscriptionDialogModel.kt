@@ -314,7 +314,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
             preview = latestPreview, transcriptBytes = currentStore?.bytes ?: 0) }
     }
 
-    fun saveAudioToHistory() = saveAction {
+    fun saveAudioToHistory() = saveAction(R.string.action_feedback_pinned_audio) {
         persistAudioPin(true)
     }
 
@@ -325,11 +325,16 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         refreshAudio()
     }
 
-    fun saveTranscriptToHistory() = saveAction {
+    fun saveTranscriptToHistory() = saveAction(R.string.action_feedback_pinned_text) {
         persistTranscriptPin(true)
     }
 
-    fun setPinned(target: DialogPinTarget, pinned: Boolean) = saveAction(successMessage = null) {
+    fun setPinned(target: DialogPinTarget, pinned: Boolean) = saveAction(
+        if (!pinned) R.string.action_feedback_unpinned else when (target) {
+            DialogPinTarget.AUDIO -> R.string.action_feedback_pinned_audio
+            DialogPinTarget.TRANSCRIPT -> R.string.action_feedback_pinned_text
+            DialogPinTarget.BOTH -> R.string.action_feedback_pinned_both
+        }) {
         // Validate both targets before changing either. Transcript scope is always
         // the displayed version, even when deletion uses an all-linked scope.
         if (target != DialogPinTarget.TRANSCRIPT)
@@ -367,11 +372,11 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         }
     }
 
-    fun shareAudio(launch: (android.content.Intent) -> Unit) = saveAction(successMessage = null) {
+    fun shareAudio(launch: (android.content.Intent) -> Unit) = saveAction(R.string.action_feedback_share) {
         val intent = audioActions.share(checkNotNull(ownedAudioId))
         withContext(Dispatchers.Main) { launch(intent) }
     }
-    fun exportAudio(destination: Uri, directory: Boolean) = saveAction {
+    fun exportAudio(destination: Uri, directory: Boolean) = saveAction(R.string.action_feedback_audio_saved) {
         audioActions.export(checkNotNull(ownedAudioId), destination, directory)
     }
     private fun saveAction(successMessage: Int? = R.string.dialog_audio_action_done, action: suspend () -> Unit) {
@@ -380,7 +385,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
             mutable.update { it.copy(saving = true) }
             try {
                 withContext(Dispatchers.IO) { action() }
-                successMessage?.let { message -> mutable.update { it.copy(message = app.getString(message)) } }
+                successMessage?.let { ActionFeedback.show(app, it) }
             }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) { showError(e) }
@@ -518,6 +523,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     private fun showError(error: Exception) {
         Log.e("TranscribeDialog", "Local transcription operation failed", error)
         mutable.update { it.copy(message = error.message ?: app.getString(R.string.transcribe_error_failed)) }
+        ActionFeedback.show(app, error.message ?: app.getString(R.string.transcribe_error_failed))
     }
     fun saveInstanceState(out: android.os.Bundle) {
         out.putString("owned_audio", ownedAudioId)
