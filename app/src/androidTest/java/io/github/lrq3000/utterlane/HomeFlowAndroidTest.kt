@@ -108,12 +108,7 @@ class HomeFlowAndroidTest {
         }
     }
 
-    private fun rowBounds(id: String): Rect = ui.node("history_entry_$id").let { node ->
-        try {
-            assertTrue(node.isVisibleToUser)
-            Rect().also(node::getBoundsInScreen)
-        } finally { node.recycle() }
-    }
+    private fun rowBounds(id: String): Rect = HistoryTestUi(ui).settledBounds(id)
 
     private fun assertPosition(before: Rect, after: Rect) {
         // The existing history tests allow 2px for accessibility's fractional
