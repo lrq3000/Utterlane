@@ -136,8 +136,8 @@ Phone or a wired/USB input also turns off automatic Bluetooth preference.
 When a selected microphone disappears, the selector resets to Phone (or another
 available Bluetooth microphone when automatic preference is on). With automatic
 preference off, a disconnected selection is not restored just because it reconnects.
-Devices without a stable identity supplied by Android may also reset after an app
-process restart; enable automatic preference if any Bluetooth microphone is suitable.
+Devices whose identity is missing or ambiguous may also reset after an app process
+restart; enable automatic preference if any Bluetooth microphone is suitable.
 
 Settings changes and newly connected microphones apply to the **next recording**.
 The small **Input** caption in the waveform panel reports the actual recording input.
