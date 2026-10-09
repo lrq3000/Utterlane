@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="audio_playback_speed">Speed</string>
+    <string name="audio_playback_speed_description">Playback speed: %1$s</string>
+    <string name="audio_playback_speed_pending">Selected speed applies when playback starts.</string>
+    <string name="audio_playback_speed_fallback">Could not apply %1$s playback speed. The player reports %2$s.</string>
+    <string name="audio_playback_speed_unknown">Could not confirm %1$s playback speed. The current speed is unavailable.</string>
+</resources>
