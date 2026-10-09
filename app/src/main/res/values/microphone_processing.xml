@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="microphone_processing_title">Microphone processing</string>
+    <string name="microphone_processing_disabled">Disabled</string>
+    <string name="microphone_processing_hfp">HFP preset (default)</string>
+    <string name="microphone_processing_custom">Custom</string>
+    <string name="microphone_processing_disabled_summary">Uses Android defaults with Standard Bluetooth routing and no transcription gain. The microphone remains available.</string>
+    <string name="microphone_processing_hfp_summary">VOICE_RECOGNITION + HFP_VOICE_RECOGNITION + NORMAL + AGC_ONLY + AUTO_LEVEL</string>
+    <string name="microphone_processing_custom_summary">Tune each option independently. Entering Custom keeps the current values.</string>
+    <string name="microphone_processing_next_recording">Changes apply to the NEXT recording. An active recording keeps its starting configuration, so these controls can stay editable.</string>
+    <string name="microphone_processing_gain_help">Software gain affects transcription and its retries, not the original audio saved in history. Playback and export keep that original audio. Each saved microphone recording retains its own gain choice for retries; imported files use no gain.</string>
+    <string name="microphone_processing_custom_controls">Custom microphone controls</string>
+    <string name="microphone_processing_expanded">Expanded</string>
+    <string name="microphone_processing_collapsed">Collapsed</string>
+    <string name="microphone_processing_source">Android audio source</string>
+    <string name="microphone_processing_route">Bluetooth route</string>
+    <string name="microphone_processing_mode">Requested Bluetooth audio mode</string>
+    <string name="microphone_processing_preprocessing">Android preprocessing</string>
+    <string name="microphone_processing_effects_help">NS: noise suppression. AEC: echo cancellation. AGC: automatic gain control. AGC_ONLY requests AGC on, NS and AEC off. Support varies by device; diagnostics report what Android actually applied.</string>
+    <string name="microphone_processing_gain">Transcription software gain</string>
+    <string name="microphone_processing_gain_off">Off</string>
+    <string name="microphone_processing_gain_6">+6 dB</string>
+    <string name="microphone_processing_gain_12">+12 dB</string>
+    <string name="microphone_processing_gain_18">+18 dB</string>
+    <string name="microphone_processing_gain_auto">Auto level</string>
+    <string name="microphone_processing_standard_mode">On Android 12 and later, Standard routing uses IN_COMMUNICATION even when NORMAL is selected. Diagnostics distinguish the requested and effective mode.</string>
+    <string name="microphone_hfp_permission_needed">HFP needs Nearby devices access on Android 12 and later. Without it, Phone recording and file transcription remain usable. Your selected input and automatic Bluetooth preference are kept.</string>
+    <string name="microphone_hfp_permission_denied">Nearby devices access was not granted. HFP is unavailable; Phone recording and file transcription remain usable. Your input and automatic preference are kept. Try granting access, or open App settings → Permissions → Nearby devices.</string>
+    <string name="microphone_hfp_permission_granted">Nearby devices access granted. HFP still requires a compatible connected headset; diagnostics show the actual route.</string>
+    <string name="microphone_hfp_permission_grant">Grant Nearby devices for HFP</string>
+    <string name="microphone_hfp_app_settings">Open app permission settings</string>
+    <string name="microphone_processing_reset">Reset to HFP preset</string>
+    <string name="microphone_processing_diagnostics">Microphone diagnostics</string>
+    <string name="microphone_processing_current_session">Current recording</string>
+    <string name="microphone_processing_last_session">Last recording, if available</string>
+    <string name="microphone_processing_diagnostics_help">Local technical details for the current or last recording, not a prediction of the next recording. Device addresses are redacted. Nothing is exported automatically.</string>
+    <string name="microphone_processing_copy">Copy diagnostics</string>
+    <string name="microphone_processing_update_failed">Could not update microphone settings. Please try again.</string>
+</resources>
