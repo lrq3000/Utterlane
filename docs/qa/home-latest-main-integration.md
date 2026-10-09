@@ -335,3 +335,50 @@ temporary audio and unsaved text without producing replacement input.
   `HomeRecognitionAndroidTest` and `OnboardingRecognitionAndroidTest` were not
   touched. Candidate state is constant-sized; validation reads file metadata and
   bounded preview/provenance, never the full input into memory.
+
+## File-promotion disposition race follow-up
+
+Spec review found that the initial gate checked an earlier `audio` DTO and its
+physical bytes, then promoted current model state later on Main. A cross-owner
+deletion could leave those bytes leased/nonempty while the authoritative entry
+was discarded and the candidate no longer had any usable input.
+
+- Two controlled queued-dispatcher regressions **failed before correction**:
+  deletion while a reader keeps the old ready source physically present, followed
+  by (a) current state losing audio/text and (b) a not-yet-refreshed ready DTO.
+  Both now preserve the prior workspace/checkpoint and reject promotion.
+- `HomeFileHandoff` rereads current state inside the transcript publication guard
+  on IO. Audio acceptance uses `RecordingHistory.withCompletedImport`, which
+  checks the live index/deferred-discard set and nonempty owned payload while
+  holding the same recording monitor as deletion. Text-only acceptance uses the
+  existing working-source active/discard guard. A stale DTO/file cannot authorize
+  replacement. Independently useful undiscarded text can still survive deletion
+  of its audio and authorize acceptance.
+- Promotion itself occurs synchronously before those guards are released:
+  retire the prior visible ownership/observer, replace the journal, and publish
+  the candidate plus its current running state with preparation released in one
+  update. Observer installation and physical old-owner cleanup are queued on Main
+  afterward. No storage guard waits for Main; no full-body input IO runs on Main.
+- Lock order follows deletion: transcript publication -> recording index **or**
+  working-source disposition -> a short Home ownership gate. The Home gate does
+  only bounded state/journal publication and never acquires history/source locks.
+  Audio lease acquisition remains outside this gate and outside text promotion.
+- IO promotion makes stale controller callbacks relevant, so the retained result
+  observer rechecks owner identity inside its atomic state update. Old-owner
+  checkpoints check identity under the Home gate, and completion targets its
+  captured owner rather than whichever owner is now visible. Rejecting a candidate
+  atomically marks it retiring so a concurrent acceptance cannot win afterward.
+- Additional deterministic tests block audio deletion and text discard at the
+  actual promotion boundary and prove they cannot complete until publication.
+  Coverage also checks independent text fallback and stale-observer publication.
+- Focused Home/import/linked tests passed. Final verification passed **440 JVM
+  tests, zero failures/ignored**, and Android instrumentation Kotlin compilation:
+
+  ```powershell
+  .\gradlew.bat :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q --offline
+  ```
+
+No HomeScreen, TranscriptContent, parent recognition test, device, APK, native
+build, parent worktree or stash changes were made in this follow-up. The parent's
+successful real-ASR old-target reproduction and new-target native acceptance
+remain parent-owned verification; this commit claims JVM/compile evidence only.

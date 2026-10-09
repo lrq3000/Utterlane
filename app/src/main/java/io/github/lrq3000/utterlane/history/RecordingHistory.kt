@@ -125,6 +125,16 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
 
     @Synchronized fun get(id: String): HistoryEntry = checkNotNull(entries[id]) { "Recording is unavailable" }
 
+    /** Authorize a local-file ownership transfer against the current index, not
+     * an earlier UI entry or lease-delayed bytes. Run on IO; the callback must
+     * publish ownership synchronously and never wait for a Main-thread action. */
+    @Synchronized internal fun withCompletedImport(id: String?, promote: () -> Boolean): Boolean {
+        val entry = entries[id]?.takeUnless { it.id in deferred } ?: return false
+        if (entry.sourceName == null || entry.status in setOf("importing", "active", "discarded") ||
+            !entry.part(0).isFile || entry.part(0).length() == 0L) return false
+        return promote()
+    }
+
     @Synchronized fun acquire(id: String): AudioLease {
         check(id in entries && id !in deferred) { "Recording expired or was deleted" }
         return retain(id)

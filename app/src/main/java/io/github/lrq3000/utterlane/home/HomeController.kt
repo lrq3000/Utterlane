@@ -51,8 +51,11 @@ class HomeController(private val app: UtterlaneApp) {
     // document implementation until the result model takes ownership.
     internal val liveDocument = TranscriptPager(scope)
     private var captureDriver: CaptureDriver? = null
-    private var slot: ResultOwner? = null
-    private var fileCandidate: ResultOwner? = null
+    // Only bounded in-memory ownership/journal publication is protected here.
+    // Never acquire a history/source lock or wait for IO while holding this gate.
+    private val ownerGate = Any()
+    @Volatile private var slot: ResultOwner? = null
+    @Volatile private var fileCandidate: ResultOwner? = null
     private var pendingFile: Uri? = null
     private var pendingRetry = false
     private val service = HomeServiceConnection()
@@ -126,8 +129,8 @@ class HomeController(private val app: UtterlaneApp) {
                 // until this candidate has actually copied nonempty private input.
                 val candidate = ResultOwner(DialogInput(uri = uri, automatic = true), null)
                 fileCandidate = candidate
-                candidate.observer = HomeFileHandoff(scope).observe(candidate.model.state,
-                    isCurrent = { fileCandidate === candidate },
+                candidate.observer = HomeFileHandoff(scope, app.recordingHistory, app.transcriptHistory).observe(candidate.model.state,
+                    isCurrent = { fileCandidate === candidate && !candidate.retiring },
                     onAccepted = { acceptFile(candidate) },
                     onRejected = { rejectFile(candidate, it ?: app.getString(R.string.transcribe_error_failed)) })
             }
@@ -260,7 +263,7 @@ class HomeController(private val app: UtterlaneApp) {
             // Acceptance synchronously retires the old owner before this new
             // checkpoint is published. Neither empty Ready nor stale IO can erase
             // the previous descriptor; final completion remains a fallback.
-            journal.capture(session?.audioId, store, session?.metrics?.state?.value)
+            synchronized(ownerGate) { journal.capture(session?.audioId, store, session?.metrics?.state?.value) }
         }
         private fun deliverResult(store: TranscriptStore?, failure: SessionFailure?) {
             val audio = session?.audioId?.let { runCatching { app.recordingHistory.get(it) }.getOrNull() }
@@ -301,7 +304,7 @@ class HomeController(private val app: UtterlaneApp) {
                             speakerLabels = result.driver.speakerLabels())
                 }
                 val input = result.driver.input(result.store, metadata)
-                journal.write(input)
+                synchronized(ownerGate) { journal.write(input) }
                 installResult(input, lease)
                 // The new model acquires its own text owner asynchronously. Keep
                 // the file for recovery instead of scheduling deletion underneath it.
@@ -320,45 +323,60 @@ class HomeController(private val app: UtterlaneApp) {
     }
 
     private fun acceptFile(candidate: ResultOwner) {
-        if (fileCandidate !== candidate) return
-        // If checkpointing fails, the observer can still reject this candidate
-        // without detaching the prior owner or releasing its usable input.
-        candidate.checkpoint(candidate.model.state.value)
-        fileCandidate = null
-        val previous = slot
-        previous?.observer?.cancel()
-        slot = candidate
-        liveDocument.show(null)
-        // The model already owns/imported this input. Transfer that exact owner,
-        // replacing the checkpoint before retiring old temporary work; never
-        // clear the prior journal while a provider is still opening/copying.
-        HomeFileHandoff.publish(mutable, candidate.model, candidate.model.state)
-        candidate.observe()
-        previous?.let { retireResult(it) }
+        // Called on IO inside authoritative source/history guards. This snapshot
+        // is bounded model metadata; acquire no further repository locks here.
+        val checkpoint = candidate.prepareCheckpoint(candidate.model.state.value)
+        val previous = synchronized(ownerGate) {
+            if (fileCandidate !== candidate || candidate.retiring) return
+            journal.write(checkpoint)
+            val previous = slot
+            previous?.observer?.cancel()
+            slot = candidate
+            fileCandidate = null
+            liveDocument.show(null)
+            // Logical retirement, journal replacement and current model state
+            // become visible before deletion can acquire the source guard.
+            HomeFileHandoff.publish(mutable, candidate.model, candidate.model.state)
+            previous
+        }
+        scope.launch {
+            if (slot === candidate) candidate.observe()
+            previous?.let { retireResult(it) }
+        }
     }
 
     private fun rejectFile(candidate: ResultOwner, message: String) {
-        if (fileCandidate !== candidate) return
-        candidate.observer?.cancel()
-        mutable.update { it.copy(message = message) }
+        synchronized(ownerGate) {
+            if (fileCandidate !== candidate || candidate.retiring) return
+            candidate.retiring = true
+            candidate.observer?.cancel()
+            mutable.update { it.copy(message = message) }
+        }
         // Keep the bounded pending slot/preparation hold until cancellation and
         // cleanup finish. A second attempt cannot accumulate retiring candidates.
         retireResult(candidate) {
-            if (fileCandidate === candidate) {
-                fileCandidate = null
-                mutable.update { it.copy(preparing = false) }
+            synchronized(ownerGate) {
+                if (fileCandidate === candidate) {
+                    fileCandidate = null
+                    mutable.update { it.copy(preparing = false) }
+                }
             }
         }
     }
 
     /** Explicit Next/Dismiss only. Navigation and Activity destruction never call this. */
     fun dismiss() {
+        slot?.let(::dismissOwner)
+    }
+
+    private fun dismissOwner(owner: ResultOwner) {
         if (state.value.capture.active || state.value.preparing) return
-        val owner = slot ?: return
         val done = {
-            if (slot === owner) {
-                slot = null; journal.clear()
-                mutable.update { HomeState() }
+            synchronized(ownerGate) {
+                if (slot === owner) {
+                    slot = null; journal.clear()
+                    mutable.update { HomeState() }
+                }
             }
             owner.clear()
         }
@@ -368,11 +386,14 @@ class HomeController(private val app: UtterlaneApp) {
     }
 
     private fun releaseResult() {
-        val previous = slot ?: return
-        slot = null
-        previous.observer?.cancel()
-        journal.clear()
-        mutable.update { it.copy(model = null) }
+        val previous = synchronized(ownerGate) {
+            val previous = slot ?: return
+            slot = null
+            previous.observer?.cancel()
+            journal.clear()
+            mutable.update { it.copy(model = null) }
+            previous
+        }
         retireResult(previous)
     }
 
@@ -403,6 +424,7 @@ class HomeController(private val app: UtterlaneApp) {
             @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = TranscriptionDialogModel(app, input) as T
         })[TranscriptionDialogModel::class.java]
         var observer: Job? = null
+        @Volatile var retiring = false
         private var audioLease: Closeable? = lease
         private var leasedId: String? = if (lease != null) input.audioId else null
         private val descriptor = HomeResultDescriptor(input)
@@ -416,7 +438,7 @@ class HomeController(private val app: UtterlaneApp) {
                 }
             }) { result, _ ->
                 if (result.finished && !result.deleting) {
-                    dismiss()
+                    dismissOwner(this@ResultOwner)
                     return@observe
                 }
                 checkpoint(result)
@@ -428,13 +450,21 @@ class HomeController(private val app: UtterlaneApp) {
                 leasedId = result.audio?.id
                 audioLease = leasedId?.let { runCatching { app.recordingHistory.acquire(it) }.getOrNull() }
             }
+            val snapshot = prepareCheckpoint(result)
+            synchronized(ownerGate) {
+                // A prior collector may already have been in flight when IO
+                // promoted the candidate. It must never restore the old journal.
+                if (slot === this) journal.write(snapshot)
+            }
+        }
+        fun prepareCheckpoint(result: TranscriptionDialogState): DialogInput {
             val saved = Bundle().also(model::saveInstanceState)
-            journal.write(descriptor.update(input.copy(uri = null, path = null, automatic = false,
+            return descriptor.update(input.copy(uri = null, path = null, automatic = false,
                 audioId = saved.getString("owned_audio"), transcriptId = saved.getString("saved_text"),
                 transcriptPath = saved.getString("working_text"), modelName = saved.getString("result_model").orEmpty(),
                 // The model owns result metadata independently of source
                 // history revisions, retention and other model attempts.
-                modelId = saved.getString("result_model_id"), metadata = model.metadata), importing = result.importing))
+                modelId = saved.getString("result_model_id"), metadata = model.metadata), importing = result.importing)
         }
         fun clear() {
             observer?.cancel()

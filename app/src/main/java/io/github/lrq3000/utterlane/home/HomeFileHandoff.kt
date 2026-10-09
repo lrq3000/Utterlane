@@ -1,14 +1,20 @@
 package io.github.lrq3000.utterlane.home
 
 import io.github.lrq3000.utterlane.asr.TranscriptSource
+import io.github.lrq3000.utterlane.asr.TranscriptDiscardedException
+import io.github.lrq3000.utterlane.history.RecordingHistory
+import io.github.lrq3000.utterlane.history.TranscriptHistory
 import io.github.lrq3000.utterlane.transcribe.TranscriptionDialogModel
 import io.github.lrq3000.utterlane.transcribe.TranscriptionDialogState
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
-/** Main-thread handoff of one already-created local-file result owner. */
+/** Validate and commit one candidate on IO; repository/source guards make the
+ * ownership transfer indivisible with in-app deletion. UI cleanup follows on Main. */
 internal class HomeFileHandoff(
     private val scope: CoroutineScope,
+    private val recordings: RecordingHistory,
+    private val transcripts: TranscriptHistory,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
@@ -17,28 +23,39 @@ internal class HomeFileHandoff(
         try {
             // first() retires this temporary observer on either outcome. It never
             // mirrors candidate state into Home or writes the recovery journal.
-            results.first { result ->
+            results.first {
                 if (!isCurrent()) return@first true
-                val owned = withContext(ioDispatcher) { hasOwnedInput(result) }
+                val promoted = withContext(ioDispatcher) { promoteCurrent(results, isCurrent, onAccepted) }
+                val current = results.value
                 if (!isCurrent()) true
-                else if (owned) { onAccepted(); true }
-                else if (!result.importing && !result.running) { onRejected(result.message); true }
+                else if (promoted) true
+                else if (!current.importing && !current.running) { onRejected(current.message); true }
                 else false
             }
         } catch (cancelled: CancellationException) { throw cancelled
         } catch (error: Exception) { if (isCurrent()) onRejected(error.message) }
     }
 
-    private fun hasOwnedInput(result: TranscriptionDialogState): Boolean {
-        val store = result.store
-        if (store != null && result.transcriptBytes > 0 && result.preview.isNotBlank() &&
-            store.file.isFile && !TranscriptSource.read(store.file).discarded) return true
-        val audio = result.audio ?: return false
-        // A URI or allocated ID does not prove ownership. Only the completed,
-        // private, nonempty copy can replace prior work. Decodability and model
-        // availability are deliberately irrelevant: that input can be retried.
-        return audio.sourceName != null && audio.status !in setOf("importing", "active", "discarded") &&
-            audio.part(0).isFile && audio.part(0).length() > 0
+    private fun promoteCurrent(results: StateFlow<TranscriptionDialogState>, isCurrent: () -> Boolean,
+        onAccepted: () -> Unit): Boolean = transcripts.withPublicationLock {
+        if (!isCurrent()) return@withPublicationLock false
+        // Match confirmed deletion's lock order: transcript history, then audio
+        // history or working-source disposition. All filesystem checks stay on IO.
+        val audioId = results.value.audio?.id
+        if (recordings.withCompletedImport(audioId) {
+            if (!isCurrent() || results.value.audio?.id != audioId) false
+            else { onAccepted(); true }
+        }) return@withPublicationLock true
+
+        val store = results.value.store ?: return@withPublicationLock false
+        try {
+            TranscriptSource.withActiveSource(store.file) {
+                val current = results.value
+                if (!isCurrent() || current.store !== store || current.transcriptBytes == 0L ||
+                    current.preview.isBlank() || !store.file.isFile || store.bytes == 0L) false
+                else { onAccepted(); true }
+            }
+        } catch (_: TranscriptDiscardedException) { false }
     }
 
     companion object {
