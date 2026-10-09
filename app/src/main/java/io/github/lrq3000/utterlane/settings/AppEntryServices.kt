@@ -22,8 +22,9 @@ object AppEntryServices {
         app.applicationScope.launch {
             try {
                 if (app.settingsRepository.serviceEnabled.first()) {
-                    // Idle unloading is not a request to disable voice input.
-                    val available = app.modelManager.isModelReady() && Settings.canDrawOverlays(app) &&
+                    // Capture is independent of recognition/model availability.
+                    // Keep the shared Home/Settings restoration path permission-only.
+                    val available = Settings.canDrawOverlays(app) &&
                         ContextCompat.checkSelfPermission(app, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
                     if (available) ContextCompat.startForegroundService(app, Intent(app, FloatingMicService::class.java))
                     else {
