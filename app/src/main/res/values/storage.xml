@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Used only for confirmed storage-full failures, including provider destinations. -->
+    <string name="storage_full_actionable">Not enough storage space. Free up some space and try again.</string>
+</resources>

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="storage_full_actionable">Salvestusruumi pole piisavalt. Vabastage ruumi ja proovige uuesti.</string>
+</resources>

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="storage_full_actionable">No hay suficiente espacio de almacenamiento. Libera espacio e inténtalo de nuevo.</string>
+</resources>
