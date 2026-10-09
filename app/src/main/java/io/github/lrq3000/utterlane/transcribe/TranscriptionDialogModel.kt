@@ -83,15 +83,11 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         file.isFile
                     }
                     if (restored != null) {
-                        val store = TranscriptStore(restored)
                         // Pre-provenance Home journals carried these identities in
                         // DialogInput. Migrate that association without replacing
                         // newer sidecar identities or clearing a discard marker.
-                        store.attachSource(store.source.copy(audioId = store.source.audioId ?: ownedAudioId,
-                            transcriptId = store.source.transcriptId ?: entry?.id,
-                            modelName = store.source.modelName.ifBlank { chosenModel },
-                            modelId = store.source.modelId ?: resultModelId))
-                        exposeStore(store)
+                        exposeStore(app.transcriptHistory.migrateWorking(TranscriptStore(restored),
+                            TranscriptSource(ownedAudioId, entry?.id, chosenModel, resultModelId)))
                     }
                     else if (entry != null) {
                         app.transcriptHistory.acquire(entry.id).use {
@@ -100,9 +96,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                             entry.file.copyTo(copy, overwrite = true)
                             // Publish the owner on IO before returning across the
                             // cancellable Main-dispatch boundary; dismissal joins it.
-                            val store = TranscriptStore(copy)
-                            store.attachSource(TranscriptSource(entry.audioId, entry.id, entry.model, entry.modelId))
-                            exposeStore(store)
+                            exposeStore(app.transcriptHistory.migrateWorking(TranscriptStore(copy),
+                                TranscriptSource(entry.audioId, entry.id, entry.model, entry.modelId)))
                         }
                     } else if (input.transcriptId != null || input.transcriptPath != null) error("Transcript is unavailable")
                     else if (!input.automatic) {

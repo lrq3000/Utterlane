@@ -2,6 +2,7 @@ package io.github.lrq3000.utterlane.history
 
 import io.github.lrq3000.utterlane.asr.TranscriptSource
 import io.github.lrq3000.utterlane.asr.TranscriptStore
+import io.github.lrq3000.utterlane.asr.TranscriptDiscardedException
 import java.io.Closeable
 import java.io.File
 import java.util.Properties
@@ -105,6 +106,34 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
      * waiting for producers. All dialogs share this repository; unrelated source
      * locks remain bounded and no second lock order is introduced. Call on IO. */
     @Synchronized fun <T> withPublicationLock(action: () -> T): T = action()
+
+    /** Consume an unexposed owner: return that same live store after migration,
+     * or release its leases without discarding recoverable bytes on failure. */
+    fun migrateWorking(store: TranscriptStore, legacy: TranscriptSource): TranscriptStore {
+        var transferred = false
+        try {
+            return withPublicationLock {
+                // Construction can predate another owner's complete Keep. Read,
+                // fill missing associations and write within the same transaction
+                // as Keep/confirmation; the constructor snapshot is not authority.
+                // Lock order remains history -> store -> source (no source lock
+                // is held while waiting for the history or store monitor).
+                val current = TranscriptSource.read(store.file)
+                if (current.discarded) throw TranscriptDiscardedException()
+                store.attachSource(current.copy(audioId = current.audioId ?: legacy.audioId,
+                    transcriptId = current.transcriptId ?: legacy.transcriptId,
+                    modelName = current.modelName.ifBlank { legacy.modelName },
+                    modelId = current.modelId ?: legacy.modelId))
+                transferred = true
+                store
+            }
+        } finally {
+            // The model has not exposed this owner yet. A sidecar IO failure is
+            // not explicit dismissal; closing leases must not mark valid text.
+            if (!transferred) store.keepForRecovery()
+        }
+    }
+
     @Synchronized fun find(id: String?): TranscriptEntry? {
         initialize()
         return entries[id]?.takeIf { it.id !in deleted }
