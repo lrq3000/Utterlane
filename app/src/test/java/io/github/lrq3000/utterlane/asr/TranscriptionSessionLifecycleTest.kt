@@ -111,6 +111,17 @@ class TranscriptionSessionLifecycleTest {
         } finally { session.close(); store.dispose() }
     }
 
+    @Test fun finalizationObserverMayCloseWithoutStartingTheSpeakerDrain(): Unit = runBlocking {
+        val store = TranscriptStore(directory.newFile())
+        lateinit var session: TranscriptionSession
+        session = TranscriptionSession(store, StreamingCorrections(emptyList()), {}, decode = { "" },
+            decodeSpeakers = { emptyList() }, finishSpeakers = { error("Closed session must not enter its speaker finisher") })
+        try {
+            session.finish { speakers -> assertTrue(speakers); session.close() }
+            assertEquals(0, store.segments)
+        } finally { session.close(); store.dispose() }
+    }
+
     @Test fun speakerFinisherArrivesBeforePendingDictionaryTailIsFlushedAndSessionCloses(): Unit = runBlocking {
         val store = TranscriptStore(directory.newFile())
         val corrections = StreamingCorrections(listOf(DictionaryManager.ReplacementRule("New York", "NYC")))

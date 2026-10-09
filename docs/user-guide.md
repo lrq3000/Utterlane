@@ -88,6 +88,45 @@ recording and attribution are bundled with the app. Share it to Utterlane throug
 Android's share sheet to see a real transcription. Both trials have a **Skip**
 action. The final page summarizes all choices in a vertically scrolling list.
 
+## Microphone input and Bluetooth
+
+Open **Settings → Microphone → Audio input → Change** to choose the phone microphone
+or an available external microphone. Compatible Bluetooth, wired and USB inputs
+appear when Android makes them available; a paired speaker without a recording
+input is not a microphone option. Pair/connect headsets through Android settings.
+Utterlane uses audio-routing APIs without scanning for or pairing Bluetooth devices.
+
+**Always prefer a Bluetooth microphone** is off by default. When enabled, a connected
+Bluetooth microphone is selected automatically for the next recording, including
+when it connects after Utterlane starts. With several headsets, the current usable
+Bluetooth selection is retained. You can select another one. Explicitly selecting
+Phone or a wired/USB input also turns off automatic Bluetooth preference.
+
+When a selected microphone disappears, the selector resets to Phone (or another
+available Bluetooth microphone when automatic preference is on). With automatic
+preference off, a disconnected selection is not restored just because it reconnects.
+Devices without a stable identity supplied by Android may also reset after an app
+process restart; enable automatic preference if any Bluetooth microphone is suitable.
+
+Settings changes and newly connected microphones apply to the **next recording**.
+The small **Input** caption in the waveform panel reports the actual recording input.
+At startup, the phone can capture while an already-selected Bluetooth headset
+activates; the caption identifies this connecting state rather than claiming the
+headset is already recording.
+
+If the active external microphone disconnects or becomes unusable, Utterlane attempts
+to continue the **same recording using the phone microphone**. A persistent **red
+message** explains the fallback. The current session stays on Phone even if the
+headset reconnects; automatic Bluetooth selection still applies to the next session.
+The warning is visible with stream statistics disabled and remains through processing.
+
+This is particularly useful for unattended meeting or lecture recordings. Already
+captured audio and transcription progress are preserved during handover. Android or
+the hardware may introduce a short gap, and calls or microphone restrictions can
+prevent even the phone from capturing. If fallback also fails, the app reports the
+capture failure and uses its existing recording-recovery flow; it does not silently
+claim that recording continues. Stop and Cancel always take precedence over recovery.
+
 ## Models and languages
 
 Select a recognition model in Utterlane, then download it or use **Import from
@@ -291,6 +330,20 @@ normally unless pinned. Text already inserted, exported or saved in transcript
 history is independent of the temporary audio's lifetime.
 
 ### One transcription dialog
+
+While text arrives, a compact progress dock below the reader shows the current
+stage, percentage of audio transcribed, and approximate time remaining. You can
+keep reading and scrolling without moving the progress into the text. Completion
+reduces the dock to a confirmation row, giving space back below the reader rather
+than shifting its top or resetting your reading position.
+
+Imported duration estimates are marked **≈**. If duration is unknown or contradicted
+by decoded audio, the app shows an indeterminate bar until the actual total is
+known. **Estimating time…** means no reliable timing measurement is available yet.
+With speaker labeling, **About … + finishing** estimates the remaining audio
+processing while making additional finishing time explicit; the final drain is
+shown as **Finishing speaker labels…**, not premature 100% completion. Progress
+and ETA remain visible with stream statistics disabled.
 
 Shared audio, history and recovery use the same actions:
 

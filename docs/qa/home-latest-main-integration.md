@@ -408,3 +408,51 @@ with the new terminal flags wrongly rejected that retryable candidate.
   failures/ignored**, and Android instrumentation Kotlin compilation with the
   same quiet offline full command recorded above. No UI files, parent worktree,
   recognition tests, APK/device/native build, or stash were touched.
+
+## Final integration of Bluetooth input and progress D
+
+Merged `origin/main` at `aa1950a7434d7938b83af4d53989d698cdcdad97` into
+Home after milestone `217c9c8`. This additive merge also includes `9dc33a8`
+(Bluetooth routing/fallback); no history was rewritten. Read both complete main
+commit descriptions, their QA records, and the expanded Core Values first.
+
+All four conflicted files were reset to main's version before reapplying the
+Home patch from merge base `d289940`. The following checklist accounts for every
+Home patch hunk in those files, using its old-line anchor:
+
+| File / Home hunk | Disposition | Resolution |
+| --- | --- | --- |
+| TranscriptReader / 32 | Applied with adaptation | Pager input and Home-only follow-tail coexist with main's footer slot, document-scoped viewport compensation and EOF anchor. |
+| TranscriptionDialog / 1 | Applied | Remove obsolete clipboard imports; shared transfers own that path. |
+| TranscriptionDialog / 30 | Applied | Remove obsolete coroutine imports. |
+| TranscriptionDialog / 42 | Applied | Remove obsolete transfer scope. |
+| TranscriptionDialog / 131 | Applied with adaptation | Pass the pager and retain main's progress footer; use shared leased Copy/Share while preserving icon tags and controls. |
+| TranscriptionDialogModel / 15 | Applied | Retain optional input metadata. |
+| TranscriptionDialogModel / 53 | Applied | Retain independent result metadata and readonly journal snapshot. |
+| TranscriptionDialogModel / 71 | Applied | Restore metadata/pin state and migrate legacy provenance under publication ownership. |
+| TranscriptionDialogModel / 85 | Applied | Transfer copied-store ownership through the same migration helper. |
+| TranscriptionDialogModel / 107 | Applied | Successful temporary audio does not imply an interruption. |
+| TranscriptionDialogModel / 119 | Applied | Independent text metadata survives source disappearance. |
+| TranscriptionDialogModel / 140 | Applied | Saved entry metadata follows the exposed store. |
+| TranscriptionDialogModel / 190 | Applied with adaptation | Track committed speaker labels and per-attempt metadata alongside main's new file-progress producer. |
+| TranscriptionDialogModel / 211 | Applied with adaptation | Preserve main's finish observer/stages, then publish actual-label metadata and metadata-aware autosave. |
+| TranscriptionDialogModel / 237 | Applied | Preserve partial speaker metadata even when inference fails. |
+| TranscriptionDialogModel / 279 | Applied | Keep atomic fresh-Keep publication, exact identity reuse and stale-Unpin behavior. |
+| TranscriptionDialogModel / 317 | Applied | Re-read durable working identity and discard state. |
+| TranscriptionDialogModel / 382 | Applied with adaptation | Keep guarded confirmation/reconfirmation and current-source selection, including main's clearing of file progress on deletion. |
+| TranscriptionDialogModel / 450 | Applied | Save independent metadata in recreation Bundle. |
+| TranscriptionSessionLifecycleTest / 17 | Applied | Retain all six actual-label cases as well as main's finalization-observer test. |
+| TranscriptionSessionLifecycleTest / 60 | Applied | Retain no-label assertion after a closed late finisher. |
+
+Semantic adaptations: Home file processing reuses the canonical progress footer
+instead of the removed input-read percentage. Observer/handoff fixtures use
+`FileProgressSnapshot` for progress-only publications. Home capture shows the
+shared actual-input caption and semantic-red fallback warning independently of
+optional statistics. Main's routing/service setup and all new test classes remain.
+
+Verification: **479 JVM tests passed, zero failures/ignored**, and both debug QA
+APKs built with the plan's normal offline/in-process/two-worker command. One build
+exceeded a 240-second harness timeout; its normal incremental retry with a longer
+timeout completed. No clean/forced rebuild, foreign process termination, or shared
+cache modification was used. Native combined-tree acceptance follows in the final
+Home QA report.

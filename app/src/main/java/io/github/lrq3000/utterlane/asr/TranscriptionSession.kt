@@ -42,17 +42,24 @@ class TranscriptionSession(
         Log.i("TranscriptionSession", "Segment ${window.ownedStart}..${window.ownedEnd}; input=${window.samples.size}; completed=${store.segments}")
     }
     private var finished = false
+    val hasSpeakerFinalization: Boolean get() = speakerText != null && finishSpeakers != null
     suspend fun accept(samples: ShortArray) {
         check(!closed.get()) { "Transcription session is closed" }
         if (!mayContinue()) return
         segmenter.accept(samples)
         currentCoroutineContext().ensureActive()
     }
-    suspend fun finish() {
+    suspend fun finish() = finish {}
+
+    /** Report the real EOF boundary only after the last ASR window completes.
+     * Keep the zero-argument overload for recording pipeline method references. */
+    suspend fun finish(onFinalizing: (Boolean) -> Unit) {
         if (finished || closed.get()) return
         try {
             if (!mayContinue()) return
             segmenter.finish()
+            if (!mayContinue()) return
+            onFinalizing(hasSpeakerFinalization)
             if (!mayContinue()) return
             // Speaker lookahead can outlive the last ASR window (notably with
             // zero right context). Its text must reach the same correction

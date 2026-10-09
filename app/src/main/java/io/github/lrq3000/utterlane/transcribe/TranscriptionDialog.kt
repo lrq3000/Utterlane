@@ -5,8 +5,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.*
@@ -96,26 +94,7 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                         }
                         DialogDeletionControl(model, state, busy)
                     }
-                    // Long error/details text remains available without consuming
-                    // the entire reading area on small or landscape windows.
-                    Column(Modifier.fillMaxWidth().heightIn(max = 120.dp).verticalScroll(rememberScrollState()).padding(horizontal = 4.dp)) {
-                        if (working) {
-                            if (state.progress == null || !state.running) LinearProgressIndicator(Modifier.fillMaxWidth())
-                            else LinearProgressIndicator(progress = { state.progress!! / 100f }, modifier = Modifier.fillMaxWidth())
-                            Text(stringResource(when {
-                                state.deleting -> R.string.dialog_deleting
-                                state.closing -> R.string.dialog_closing
-                                state.saving -> R.string.dialog_saving
-                                state.importing -> R.string.dialog_importing
-                                state.checkingDeletion -> R.string.dialog_checking_items
-                                else -> R.string.transcribe_transcribing
-                            }), style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (stats) {
-                            Text(io.github.lrq3000.utterlane.ui.RecognitionStatusText.activity(context, state.capture.recognition), style = MaterialTheme.typography.bodySmall)
-                            Text(io.github.lrq3000.utterlane.ui.RecognitionStatusText.backlog(context, state.capture), style = MaterialTheme.typography.bodySmall)
-                        }
-                        state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
                         if (!state.importing) Text(stringResource(when {
                             state.audio == null -> R.string.dialog_audio_unavailable
                             state.audio!!.pinned -> R.string.dialog_audio_pinned
@@ -124,7 +103,9 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                         }), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.height(8.dp))
-                    TranscriptReader(model.document, state, Modifier.weight(1f).fillMaxWidth())
+                    TranscriptReader(model.document, state, Modifier.weight(1f).fillMaxWidth()) {
+                        TranscriptionProgressFooter(state, stats)
+                    }
                     AudioPlaybackControls(model) {
                         val hasText = state.transcriptBytes > 0
                         DialogPinControl(model, state, busy)

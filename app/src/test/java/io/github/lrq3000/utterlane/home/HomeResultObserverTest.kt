@@ -1,6 +1,7 @@
 package io.github.lrq3000.utterlane.home
 
 import io.github.lrq3000.utterlane.transcribe.TranscriptionDialogState
+import io.github.lrq3000.utterlane.transcribe.FileProgressSnapshot
 import java.io.Closeable
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.*
@@ -64,7 +65,7 @@ class HomeResultObserverTest {
         f.drain()
         f.connection.detached(f.requests.single())
         f.home.update { it.copy(message = "Foreground start denied") }
-        f.model.value = f.model.value.copy(progress = 12)
+        f.model.value = f.model.value.copy(fileProgress = FileProgressSnapshot(percent = 12))
         f.drain()
         assertEquals("Foreground start denied", f.home.value.message)
         assertEquals(1, f.requests.size)

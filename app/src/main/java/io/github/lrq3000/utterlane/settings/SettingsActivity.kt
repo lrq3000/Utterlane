@@ -1,5 +1,8 @@
 package io.github.lrq3000.utterlane.settings
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -565,6 +568,7 @@ fun SettingsScreen(
                     onClick = { if (hasMicPermission.value) onOpenAppSettings() else onRequestMicPermission() },
                     onRevokeClick = { onOpenAppSettings() }
                 )
+                AudioInputSettings()
             }
 
             SettingsSection(title = stringResource(R.string.histories_section)) {
@@ -917,7 +921,8 @@ fun SwitchSettingItem(
         supportingContent = { Text(subtitle, color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)) },
         leadingContent = { Icon(icon, contentDescription = null, tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)) },
         trailingContent = {
-            Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+            Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled,
+                modifier = Modifier.semantics { contentDescription = title })
         }
     )
 }

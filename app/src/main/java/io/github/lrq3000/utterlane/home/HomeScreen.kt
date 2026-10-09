@@ -22,6 +22,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.buildAnnotatedString
@@ -41,6 +44,8 @@ import io.github.lrq3000.utterlane.history.RecordingRecovery
 import io.github.lrq3000.utterlane.transcribe.TranscriptReader
 import io.github.lrq3000.utterlane.transcribe.TranscriptTransferActions
 import io.github.lrq3000.utterlane.transcribe.TranscriptionDialog
+import io.github.lrq3000.utterlane.transcribe.TranscriptionProgressFooter
+import io.github.lrq3000.utterlane.ui.AudioInputText
 import io.github.lrq3000.utterlane.ui.RecognitionStatusText
 import io.github.lrq3000.utterlane.ui.WaveformButton
 import io.github.lrq3000.utterlane.ui.theme.LocalBrandPalette
@@ -245,14 +250,22 @@ private fun HomeCaptureControl(state: HomeState, onRecord: () -> Unit) {
 
 @Composable
 private fun HomeProgress(state: HomeState) {
+    if (!state.capture.active && !state.preparing) {
+        // Local files use the same completed-work accounting, qualified ETA and
+        // finalization stages as their detail dialog, never the decoded offset.
+        Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
+            TranscriptionProgressFooter(state.result, statistics = false)
+        }
+        return
+    }
     val metrics = if (state.capture.active) state.metrics else state.result.capture
     // During a candidate copy the visible result still belongs to the prior
     // workspace. Its completed percentage must not describe the new file load.
-    val percent = if (state.preparing) null else if (metrics.phase == CapturePhase.PROCESSING) metrics.percent else state.result.progress
+    val percent = if (!state.preparing && metrics.phase == CapturePhase.PROCESSING) metrics.percent else null
     Column(Modifier.fillMaxWidth().heightIn(min = 104.dp).padding(17.dp), verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)) {
         if (percent == null) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Color.White, trackColor = Color.White.copy(alpha = .25f))
         else {
-            Text(stringResource(if (metrics.phase == CapturePhase.PROCESSING) R.string.home_processed_percent else R.string.home_read_percent, percent),
+            Text(stringResource(R.string.home_processed_percent, percent),
                 style = MaterialTheme.typography.bodySmall, color = Color.White)
             LinearProgressIndicator(progress = { percent.coerceIn(0, 100) / 100f }, modifier = Modifier.fillMaxWidth(),
                 color = Color.White, trackColor = Color.White.copy(alpha = .25f))
@@ -302,6 +315,17 @@ private fun HomeNotice(message: String, action: String, onAction: () -> Unit) {
 private fun HomeFeedback(state: HomeState, onModels: () -> Unit, onRetry: () -> Unit) {
     val context = LocalContext.current
     val metrics = if (state.capture.active) state.metrics else state.result.capture
+    if (state.capture.active) {
+        Text(AudioInputText.caption(context, metrics), Modifier.testTag("home_audio_input"),
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        AudioInputText.warning(context, metrics)?.let { warning ->
+            val palette = LocalBrandPalette.current
+            Text(warning, Modifier.testTag("home_audio_input_warning").semantics { liveRegion = LiveRegionMode.Polite },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (palette.dark) io.github.lrq3000.utterlane.ui.theme.RecordingRedLight
+                    else io.github.lrq3000.utterlane.ui.theme.RecordingRed)
+        }
+    }
     if (state.capture.active && metrics.modelPreparing) Text(stringResource(
         if (state.capture.phase == HomeCapturePhase.RECORDING) R.string.recording_model_loading else R.string.recording_model_loading_saved),
         style = MaterialTheme.typography.bodySmall)

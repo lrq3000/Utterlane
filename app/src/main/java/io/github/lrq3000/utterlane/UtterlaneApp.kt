@@ -46,6 +46,9 @@ class UtterlaneApp : Application() {
     lateinit var settingsRepository: SettingsRepository
         private set
 
+    lateinit var audioInputs: io.github.lrq3000.utterlane.audio.AudioInputController
+        private set
+
     lateinit var modelManager: ModelManager
         private set
 
@@ -84,6 +87,9 @@ class UtterlaneApp : Application() {
             getSystemService(android.app.ActivityManager::class.java).runningAppProcesses?.firstOrNull { it.pid == android.os.Process.myPid() }?.processName
         if (processName == "$packageName:recognition") return
         settingsRepository = SettingsRepository(this)
+        audioInputs = io.github.lrq3000.utterlane.audio.AudioInputController(
+            io.github.lrq3000.utterlane.audio.AndroidAudioInputDevices(this), settingsRepository, applicationScope
+        ) { Log.e(TAG, "Could not refresh microphone selection", it) }
         dictionaryManager = DictionaryManager(this)
         modelManager = ModelManager(this)
         recognitionDiagnostics = io.github.lrq3000.utterlane.diagnostics.AndroidRecognitionDiagnostics.create(this)

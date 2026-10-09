@@ -3,6 +3,7 @@ package io.github.lrq3000.utterlane.home
 import io.github.lrq3000.utterlane.asr.TranscriptStore
 import io.github.lrq3000.utterlane.history.*
 import io.github.lrq3000.utterlane.transcribe.TranscriptionDialogState
+import io.github.lrq3000.utterlane.transcribe.FileProgressSnapshot
 import java.io.Closeable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -20,7 +21,7 @@ class HomeFileHandoffTest {
     @get:Rule val folder = TemporaryFolder()
 
     @Test fun importingCandidateKeepsPriorWorkspaceAndCheckpointWhileBusy() = Fixture().use { f ->
-        f.model.value = TranscriptionDialogState(importing = true, progress = 10)
+        f.model.value = TranscriptionDialogState(importing = true, fileProgress = FileProgressSnapshot(percent = 10))
         assertEquals("prior working text", f.home.value.result.preview)
         assertEquals("prior checkpoint", f.checkpoint)
         assertTrue(f.home.value.busy)
@@ -96,7 +97,7 @@ class HomeFileHandoffTest {
         assertEquals("candidate checkpoint", f.checkpoint)
         assertTrue(f.rejected.isEmpty())
         assertTrue(f.job.isCompleted)
-        f.model.value = f.model.value.copy(progress = 100)
+        f.model.value = f.model.value.copy(fileProgress = FileProgressSnapshot(percent = 100))
         assertEquals("A terminal observer must not retire the prior owner twice", 1, f.accepted)
     }
 

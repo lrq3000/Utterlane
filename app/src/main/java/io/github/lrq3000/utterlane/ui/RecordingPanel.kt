@@ -35,6 +35,13 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
     private val details = label(13f, secondary)
     private val recognition = label(13f, secondary)
     private val signal = label(14f, initialPalette.warning.toArgb())
+    private val input = label(12f, secondary).apply { id = R.id.recording_input }
+    private val inputWarning = label(13f, foreground).apply {
+        id = R.id.recording_input_warning
+        // Announce the degradation once when text changes, without stealing
+        // focus from Stop or requiring the user to attend to the screen.
+        accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+    }
     val statusText = label(15f, foreground).apply { id = R.id.recording_status; maxLines = 3; ellipsize = android.text.TextUtils.TruncateAt.END }
     private val waveform = WaveformButton(context).apply {
         id = R.id.recording_done
@@ -62,6 +69,7 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         }
         elevation = dp(12).toFloat()
         addView(title); addView(details); addView(recognition); addView(signal)
+        addView(input); addView(inputWarning)
         addView(waveform, LayoutParams(LayoutParams.MATCH_PARENT, dp(136)).apply { topMargin = dp(12) })
         processing.addView(percent)
         processing.addView(bar, LayoutParams(LayoutParams.MATCH_PARENT, dp(16)).apply { topMargin = dp(16) })
@@ -104,6 +112,9 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         details.setTextColor(palette.muted.toArgb())
         recognition.setTextColor(palette.muted.toArgb())
         signal.setTextColor(palette.warning.toArgb())
+        input.setTextColor(palette.muted.toArgb())
+        inputWarning.setTextColor((if (palette.dark) io.github.lrq3000.utterlane.ui.theme.RecordingRedLight
+            else io.github.lrq3000.utterlane.ui.theme.RecordingRed).toArgb())
         statusText.setTextColor(palette.text.toArgb())
         percent.setTextColor(palette.text.toArgb())
         bar.progressTintList = ColorStateList.valueOf(palette.primary.toArgb())
@@ -116,6 +127,11 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
     }
 
     private fun render(snapshot: CaptureSnapshot, showStatistics: Boolean = false) {
+        input.text = AudioInputText.caption(context, snapshot)
+        val warning = AudioInputText.warning(context, snapshot)
+        // Do not reset an accessibility live region on every waveform publication.
+        if (inputWarning.text.toString() != warning.orEmpty()) inputWarning.text = warning.orEmpty()
+        inputWarning.visibility = if (warning == null) View.GONE else View.VISIBLE
         keepScreenOn = snapshot.phase !in listOf(CapturePhase.COMPLETE, CapturePhase.FAILED, CapturePhase.CANCELLED)
         val capturing = snapshot.phase == CapturePhase.CAPTURING
         waveform.visibility = if (capturing) View.VISIBLE else View.GONE

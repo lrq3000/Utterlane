@@ -5,6 +5,38 @@ import org.junit.Test
 import kotlinx.coroutines.runBlocking
 
 class CaptureMetricsTest {
+    @Test fun fileInputPublishesItsMeasuredRateBeforeEofWithoutCountingOverlapTwice() {
+        var clock = 0L
+        val meter = CaptureMetrics { clock }
+        meter.captured(320000)
+        assertNull(meter.state.value.processingSecondsPerSample)
+        meter.processed(160000, 4000)
+        clock = 1000; meter.tick()
+        assertEquals(0.000025, meter.state.value.processingSecondsPerSample!!, 1e-10)
+        meter.processed(160000, 10000) // Repeated/overlapping ownership adds no work.
+        clock += 1000; meter.tick()
+        assertEquals(0.000025, meter.state.value.processingSecondsPerSample!!, 1e-10)
+        meter.processed(320000, 8000)
+        clock += 1000; meter.tick()
+        assertEquals(0.000030, meter.state.value.processingSecondsPerSample!!, 1e-10)
+        assertNull("File input has not ended; microphone-tail percent is still inapplicable", meter.state.value.percent)
+    }
+    @Test fun inputWarningSurvivesSamplesRecognitionFailureAndFinalizationButIgnoresLateCallbacks() {
+        val meter = CaptureMetrics { 0L }
+        val warning = io.github.lrq3000.utterlane.audio.CaptureInputState(
+            actual = io.github.lrq3000.utterlane.audio.AudioInput("phone", "", false),
+            fallbackFrom = io.github.lrq3000.utterlane.audio.AudioInput("headset", "Headset", true),
+            fallbackReason = io.github.lrq3000.utterlane.audio.InputFallbackReason.DISCONNECTED,
+            receivingFallback = true)
+        meter.started()
+        meter.input(warning)
+        meter.samples(ShortArray(800), true)
+        meter.recognitionFailed("Model failed independently")
+        meter.stopping(); meter.captureEnded(); meter.completed(null)
+        assertEquals(warning, meter.state.value.input)
+        meter.input(io.github.lrq3000.utterlane.audio.CaptureInputState())
+        assertEquals(warning, meter.state.value.input)
+    }
     @Test fun waveformReflectsActualPcmAndSilenceClearsOnSignal() {
         var clock = 0L
         val meter = CaptureMetrics { clock }
