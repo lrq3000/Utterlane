@@ -241,12 +241,92 @@ class AndroidCaptureRouteTest {
             platform.inputDevices = listOf(platform.phone, source)
             platform.observeRoute(source, sink)
             platform.capture(route)
-            assertTrue("Unknown source identity cannot prematurely confirm the requested headset", platform.state.connecting)
+            assertFalse("Native routing confirmation must not wait for the settings refresh coroutine", platform.state.connecting)
             platform.changed(added = listOf(source))
             platform.capture(route)
             assertEquals(choice.key, platform.state.actual!!.key)
             assertFalse(platform.state.connecting)
             assertNull(platform.state.fallbackFrom)
+        }
+    }
+
+    @Test @Config(sdk = [31, 36]) fun activeSourceSurvivesAnUnrelatedAmbiguousCatalogueChange() {
+        AudioRoutingPlatform().use { platform ->
+            val first = platform.addHeadset(address = "same")
+            val route = platform.route(first.choice.key)
+            route.attach(platform.record); route.started(); platform.connect(first); platform.capture(route)
+            val other = platform.addHeadset(17, 18, "same")
+            platform.changed(added = listOf(other.source, other.sink))
+            platform.capture(route)
+            assertFalse("Unrelated metadata ambiguity is not loss of an already-bound source", route.isFallback)
+            assertEquals(first.choice.key, platform.state.actual!!.key)
+            assertEquals(first.source.id, platform.preferred!!.id)
+        }
+    }
+
+    @Test @Config(sdk = [31, 36]) fun removedSourceBindingCannotMisidentifyAReusedInputPort() {
+        AudioRoutingPlatform().use { platform ->
+            val first = platform.addHeadset()
+            val route = platform.route(first.choice.key)
+            route.attach(platform.record); route.started(); platform.connect(first); platform.capture(route)
+            val reusedSource = AudioRoutingPlatform.device(first.source.id, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, "other", true)
+            val otherSink = AudioRoutingPlatform.device(18, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, "other")
+            platform.inputDevices = listOf(platform.phone, reusedSource)
+            platform.communicationDevices = listOf(first.sink, otherSink)
+            platform.changed(removed = listOf(first.source), added = listOf(reusedSource, otherSink))
+            platform.observeRoute(reusedSource, otherSink)
+            platform.capture(route)
+            assertTrue(route.isFallback)
+            assertEquals(InputFallbackReason.ROUTE_CHANGED, platform.state.fallbackReason)
+        }
+    }
+
+    @Test @Config(sdk = [31, 36]) fun removalDuringRouteInspectionCannotRebindFromStaleInventory() {
+        AudioRoutingPlatform().use { platform ->
+            val first = platform.addHeadset(address = "same")
+            val route = platform.route(first.choice.key)
+            route.attach(platform.record); route.started(); platform.connect(first); platform.capture(route)
+            var removeDuringQuery = true
+            every { platform.record.routedDevice } answers {
+                if (removeDuringQuery) {
+                    removeDuringQuery = false
+                    val replacement = AudioRoutingPlatform.device(first.source.id, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, "same", true)
+                    val otherSink = AudioRoutingPlatform.device(18, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, "same")
+                    platform.inputDevices = listOf(platform.phone, replacement)
+                    platform.communicationDevices = listOf(first.sink, otherSink)
+                    platform.changed(removed = listOf(first.source), added = listOf(replacement, otherSink))
+                    platform.observeRoute(replacement, otherSink)
+                }
+                platform.actualInput
+            }
+            platform.observeRoute(first.source, first.sink)
+            platform.capture(route)
+            platform.capture(route)
+            assertNotEquals(first.choice.key, platform.state.actual?.key)
+            assertTrue("Old inventory cannot erase a concurrent source-removal signal", route.isFallback)
+        }
+    }
+
+    @Test @Config(sdk = [31, 36]) fun disprovedBindingCannotReturnWhenCatalogueBecomesAmbiguous() {
+        AudioRoutingPlatform().use { platform ->
+            val source = AudioRoutingPlatform.device(7, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, "B", true)
+            val candidateA = AudioRoutingPlatform.device(8, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, "")
+            platform.inputDevices = listOf(platform.phone, source)
+            platform.communicationDevices = listOf(candidateA)
+            val selected = platform.devices.inputs().single { it.bluetooth }
+            val route = platform.route(selected.key)
+            route.attach(platform.record); route.started(); platform.capture(route)
+            val candidateB = AudioRoutingPlatform.device(18, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, "B")
+            platform.communicationDevices = listOf(candidateA, candidateB)
+            platform.changed(added = listOf(candidateB))
+            platform.capture(route) // Still Phone; exact metadata disproves the old inferred A binding.
+            val otherSource = AudioRoutingPlatform.device(17, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, "B", true)
+            platform.inputDevices = platform.inputDevices + otherSource
+            platform.changed(added = listOf(otherSource))
+            platform.observeRoute(source, candidateA)
+            platform.capture(route)
+            assertNotEquals(selected.key, platform.state.actual?.key)
+            assertTrue("Unknown evidence cannot resurrect a positively disproved association", platform.state.connecting)
         }
     }
 
