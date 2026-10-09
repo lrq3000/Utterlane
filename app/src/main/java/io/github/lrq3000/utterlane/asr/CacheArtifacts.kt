@@ -10,8 +10,12 @@ object CacheArtifacts {
     private val states = mutableMapOf<String, State>()
 
     fun acquire(file: File): Closeable {
+        // Restored paths can use /data/data while cache scans use /data/user/0.
+        // One physical artifact needs one lease identity. Resolve outside the
+        // registry monitor and retain that identity through deferred deletion.
+        val artifact = file.canonicalFile
         synchronized(states) {
-            val state = states.getOrPut(file.absolutePath) { State() }
+            val state = states.getOrPut(artifact.path) { State() }
             check(!state.deleting) { "Artifact expired" }
             state.count++
         }
@@ -19,23 +23,24 @@ object CacheArtifacts {
         return Closeable {
             if (closed.compareAndSet(false, true)) {
                 val delete = synchronized(states) {
-                    val state = checkNotNull(states[file.absolutePath])
+                    val state = checkNotNull(states[artifact.path])
                     state.count--
                     if (state.count == 0 && state.pendingDelete) { state.deleting = true; true }
-                    else { if (state.count == 0) states.remove(file.absolutePath); false }
+                    else { if (state.count == 0) states.remove(artifact.path); false }
                 }
-                if (delete) delete(file)
+                if (delete) delete(artifact)
             }
         }
     }
 
     fun deleteWhenReleased(file: File) {
+        val artifact = file.canonicalFile
         val delete = synchronized(states) {
-            val state = states.getOrPut(file.absolutePath) { State() }
+            val state = states.getOrPut(artifact.path) { State() }
             state.pendingDelete = true
             if (state.count == 0 && !state.deleting) { state.deleting = true; true } else false
         }
-        if (delete) delete(file)
+        if (delete) delete(artifact)
     }
 
     fun prune(directory: File, maximumAgeMs: Long, now: Long = System.currentTimeMillis(), includeDirectories: Boolean = true,
@@ -43,25 +48,28 @@ object CacheArtifacts {
         directory.listFiles()?.forEach { file ->
             if (!includeDirectories && file.isDirectory) return@forEach
             val reference = referenceTime(file)
+            val artifact = file.canonicalFile
             val delete = synchronized(states) {
-                val state = states[file.absolutePath]
+                val state = states[artifact.path]
                 val expired = now >= reference && now - reference >= maximumAgeMs
                 if ((expired || state?.pendingDelete == true) && (state?.count ?: 0) == 0 && state?.deleting != true) {
-                    states.getOrPut(file.absolutePath) { State() }.deleting = true
+                    states.getOrPut(artifact.path) { State() }.deleting = true
                     true
                 } else false
             }
-            if (delete) delete(file)
+            if (delete) delete(artifact)
         }
     }
 
     private fun delete(file: File) {
+        // Internal callers already hold the canonical identity, even if an alias
+        // changes after acquire. Do not perform path resolution under states.
         // Do not hold the registry lock while removing a multi-part export folder.
         // Independent capture sessions can acquire their new files immediately.
         try { file.deleteRecursively() } finally {
             synchronized(states) {
-                if (!file.exists()) states.remove(file.absolutePath)
-                else states[file.absolutePath]?.apply { deleting = false; pendingDelete = true }
+                if (!file.exists()) states.remove(file.path)
+                else states[file.path]?.apply { deleting = false; pendingDelete = true }
             }
         }
     }
