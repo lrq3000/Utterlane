@@ -178,3 +178,38 @@ reported source patterns remained in this integration:
 - All review fixes use the same worktree/base; no further rebase was performed.
   Native two-owner publication, fixture reruns and Home overlay execution remain
   pending with the parent. The pending-test stash remains untouched.
+
+## Restore-migration quality review follow-up
+
+The subsequent review identified two valid defects in legacy Home association
+fill: it copied the store constructor's stale provenance outside the publication
+transaction, and a failed attachment leaked the newly constructed, unexposed
+owner's text/provenance leases.
+
+- `TranscriptHistory.migrateWorking(store, legacy)` now consumes the unexposed
+  owner and reads durable provenance, fills only absent fields, and attaches the
+  merged source under `withPublicationLock`, the same transaction used by Keep
+  and confirmed deletion. A newer published identity is preserved, and a durable
+  discard is rejected. Lock ordering remains history -> store -> source, with no
+  source lock held while waiting for either outer monitor.
+- Success returns the same live owner for immediate `exposeStore`; failure calls
+  `keepForRecovery` in `finally`, releasing both leases without marking valid
+  text discarded. Both restored working files and newly copied saved-history
+  views use this ownership handoff.
+- Added four controlled JVM cases in `TranscriptMigrationTest`. **Three failed
+  before correction**: restore constructor W followed by another owner's complete
+  Keep N (identity reversal), migration crossing a held confirmation transaction,
+  and real sidecar-write failure retaining an unexposed lease. The fourth verifies
+  successful missing-field fill and exactly one live owner's lease transfer.
+- After correction, **20 focused JVM tests passed**, covering migration, Keep
+  publication, repinning and linked scopes. The full run passed **419 JVM tests,
+  zero failures/ignored**, and Android instrumentation Kotlin compiled:
+
+  ```powershell
+  .\gradlew.bat :app:testDebugUnitTest --tests '*TranscriptMigrationTest' --tests '*TranscriptKeepPublicationTest' --tests '*TranscriptRepinTest' --tests '*LinkedHistoryTest' :app:compileDebugAndroidTestKotlin "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q --offline
+  .\gradlew.bat :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q --offline
+  ```
+
+This follow-up is additive on `e5b13af` for parent cherry-picking. The parent's
+reapplied tests, worktree and stash were not touched; no APK, native build or device
+operation was performed.
