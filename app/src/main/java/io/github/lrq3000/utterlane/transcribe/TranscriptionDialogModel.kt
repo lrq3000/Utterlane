@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.*
 data class DialogInput(val uri: Uri? = null, val path: String? = null, val audioId: String? = null,
     val transcriptId: String? = null, val transcriptPath: String? = null, val automatic: Boolean = false,
     val transcriptOrigin: Boolean = transcriptId != null, val modelName: String = "", val modelId: String? = null,
-    val metadata: TranscriptMetadata? = null)
+    val metadata: TranscriptMetadata? = null, val recovered: Boolean = false)
 
 data class TranscriptionDialogState(
     val audio: HistoryEntry? = null, val store: TranscriptStore? = null, val transcriptId: String? = null,
@@ -136,6 +136,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     }
 
     private fun refreshAudio() {
+        if (input.recovered) ownedAudioId?.let(app.recordingHistory::markRecovered)
         val audio = linkedHistory.availableAudio(ownedAudioId)
         // Source deletion or a later re-transcription must not erase/change the
         // metadata attached to the text this dialog already owns.
@@ -145,6 +146,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
             // that independent evidence of already-committed labeled output.
             resultMetadata = TranscriptMetadata(audio, speakerLabels = audio.speakerLabels || resultMetadata.speakerLabels)
         }
+        if (audio?.recovered == true) resultMetadata = resultMetadata.copy(recovered = true)
         mutable.update { it.copy(audio = audio) }
     }
 
@@ -167,6 +169,14 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         lastRequestedModelId = resultModelId ?: lastRequestedModelId
         val entry = app.transcriptHistory.find(store.source.transcriptId)
         if (entry != null) resultMetadata = TranscriptMetadata(entry)
+        // Provenance belongs to the text as well as the source. It must survive
+        // source expiry, opening through a text-only recovery link, and retries.
+        if (input.recovered || resultMetadata.recovered || store.source.recovered ||
+            linkedHistory.availableAudio(ownedAudioId)?.recovered == true) {
+            resultMetadata = resultMetadata.copy(recovered = true)
+            store.attachSource(store.source.copy(recovered = true))
+            entry?.let { app.transcriptHistory.markRecovered(it.id) }
+        }
         latestPreview = store.preview()
         document.show(store)
         mutable.update { it.copy(store = store, preview = latestPreview, transcriptBytes = store.bytes,
@@ -234,7 +244,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         chosenModel = app.modelManager.selected.value.name
                         resultModelId = app.modelManager.selected.value.id
                         lastRequestedModelId = resultModelId
-                        created.store.attachSource(TranscriptSource(audioId, modelName = chosenModel, modelId = resultModelId))
+                        created.store.attachSource(TranscriptSource(audioId, modelName = chosenModel, modelId = resultModelId,
+                            recovered = source.recovered))
                         resultMetadata = TranscriptMetadata(source, speakerLabels = false)
                         exposeStore(created.store)
                         publishTranscriptionState()

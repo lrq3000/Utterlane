@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 data class TranscriptEntry(val id: String, val directory: File, val created: Long, val model: String,
     val audioId: String?, val retention: RetentionMark, val modelId: String? = null,
-    val durationMs: Long = 0, val speakerLabels: Boolean = false) {
+    val durationMs: Long = 0, val speakerLabels: Boolean = false, val recovered: Boolean = false) {
     val file get() = File(directory, "transcript.txt")
     val cursor get() = HistoryCursor(created, id)
 }
@@ -29,6 +29,7 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
     private val ordered = HistoryIndex<TranscriptEntry>()
     private val expiry = RetentionIndex()
     private val leases = mutableMapOf<String, Int>()
+    private val viewers = mutableMapOf<String, Int>()
     private val deleted = mutableSetOf<String>()
     private var initialized = false
     private val changes = MutableStateFlow(0L)
@@ -45,7 +46,8 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
             val created = p.getProperty("created").toLong()
             if (File(directory, "transcript.txt").isFile) put(TranscriptEntry(directory.name, directory, created,
                 p.getProperty("model", ""), p.getProperty("audioId"), HistoryMetadata.readMark(p, created), p.getProperty("modelId"),
-                p.getProperty("durationMs", "0").toLong(), p.getProperty("speakerLabels", "false").toBoolean()))
+                p.getProperty("durationMs", "0").toLong(), p.getProperty("speakerLabels", "false").toBoolean(),
+                p.getProperty("recovered", "false").toBoolean()))
         }
         initialized = true
     }
@@ -53,7 +55,8 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
     /** A stable attempt ID deduplicates manual saving; a new recognition attempt uses a new ID. */
     @Synchronized fun save(source: File, model: String, audioId: String? = null, pinned: Boolean = false,
         attempt: String = source.name, modelId: String? = null, created: Long? = null,
-        durationMs: Long = 0, speakerLabels: Boolean = false): TranscriptEntry {
+        durationMs: Long = 0, speakerLabels: Boolean = false, recovered: Boolean = false,
+        reference: Long? = null): TranscriptEntry {
         // Share the source-disposition lock with deletion. A producer either
         // publishes before the marker (and is then deleted by its confirmed ID),
         // or observes the marker and cannot recreate that result afterward.
@@ -62,6 +65,7 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
             val id = idForAttempt(attempt)
             entries[id]?.let { existing ->
                 check(id !in deleted) { "Transcript was deleted" }
+                if (recovered || TranscriptSource.read(source).recovered) markRecovered(id)
                 if (pinned && !existing.retention.pinned) setPinned(id, true, HistoryRetention.FOREVER, "")
                 return@withActiveSource get(id)
             }
@@ -70,8 +74,8 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
             check(directory.mkdir()) { "Cannot create transcript history" }
             // Source chronology is independent of saving time; retention starts now.
             val now = clock()
-            val entry = TranscriptEntry(id, directory, created ?: now, model, audioId, RetentionMark(now, pinned), modelId,
-                durationMs, speakerLabels)
+            val entry = TranscriptEntry(id, directory, created ?: now, model, audioId, RetentionMark(reference ?: now, pinned), modelId,
+                durationMs, speakerLabels, recovered || TranscriptSource.read(source).recovered)
             try {
                 source.inputStream().use { input -> entry.file.outputStream().use { input.copyTo(it, 64 * 1024) } }
                 persist(entry)
@@ -88,9 +92,10 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
     @Synchronized fun saveWorking(store: TranscriptStore, model: String, audioId: String?, modelId: String?,
         metadata: TranscriptMetadata): TranscriptEntry {
         val saved = save(store.file, model, audioId, pinned = true, attempt = UUID.randomUUID().toString(),
-            modelId = modelId, created = metadata.created, durationMs = metadata.durationMs, speakerLabels = metadata.speakerLabels)
+            modelId = modelId, created = metadata.created, durationMs = metadata.durationMs, speakerLabels = metadata.speakerLabels,
+            recovered = metadata.recovered)
         try {
-            store.attachSource(TranscriptSource(audioId, saved.id, model, modelId))
+            store.attachSource(TranscriptSource(audioId, saved.id, model, modelId, recovered = saved.recovered))
             return saved
         } catch (error: Exception) {
             // This ID belongs solely to this incomplete Keep. Roll it back on
@@ -137,6 +142,12 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
     @Synchronized fun find(id: String?): TranscriptEntry? {
         initialize()
         return entries[id]?.takeIf { it.id !in deleted }
+    }
+
+    @Synchronized fun markRecovered(id: String) {
+        val entry = entries[id]?.takeUnless { id in deleted || it.recovered } ?: return
+        val updated = entry.copy(recovered = true)
+        persist(updated); put(updated)
     }
 
     @Synchronized fun forAudio(audioId: String): List<TranscriptEntry> {
@@ -186,13 +197,19 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
         deleted.add(id); ordered.remove(entry.cursor); expiry.remove(id); changes.value++
         if ((leases[id] ?: 0) == 0) remove(id)
     }
-    @Synchronized fun acquire(id: String): Closeable {
+    @Synchronized fun acquire(id: String, protectFromPruning: Boolean = false): Closeable {
         get(id)
         leases[id] = (leases[id] ?: 0) + 1
+        if (protectFromPruning) { viewers[id] = (viewers[id] ?: 0) + 1; expiry.remove(id) }
         var closed = false
         return Closeable { synchronized(this) {
             if (!closed) {
                 closed = true
+                if (protectFromPruning) {
+                    val count = viewers.getValue(id) - 1
+                    if (count == 0) viewers.remove(id) else viewers[id] = count
+                    entries[id]?.let(::indexExpiry)
+                }
                 val count = (leases[id] ?: 1) - 1
                 if (count == 0) { leases.remove(id); if (id in deleted) remove(id) } else leases[id] = count
             }
@@ -207,8 +224,10 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
             ordered.put(entry.cursor, entry)
             entry.audioId?.let { byAudio.getOrPut(it) { linkedSetOf() }.add(entry.id) }
         }
-        expiry.put(entry.id, entry.retention); changes.value++
+        indexExpiry(entry); changes.value++
     }
+    private fun indexExpiry(entry: TranscriptEntry) = expiry.put(entry.id, entry.retention,
+        eligible = entry.id !in viewers && entry.id !in deleted)
     private fun remove(id: String) {
         val entry = entries[id] ?: return
         if (!entry.directory.deleteRecursively()) return
@@ -229,6 +248,7 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
             entry.modelId?.let { setProperty("modelId", it) }
             setProperty("durationMs", entry.durationMs.toString()); setProperty("speakerLabels", entry.speakerLabels.toString())
             setProperty("discarded", discarded.toString())
+            setProperty("recovered", entry.recovered.toString())
             HistoryMetadata.writeMark(this, entry.retention)
         }
         HistoryMetadata.write(File(entry.directory, "transcript.properties"), p)

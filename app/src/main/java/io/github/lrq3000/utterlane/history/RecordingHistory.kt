@@ -10,7 +10,8 @@ data class HistoryEntry(val id: String, val directory: File, val started: Long, 
     val needsRecovery: Boolean = false, val temporary: Boolean = false,
     val pinned: Boolean = false, val holdForLaunch: String? = null,
     val sourceName: String? = null, val mimeType: String = "audio/wav", val importedDurationMs: Long = 0,
-    val failureMessage: String? = null, val failureKind: String? = null, val speakerLabels: Boolean = false) {
+    val failureMessage: String? = null, val failureKind: String? = null, val speakerLabels: Boolean = false,
+    val recovered: Boolean = false) {
     val retention get() = RetentionMark(reference, pinned, holdForLaunch)
     val cursor get() = HistoryCursor(started, id)
     val durationMs: Long get() = if (sourceName == null) samples * 1000 / 16000 else importedDurationMs
@@ -26,6 +27,7 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
     private val ordered = HistoryIndex<HistoryEntry>()
     private val active = mutableMapOf<String, Recording>()
     private val leases = mutableMapOf<String, Int>()
+    private val viewers = mutableMapOf<String, Int>()
     private val deferred = mutableSetOf<String>()
     private val recoveries = mutableSetOf<String>()
     private val expiry = RetentionIndex()
@@ -66,7 +68,11 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
                 properties.getProperty("recovery", "false").toBoolean(), properties.getProperty("temporary", "false").toBoolean(),
                 mark.pinned, mark.holdForLaunch, source, properties.getProperty("mime", "audio/wav"),
                 properties.getProperty("durationMs", "0").toLong(), properties.getProperty("failureMessage"), properties.getProperty("failureKind"),
-                properties.getProperty("speakerLabels", "false").toBoolean())
+                properties.getProperty("speakerLabels", "false").toBoolean(),
+                // Old pending-recovery flags also covered ordinary temporary
+                // results. Only actual failure/interruption establishes origin.
+                properties.getProperty("recovered", "false").toBoolean() || status in setOf("failed", "interrupted") ||
+                    properties.getProperty("failureKind") != null)
             put(entry)
             if (status == "interrupted") save(entry)
         }
@@ -135,17 +141,18 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
         return promote()
     }
 
-    @Synchronized fun acquire(id: String): AudioLease {
+    @Synchronized fun acquire(id: String, protectFromPruning: Boolean = false): AudioLease {
         check(id in entries && id !in deferred) { "Recording expired or was deleted" }
-        return retain(id)
+        if (protectFromPruning) { viewers[id] = (viewers[id] ?: 0) + 1; expiry.remove(id) }
+        return retain(id, protectFromPruning)
     }
 
-    private fun retain(id: String): AudioLease {
+    private fun retain(id: String, protectFromPruning: Boolean = false): AudioLease {
         leases[id] = (leases[id] ?: 0) + 1
-        return AudioLease(id)
+        return AudioLease(id, protectFromPruning)
     }
 
-    inner class AudioLease internal constructor(private val id: String) : Closeable {
+    inner class AudioLease internal constructor(private val id: String, private val protectFromPruning: Boolean = false) : Closeable {
         private var closed = false
         /** A reader derived from an existing lease remains valid if pruning became
          * due during model preparation. New unrelated readers are still rejected. */
@@ -155,7 +162,15 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
             Reader(get(id), retain(id), offset)
         }
         override fun close() = synchronized(this@RecordingHistory) {
-            if (!closed) { closed = true; release(id) }
+            if (!closed) {
+                closed = true
+                if (protectFromPruning) {
+                    val count = viewers.getValue(id) - 1
+                    if (count == 0) viewers.remove(id) else viewers[id] = count
+                    entries[id]?.let(::indexExpiry)
+                }
+                release(id)
+            }
         }
     }
 
@@ -188,9 +203,25 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
         else { val updated = entry.copy(needsRecovery = false); save(updated); put(updated) }
     }
 
+    /** Ordinary navigation hands temporary ownership to history only if policy
+     * allows it. Keep the original reference time, never extend it on viewing. */
+    @Synchronized fun retainOnExit(id: String, policy: HistoryExitPolicy): Boolean {
+        val entry = entries[id]?.takeUnless { id in deferred } ?: return true
+        if (!policy.keeps(entry.retention, stored = !entry.temporary, now = clock())) return false
+        val updated = entry.copy(temporary = false, needsRecovery = false)
+        save(updated); put(updated)
+        return true
+    }
+
     @Synchronized fun recordFailure(id: String, message: String, kind: String) {
         val entry = entries[id]?.takeUnless { id in deferred } ?: return
-        val updated = entry.copy(needsRecovery = true, failureMessage = message, failureKind = kind)
+        val updated = entry.copy(needsRecovery = true, failureMessage = message, failureKind = kind, recovered = true)
+        save(updated); put(updated)
+    }
+
+    @Synchronized fun markRecovered(id: String) {
+        val entry = entries[id]?.takeUnless { id in deferred || it.recovered } ?: return
+        val updated = entry.copy(recovered = true)
         save(updated); put(updated)
     }
 
@@ -297,9 +328,12 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
             ordered.put(entry.cursor, entry)
         }
         if (entry.needsRecovery && entry.status !in setOf("active", "importing", "discarded")) recoveries.add(entry.id) else recoveries.remove(entry.id)
-        expiry.put(entry.id, entry.retention, eligible = !entry.temporary && entry.status != "active" && entry.status != "discarded")
+        indexExpiry(entry)
         changes.value++
     }
+    private fun indexExpiry(entry: HistoryEntry) = expiry.put(entry.id, entry.retention,
+        eligible = !entry.temporary && entry.status != "active" && entry.status != "discarded" &&
+            entry.id !in deferred && entry.id !in viewers)
     private fun release(id: String) {
         val count = (leases[id] ?: 1) - 1
         if (count == 0) { leases.remove(id); if (id in deferred) remove(id) } else leases[id] = count
@@ -322,6 +356,7 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
             entry.sourceName?.let { setProperty("source", it) }
             setProperty("mime", entry.mimeType); setProperty("durationMs", entry.importedDurationMs.toString())
             setProperty("speakerLabels", entry.speakerLabels.toString())
+            setProperty("recovered", entry.recovered.toString())
             entry.failureMessage?.let { setProperty("failureMessage", it) }
             entry.failureKind?.let { setProperty("failureKind", it) }
         }
@@ -364,7 +399,8 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
                     val current = get(entry.id)
                     val keepTemporary = keepUntilDismissed && current.temporary
                     var completed = current.copy(reference = clock(), samples = writtenSamples, status = if (discarded) "discarded" else if (incomplete) "failed" else "saved",
-                        needsRecovery = !discarded && (incomplete || keepTemporary) && writtenSamples > 0)
+                        needsRecovery = !discarded && (incomplete || keepTemporary) && writtenSamples > 0,
+                        recovered = current.recovered || incomplete)
                     try { save(completed) }
                     catch (e: Exception) {
                         // The initial active/recovery metadata is still durable.
