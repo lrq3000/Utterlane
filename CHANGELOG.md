@@ -8,12 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 ### Added
+- Blue Notebook native Home: direct recording, local audio loading, complete
+  transcript reading/copy/share, an app-wide speaker switch, and fixed Record /
+  Audio history / Transcripts navigation. Settings is accessible from the gear.
+- Independent history duration/recording-time/actual-speaker metadata and passive
+  pin indicators, with existing detail-level pinning and confirmed deletion.
 - Native, resumable onboarding with device-aware model recommendations, optional
   permissions and speaker-label setup, appearance selection on every page, and
   real dictation/file-sharing trials. The guide can be reopened from Settings.
 - Bundled vector illustrations and an attributed public-domain audiobook sample.
 
 ### Fixed
+- Preserve prior useful work when a new microphone attempt has no input or a local
+  file cannot be copied; keep Home capture alive across navigation/recreation.
+- Preserve interrupted labeled text metadata, canonical Android cache leases, and
+  cross-owner Keep/delete identity consistency during recovery and explicit saving.
 - Model-download cancellation no longer waits for a stalled DNS resolver.
 - Folder monitoring uses a FileObserver constructor compatible with Android 8/9.
 

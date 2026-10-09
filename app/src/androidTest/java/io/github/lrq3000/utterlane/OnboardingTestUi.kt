@@ -48,8 +48,10 @@ internal class OnboardingTestUi {
         }
         return found
     }
-    fun click(id: String) {
-        val node = awaitNode(id, scrollAction = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) { it.viewIdResourceName == id }
+    fun click(id: String, windowId: Int? = null) {
+        val node = awaitNode(id, scrollAction = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) {
+            it.viewIdResourceName == id && (windowId == null || it.windowId == windowId)
+        }
         try { assertTrue("Cannot click $id", node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) }
         finally { @Suppress("DEPRECATION") node.recycle() }
     }

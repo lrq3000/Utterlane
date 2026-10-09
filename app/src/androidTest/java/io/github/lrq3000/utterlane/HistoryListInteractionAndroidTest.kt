@@ -18,8 +18,8 @@ class HistoryListInteractionAndroidTest {
     private val app get() = instrumentation.targetContext.applicationContext as UtterlaneApp
     private val ui = OnboardingTestUi()
 
-    @Test fun recordingListRequiresOpeningBeforeDeletionAndPinDoesNotNavigate() = runBlocking { verify(transcripts = false) }
-    @Test fun transcriptListRequiresOpeningBeforeDeletionAndPinDoesNotNavigate() = runBlocking { verify(transcripts = true) }
+    @Test fun recordingListHasOnlyNavigationAndDetailLevelUnpin() = runBlocking { verify(transcripts = false) }
+    @Test fun transcriptListHasOnlyNavigationAndDetailLevelUnpin() = runBlocking { verify(transcripts = true) }
 
     private suspend fun verify(transcripts: Boolean) {
         ui.prepare()
@@ -29,26 +29,31 @@ class HistoryListInteractionAndroidTest {
         val textFile = File.createTempFile("list-interaction-", ".txt", app.cacheDir).apply { writeText("Readable transcript preview for the compact history list.") }
         val text = app.transcriptHistory.save(textFile, "QA model", pinned = true)
         val id = if (transcripts) text.id else audio.entry.id
-        val deletion = app.getString(if (transcripts) R.string.dialog_delete_text else R.string.history_delete)
         val activity = instrumentation.startActivitySync(HistoryActivity.intent(app, transcripts)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         val monitor = instrumentation.addMonitor(TranscribeActivity::class.java.name, null, false)
         var detail: Activity? = null
         try {
-            ui.node("history_pin_$id").recycle()
-            assertFalse("Deletion must not be exposed by the history listing", ui.hasVisibleText(deletion))
+            val historyUi = HistoryTestUi(ui)
+            historyUi.awaitPinned(id, true)
+            historyUi.assertNavigationOnly(id)
+            assertFalse("Deletion must not be exposed by the history listing", ui.hasVisibleText(app.getString(R.string.history_delete)))
             assertFalse("Opening is the whole entry's action, not another button", ui.hasVisibleText(app.getString(R.string.history_open)))
             assertFalse("Pin state must not consume another text row", ui.hasVisibleText(app.getString(R.string.history_pinned)))
-            ui.click("history_pin_$id")
-            withTimeout(5000) {
-                while (if (transcripts) app.transcriptHistory.get(id).retention.pinned else app.recordingHistory.get(id).pinned) delay(10)
-            }
-            instrumentation.waitForIdleSync()
-            assertEquals("The pin must consume the tap without opening the row", 0, monitor.hits)
+            assertEquals("Passive indicators must not open a detail", 0, monitor.hits)
             ui.click("history_entry_$id")
             detail = monitor.waitForActivityWithTimeout(5000)
             assertNotNull("The entry itself must open the shared dialog", detail)
             ui.node("dialog_delete").recycle()
+            assertTrue(detail!!.intent.getBooleanExtra(HistoryCleanupCoordinator.INTERNAL_NAVIGATION, false))
+            ui.click("dialog_pin")
+            ui.clickText(app.getString(if (transcripts) R.string.dialog_unpin_transcript else R.string.dialog_unpin_audio))
+            withTimeout(5000) {
+                while (if (transcripts) app.transcriptHistory.get(id).retention.pinned else app.recordingHistory.get(id).pinned) delay(10)
+            }
+            instrumentation.runOnMainSync { detail!!.finish() }
+            historyUi.awaitPinned(id, false)
+            historyUi.assertNavigationOnly(id)
         } finally {
             instrumentation.removeMonitor(monitor)
             detail?.let { screen -> instrumentation.runOnMainSync { screen.finish() } }

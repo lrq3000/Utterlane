@@ -47,4 +47,20 @@ class LinkedHistory(private val recordings: RecordingHistory, private val transc
         if (target != HistoryDeletionTarget.AUDIO) plan.transcriptIds.forEach(transcripts::delete)
         if (target != HistoryDeletionTarget.TRANSCRIPTS) plan.audioId?.let(recordings::delete)
     }
+
+    /** Returns a new question when identities expanded, or null after deleting
+     * exactly the confirmed scope. The caller supplies its working-copy view. */
+    fun confirmDeletion(plan: HistoryDeletionPlan, target: HistoryDeletionTarget,
+        refresh: () -> HistoryDeletionPlan, discardWorking: (Set<String>) -> Unit): HistoryDeletionPlan? = transcripts.withPublicationLock {
+        // A different dialog can publish Keep; joining only this dialog's job is
+        // insufficient. Recheck, mark and delete under the same lock as complete
+        // Keep publication so a new identity must receive renewed confirmation.
+        val fresh = refresh()
+        val expanded = target != HistoryDeletionTarget.AUDIO && !plan.transcriptIds.containsAll(fresh.transcriptIds)
+        val changedAudio = target != HistoryDeletionTarget.TRANSCRIPTS && fresh.audioId != null && fresh.audioId != plan.audioId
+        if (expanded || changedAudio) return@withPublicationLock fresh
+        if (target != HistoryDeletionTarget.AUDIO) discardWorking(plan.transcriptIds)
+        delete(plan, target)
+        null
+    }
 }

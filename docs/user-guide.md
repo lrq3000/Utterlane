@@ -51,8 +51,9 @@ files, recording history, and permissions do not migrate automatically.
 New installations open a step-by-step guide explaining dictation, shared audio,
 and meeting transcripts. Use the top-right **Appearance** selector on any page
 to choose **System**, **Light**, or **Dark**. Incomplete setup resumes after a
-restart. Previously configured installations continue to Settings; choose
-**Setup guide** there to revisit the introduction or try-it pages.
+restart. Previously configured installations and completed setup open **Record**.
+Use its gear to open Settings, then **Setup guide** to revisit the introduction or
+try-it pages. Completing a replay returns to Settings.
 
 The model recommendation uses Android-reported total RAM, not free RAM:
 
@@ -87,6 +88,36 @@ The sharing trial includes a nine-second public-domain LibriVox reading from
 recording and attribution are bundled with the app. Share it to Utterlane through
 Android's share sheet to see a real transcription. Both trials have a **Skip**
 action. The final page summarizes all choices in a vertically scrolling list.
+
+## Record on the home screen
+
+The Blue Notebook home screen opens on **Record**. Tap its flat waveform to start
+listening, then tap again to stop. Capture starts while the model prepares; the
+screen distinguishes listening, model loading, stopping and remaining processing.
+Home recording has no onboarding practice timer. Device storage and memory limits
+still apply.
+
+- Use the icon beside **New transcript** to load a local audio file. No microphone,
+  keyboard or floating-button setup is required for files. Cancelling the picker
+  or selecting a missing/empty file preserves the previous useful workspace.
+- **Speaker labels** changes the same app-wide setting as Settings. Existing
+  sessions retain their starting options; auxiliary model setup remains optional.
+- Read the complete disk-backed transcript in its scrollable area. **Copy** uses
+  the clipboard transfer limit; when a result is too large, **Share** exports its
+  full text file instead. Neither action substitutes the short history preview.
+- **More** provides Keep transcript, Keep audio, details and explicit Dismiss.
+  Keeping audio/text is independent and pins the chosen item. Closing Home's
+  borrowed details returns to the workspace; it does not dismiss that workspace.
+- **Record / Audio history / Transcripts** remain available below the scrolling
+  content. Switching tabs or opening Settings preserves capture and each history's
+  browsing position. File loading is available on Record, not inside history.
+
+Home keeps the current working recording available even with automatic audio
+history disabled. Explicit Dismiss or accepting useful replacement input releases
+temporary work; keep/export anything you want to retain. Unexpected interruption
+leaves recoverable input and committed text. A failed microphone start or failed
+file copy does not discard the prior result. Recognition errors offer retry/model
+selection after capture rather than requiring the recording to be repeated.
 
 ## Microphone input and Bluetooth
 
@@ -284,8 +315,8 @@ Audio uses approximately **115 MB per hour** for microphone PCM; saved text is
 independent and remains usable after its source audio expires. Deleting a text
 entry does not delete audio, and deleting audio does not delete saved text.
 
-**Audio history** and **Transcript history** open full-screen pages with the app
-logo and a Back arrow. Scroll to browse: older entries load automatically as you
+**Audio history** and **Transcripts** are the primary Home destinations, also
+reachable from Settings. Scroll to browse: older entries load automatically as you
 approach the bottom, and earlier pages load again when you scroll back up. There
 are no page buttons. Opening a record and returning, or recreating the screen,
 retains the browsing position. The list keeps a small window of previews in memory
@@ -294,12 +325,13 @@ instead of reading every transcript while you explore a large history.
 ### Pins and manual saves
 
 Manual saving to history **pins the item forever**, without duplicating an already
-saved source/attempt. Both histories show an outline pin for normal entries and a
-filled accent-colored pin for permanent entries. Tap the pin to toggle it.
-History lists group compact entries by date. Tap anywhere on an entry to open it;
-the pin acts independently. Deletion is available only inside the opened item,
-so the lists have no separate Open or Delete buttons. Retention captions are omitted
-from rows; the icon and accessibility state indicate pinning without using another line.
+saved source/attempt. Pinned rows have a small passive pin indicator; normal rows
+have no pin icon. Tap a row to open its details, where pin/unpin and confirmed
+deletion remain available. Rows have no separate pin toggle or Delete button.
+Audio rows use **Audio recording**, while transcript rows show the first nonblank
+line, truncated to fit. Metadata appears in date, recording time, duration,
+optional actual speaker labels and optional pin order. Text keeps its recording
+metadata even after the source audio expires; old unknown fields remain unknown.
 Unpinning starts a fresh retention countdown **from the time of unpinning**, not
 the original date. Under Immediate retention, the item waits until the next genuine
 user-facing app launch and is skipped by background cleanup; repinning cancels that
@@ -318,7 +350,8 @@ enabled speaker labeling continue incrementally; a slower device can catch up
 after you tap Stop. Speaker labeling is never automatically disabled for speed.
 
 A model-loading or recognition failure leaves capture running. After stopping,
-recovery opens the same transcription dialog used for shared audio. Settings and
+other input surfaces open the same recovery dialog used for shared audio; Home
+keeps recovery inline. Settings and
 recording-specific notifications also provide access. **Choose transcription model**
 opens the actual picker, with the same audio available when you return.
 

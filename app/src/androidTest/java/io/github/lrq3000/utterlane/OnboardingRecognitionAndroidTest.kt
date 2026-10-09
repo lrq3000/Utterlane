@@ -109,7 +109,7 @@ class OnboardingRecognitionAndroidTest {
             activity = monitor.waitForActivityWithTimeout(10000) as? TranscribeActivity
             assertNotNull("The share receiver did not open", activity)
             instrumentation.waitForIdleSync()
-            val copy = ui.textNode(app.getString(R.string.transcribe_copy))
+            val copy = ui.node("dialog_copy")
             val windowId = copy.windowId
             @Suppress("DEPRECATION") copy.recycle()
             assertTrue(windowId >= 0)
@@ -127,7 +127,8 @@ class OnboardingRecognitionAndroidTest {
         }
     }
 
-    private class FixtureCapture(private val pcm: ShortArray) : AudioCapture {
+    /** Shared bounded public-sample microphone source for onboarding and Home QA. */
+    internal class FixtureCapture(private val pcm: ShortArray) : AudioCapture {
         private val stopped = AtomicBoolean(false)
         private var observer: CaptureObserver? = null
         val sent = CountDownLatch(1)

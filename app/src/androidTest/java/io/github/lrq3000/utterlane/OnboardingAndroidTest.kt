@@ -8,6 +8,7 @@ import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import io.github.lrq3000.utterlane.onboarding.*
 import io.github.lrq3000.utterlane.settings.SettingsActivity
+import io.github.lrq3000.utterlane.home.HomeActivity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -86,27 +87,34 @@ class OnboardingAndroidTest {
         }
     }
 
-    @Test fun launcherResumesIncompleteSetupAndCompletionAllowsSettingsAndReplay() = runBlocking {
+    @Test fun launcherResumesSetupThenOpensHomeAndReplayReturnsToSettings() = runBlocking {
         val repository = OnboardingRepository(app)
         val original = repository.progress.first()
         try {
             repository.update { OnboardingProgress(initialized = true, stepId = OnboardingStep.USES.id) }
-            instrumentation.startActivitySync(Intent(app, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            instrumentation.startActivitySync(checkNotNull(app.packageManager.getLaunchIntentForPackage(app.packageName)))
             waitForNode("onboarding_page_uses").recycle()
             repository.update { it.copy(stepId = OnboardingStep.COMPLETE.id) }
             waitForNode("onboarding_page_finish").recycle()
             click("onboarding_next")
             withTimeout(5000) { repository.progress.first { it.completed } }
+            waitForResumed(HomeActivity::class.java)
+            waitForNode("home_screen").recycle()
+            click("home_settings")
             waitForResumed(SettingsActivity::class.java)
             instrumentation.startActivitySync(Intent(app, OnboardingActivity::class.java)
                 .putExtra(OnboardingActivity.EXTRA_REPLAY, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             waitForNode("onboarding_page_welcome").recycle()
             assertTrue(repository.progress.first().completed)
+            repository.update { it.copy(stepId = OnboardingStep.COMPLETE.id) }
+            waitForNode("onboarding_page_finish").recycle()
+            click("onboarding_next")
+            waitForResumed(SettingsActivity::class.java)
         } finally {
             instrumentation.runOnMainSync {
                 val monitor = ActivityLifecycleMonitorRegistry.getInstance()
                 (monitor.getActivitiesInStage(Stage.RESUMED) + monitor.getActivitiesInStage(Stage.STOPPED)).toList()
-                    .filter { it is OnboardingActivity || it is SettingsActivity }.forEach { it.finish() }
+                    .filter { it is OnboardingActivity || it is SettingsActivity || it is HomeActivity }.forEach { it.finish() }
             }
             repository.update { original }
         }

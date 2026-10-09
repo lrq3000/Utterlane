@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Utterlane — home screen design study</title>
+  <link rel="icon" href="../../../app/src/main/res/drawable-nodpi/utterlane_icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <main class="review">
+    <aside class="review-panel" aria-label="Design review controls">
+      <a class="review-brand" href="?concept=focus"><img src="../../../app/src/main/res/drawable-nodpi/utterlane_icon.png" alt="" width="28" height="28"> Utterlane <span>Design study / 01</span></a>
+      <div class="review-intro"><h1>A better place<br>to begin.</h1><p>Four ways to put your voice, your words,<br class="desktop-break"> and your history at the heart of the app.</p></div>
+      <nav class="concepts" aria-label="Home screen concepts">
+        <a href="?concept=focus" data-concept="focus"><span class="concept-letter">A</span><span><strong>Focus</strong><small>A calm, all-in-one starting point</small></span><span class="concept-arrow" aria-hidden="true">↗</span></a>
+        <a href="?concept=notebook" data-concept="notebook"><span class="concept-letter">B</span><span><strong>Notebook</strong><small>More room for the words</small></span><span class="concept-arrow" aria-hidden="true">↗</span></a>
+        <a href="?concept=studio" data-concept="studio"><span class="concept-letter">C</span><span><strong>Studio</strong><small>A compact recording workspace</small></span><span class="concept-arrow" aria-hidden="true">↗</span></a>
+        <a href="?concept=blue-notebook" data-concept="blue-notebook"><span class="concept-letter">D</span><span><strong>Blue Notebook</strong><small>Notebook layout, Focus styling</small></span><span class="concept-arrow" aria-hidden="true">↗</span></a>
+      </nav>
+      <div class="direction"><p id="direction-description"></p><p class="tradeoff" id="direction-tradeoff"></p></div>
+      <section class="preview-controls" aria-label="Preview options">
+        <div class="control-row"><span>Appearance</span><div class="segmented" aria-label="Preview appearance"><button data-theme="light">Light</button><button data-theme="dark">Dark</button></div></div>
+        <label class="control-row" for="preview-width"><span>Phone width</span><select id="preview-width"><option value="360">Compact · 360</option><option value="390" selected>Standard · 390</option><option value="430">Large · 430</option></select></label>
+        <label class="control-row" for="preview-state"><span>Jump to state</span><select id="preview-state"><option value="ready">Ready to record</option><option value="recording">Recording</option><option value="processing">Finishing</option><option value="complete">Completed transcript</option></select></label>
+        <label class="control-row" for="text-size"><span>Text size</span><select id="text-size"><option value="1">Default</option><option value="1.25">Large · 125%</option></select></label>
+      </section>
+      <div class="demo-note"><span class="demo-dot"></span><div><strong>Interactive design prototype</strong><p>Tap the waveform to try the flow. Audio, transcription, timing and history are simulated. No microphone access or uploads. Copy and text download use the sample text.</p></div></div>
+    </aside>
+    <section class="preview-stage" aria-label="Interactive Android home screen preview">
+      <div class="stage-caption"><span id="concept-caption"></span><span>Android · home</span></div>
+      <div class="device" id="device">
+        <div class="system-bar" aria-hidden="true"><span>9:41</span><div class="camera"></div><span class="system-icons">▴ ▴ <span class="battery"></span></span></div>
+        <div id="app" class="app"></div>
+        <nav id="primary-nav" class="bottom-nav" aria-label="Main navigation" hidden></nav>
+        <div class="gesture-bar" aria-hidden="true"><span></span></div>
+        <div class="toast" role="status" id="toast"></div>
+        <dialog id="sheet" class="sheet" aria-labelledby="sheet-title"></dialog>
+      </div>
+      <p class="stage-hint">Simulated audio &amp; transcription. Tap the waveform to try it.</p>
+    </section>
+  </main>
+</body>
+</html>

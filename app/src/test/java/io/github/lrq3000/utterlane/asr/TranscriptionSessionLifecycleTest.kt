@@ -17,6 +17,100 @@ import org.junit.rules.TemporaryFolder
 class TranscriptionSessionLifecycleTest {
     @get:Rule val directory = TemporaryFolder()
 
+    @Test fun speakerEnabledPunctuationOnlyEofDoesNotClaimLabels(): Unit = runBlocking {
+        val store = TranscriptStore(directory.newFile())
+        val session = TranscriptionSession(store, StreamingCorrections(emptyList()), onSegment = {},
+            decode = { error("Unexpected plain decode") }, decodeSpeakers = { emptyList() },
+            finishSpeakers = { listOf(SpeechSpan("!", 0)) })
+        try {
+            session.finish()
+            assertEquals("!", store.file.readText())
+            assertEquals(1, store.segments)
+            assertFalse(session.hasSpeakerLabels)
+        } finally { session.close(); store.dispose() }
+    }
+
+    @Test fun punctuationBeforeFailedLabeledAppendDoesNotClaimPreparedLabels(): Unit = runBlocking {
+        val store = TranscriptStore(directory.newFile())
+        val committed = java.io.File(directory.root, "committed-prefix.txt")
+        // The correction buffer emits punctuation first and holds the lexical
+        // tail until finish, providing two distinct real filesystem appends.
+        val corrections = StreamingCorrections(listOf(DictionaryManager.ReplacementRule("words", "words")))
+        var labelPrepared = false
+        val session = TranscriptionSession(store, corrections, onSegment = { text ->
+            assertEquals("!", text)
+            assertTrue(store.file.renameTo(committed))
+            assertTrue(store.file.mkdir()) // Make the next append fail without mocking storage.
+        }, decode = { error("Unexpected plain decode") }, decodeSpeakers = { emptyList() },
+            finishSpeakers = { listOf(SpeechSpan("! words", 0)) },
+            speakerLabel = { labelPrepared = true; "Voix α" })
+        try {
+            assertThrows(java.io.IOException::class.java) { runBlocking { session.finish() } }
+            assertTrue("The failure must occur after a labeled emission was prepared", labelPrepared)
+            assertEquals("!", committed.readText())
+            assertEquals(1, store.segments)
+            assertFalse(session.hasSpeakerLabels)
+        } finally {
+            session.close()
+            if (store.file.isDirectory) { store.file.delete(); committed.renameTo(store.file) }
+            store.dispose()
+        }
+    }
+
+    @Test fun committedLocalizedLabelIsVisibleBeforeAFailingDeliveryCallback(): Unit = runBlocking {
+        val store = TranscriptStore(directory.newFile())
+        lateinit var session: TranscriptionSession
+        session = TranscriptionSession(store, StreamingCorrections(emptyList()), onSegment = {
+            assertTrue(session.hasSpeakerLabels)
+            error("delivery failed")
+        }, decode = { error("Unexpected plain decode") }, decodeSpeakers = { emptyList() },
+            finishSpeakers = { listOf(SpeechSpan("words", -1)) }, speakerLabel = { "Voix inconnue" })
+        try {
+            val failure = assertThrows(IllegalStateException::class.java) { runBlocking { session.finish() } }
+            assertEquals("delivery failed", failure.message)
+            assertEquals("Voix inconnue: words", store.file.readText())
+            assertTrue(session.hasSpeakerLabels)
+        } finally { session.close(); store.dispose() }
+    }
+
+    @Test fun speakerMetadataRequiresCommittedOutputAndSurvivesClose(): Unit = runBlocking {
+        val store = TranscriptStore(directory.newFile())
+        val session = TranscriptionSession(store, StreamingCorrections(emptyList()), onSegment = {},
+            decode = { error("Unexpected plain decode") }, decodeSpeakers = { emptyList() },
+            finishSpeakers = { listOf(SpeechSpan("words", 0)) })
+        try {
+            assertFalse(session.hasSpeakerLabels)
+            session.finish()
+            assertEquals("Speaker 1: words", store.file.readText())
+            assertTrue(session.hasSpeakerLabels)
+            session.close()
+            assertTrue(session.hasSpeakerLabels)
+        } finally { session.close(); store.dispose() }
+    }
+
+    @Test fun enabledSpeakerDecoderWithNoSpeechDoesNotClaimLabels(): Unit = runBlocking {
+        val store = TranscriptStore(directory.newFile())
+        val session = TranscriptionSession(store, StreamingCorrections(emptyList()), onSegment = {},
+            decode = { "" }, decodeSpeakers = { emptyList() }, finishSpeakers = { emptyList() })
+        try {
+            session.finish()
+            assertFalse(session.hasSpeakerLabels)
+        } finally { session.close(); store.dispose() }
+    }
+
+    @Test fun plainOutputDoesNotClaimLabelsFromLabelLikeSpokenWords(): Unit = runBlocking {
+        val store = TranscriptStore(directory.newFile())
+        val corrections = StreamingCorrections(listOf(DictionaryManager.ReplacementRule("words", "words")))
+        val prefix = corrections.accept("Speaker 1: words")
+        store.append(prefix)
+        val session = TranscriptionSession(store, corrections, onSegment = {}, decode = { "" })
+        try {
+            session.finish()
+            assertTrue(store.segments > 0)
+            assertFalse(session.hasSpeakerLabels)
+        } finally { session.close(); store.dispose() }
+    }
+
     @Test fun finalizationObserverMayCloseWithoutStartingTheSpeakerDrain(): Unit = runBlocking {
         val store = TranscriptStore(directory.newFile())
         lateinit var session: TranscriptionSession
@@ -71,6 +165,7 @@ class TranscriptionSessionLifecycleTest {
             release.complete(Unit)
             finishing.await()
             assertEquals(0, store.segments)
+            assertFalse(session.hasSpeakerLabels)
             assertEquals("New", corrections.finish())
             assertEquals(1, closes)
         } finally { release.complete(Unit); session.close(); store.dispose() }

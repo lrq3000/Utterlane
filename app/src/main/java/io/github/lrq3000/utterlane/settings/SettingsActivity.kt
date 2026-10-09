@@ -59,7 +59,8 @@ import io.github.lrq3000.utterlane.ui.theme.UtterlaneTheme
 import io.github.lrq3000.utterlane.ui.BrandHeader
 import io.github.lrq3000.utterlane.ui.BrandSection
 import io.github.lrq3000.utterlane.onboarding.OnboardingActivity
-import io.github.lrq3000.utterlane.onboarding.OnboardingRepository
+import io.github.lrq3000.utterlane.home.HomeActivity
+import io.github.lrq3000.utterlane.home.HomeNavigationBar
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -129,6 +130,7 @@ class SettingsActivity : LocalizedActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (forwardLegacyLauncher(intent)) return
         UtterlaneApp.instance.historyCleanup.userEntry(intent, savedInstanceState)
         modelSelectionRequested.value = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS, false)
         val recovery = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_RECOVERY, false)
@@ -140,15 +142,18 @@ class SettingsActivity : LocalizedActivity() {
             return
         }
 
-        lifecycleScope.launch {
-            val app = UtterlaneApp.instance
-            app.modelManager.initializeSelection()
-            val configured = app.settingsRepository.hasSavedSettings.first() || app.modelManager.isModelReady()
-            if (OnboardingRepository(this@SettingsActivity).prepareAutomaticLaunch(configured)) {
-                startActivity(Intent(this@SettingsActivity, OnboardingActivity::class.java))
-                finish()
-            } else showSettings()
-        }
+        // Explicit settings/recovery entry remains available before onboarding.
+        // The automatic gate belongs only to the launcher Home surface.
+        lifecycleScope.launch { UtterlaneApp.instance.modelManager.initializeSelection(); showSettings() }
+    }
+
+    private fun forwardLegacyLauncher(intent: Intent): Boolean {
+        if (intent.action != Intent.ACTION_MAIN || !intent.hasCategory(Intent.CATEGORY_LAUNCHER) ||
+            intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_RECOVERY, false) ||
+            intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS, false)) return false
+        startActivity(HomeActivity.intent(this, internal = false))
+        finish()
+        return true
     }
 
     private fun showSettings() {
@@ -201,44 +206,13 @@ class SettingsActivity : LocalizedActivity() {
         // Trigger permission state refresh in Compose
         refreshTrigger.value++
 
-        // Revalidate model files on disk
-        UtterlaneApp.instance.modelManager.checkModelStatus()
-
-        // Sync floating service state and restart services if needed (Android 14+ boot workaround)
-        val app = UtterlaneApp.instance
-        app.applicationScope.launch {
-            val serviceEnabled = app.settingsRepository.serviceEnabled.first()
-            // Idle unloading is a memory policy, not a request to disable voice
-            // input. The capture session loads installed model files on demand.
-            val modelInstalled = app.modelManager.isModelReady()
-            val hasMic = hasMicPermission()
-            val hasOverlay = hasOverlayPermission()
-
-            if (serviceEnabled) {
-                if (!modelInstalled || !hasMic || !hasOverlay) {
-                    // Conditions no longer met - disable
-                    app.settingsRepository.setServiceEnabled(false)
-                    stopFloatingService()
-                } else {
-                    // Conditions met - ensure service is running
-                    startFloatingService()
-                }
-            }
-
-            // Restart audio monitor if enabled (needed on Android 14+ where boot start is blocked)
-            val audioMonitorEnabled = app.settingsRepository.audioMonitorEnabled.first()
-            if (audioMonitorEnabled) {
-                app.transcribeManager.setAudioMonitorEnabled(true)
-            }
-
-            // Dismiss the boot notification now that services are started
-            app.serviceAlertNotification.dismiss()
-        }
+        AppEntryServices.restore(this)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (forwardLegacyLauncher(intent)) return
         UtterlaneApp.instance.historyCleanup.userEntry(intent, null)
         modelSelectionRequested.value = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS, false)
         if (intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_RECOVERY, false)) openAudioHistory()
@@ -433,7 +407,14 @@ fun SettingsScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = { BrandHeader() }
+        topBar = { BrandHeader(onBack = {
+            context.startActivity(HomeActivity.intent(context))
+            (context as? android.app.Activity)?.finish()
+        }) },
+        bottomBar = { HomeNavigationBar(selected = null, onSelect = { destination ->
+            context.startActivity(HomeActivity.intent(context, destination))
+            (context as? android.app.Activity)?.finish()
+        }) }
     ) { padding ->
         Column(
             modifier = Modifier

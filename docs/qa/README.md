@@ -11,6 +11,12 @@ Likewise, older implementation plans in `docs/superpowers` are historical record
 
 ## Reusable commands
 
+See [Blue Notebook Home verification](blue-notebook-home.md) for native launcher,
+recording/file ownership, independent histories, real recognition and final combined
+acceptance. The [integration checklist](home-latest-main-integration.md) records
+main-first preservation of dialog D, Bluetooth routing and progress/EOF anchoring.
+See [progress D verification](transcription-progress-d.md) for its original evidence.
+
 ```text
 gradlew.bat testDebugUnitTest assembleDebug assembleDebugAndroidTest
 adb -s YOUR_DEVICE_SERIAL install -r app/build/outputs/apk/debug/app-debug.apk

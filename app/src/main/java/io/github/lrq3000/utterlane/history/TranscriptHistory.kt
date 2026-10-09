@@ -1,6 +1,8 @@
 package io.github.lrq3000.utterlane.history
 
 import io.github.lrq3000.utterlane.asr.TranscriptSource
+import io.github.lrq3000.utterlane.asr.TranscriptStore
+import io.github.lrq3000.utterlane.asr.TranscriptDiscardedException
 import java.io.Closeable
 import java.io.File
 import java.util.Properties
@@ -9,7 +11,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 data class TranscriptEntry(val id: String, val directory: File, val created: Long, val model: String,
-    val audioId: String?, val retention: RetentionMark, val modelId: String? = null) {
+    val audioId: String?, val retention: RetentionMark, val modelId: String? = null,
+    val durationMs: Long = 0, val speakerLabels: Boolean = false) {
     val file get() = File(directory, "transcript.txt")
     val cursor get() = HistoryCursor(created, id)
 }
@@ -41,14 +44,16 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
             if (p.getProperty("discarded", "false").toBoolean()) { directory.deleteRecursively(); return@forEach }
             val created = p.getProperty("created").toLong()
             if (File(directory, "transcript.txt").isFile) put(TranscriptEntry(directory.name, directory, created,
-                p.getProperty("model", ""), p.getProperty("audioId"), HistoryMetadata.readMark(p, created), p.getProperty("modelId")))
+                p.getProperty("model", ""), p.getProperty("audioId"), HistoryMetadata.readMark(p, created), p.getProperty("modelId"),
+                p.getProperty("durationMs", "0").toLong(), p.getProperty("speakerLabels", "false").toBoolean()))
         }
         initialized = true
     }
 
     /** A stable attempt ID deduplicates manual saving; a new recognition attempt uses a new ID. */
     @Synchronized fun save(source: File, model: String, audioId: String? = null, pinned: Boolean = false,
-        attempt: String = source.name, modelId: String? = null): TranscriptEntry {
+        attempt: String = source.name, modelId: String? = null, created: Long? = null,
+        durationMs: Long = 0, speakerLabels: Boolean = false): TranscriptEntry {
         // Share the source-disposition lock with deletion. A producer either
         // publishes before the marker (and is then deleted by its confirmed ID),
         // or observes the marker and cannot recreate that result afterward.
@@ -63,7 +68,10 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
             check(source.isFile && source.length() > 0) { "There is no transcript to save" }
             val directory = File(root, id)
             check(directory.mkdir()) { "Cannot create transcript history" }
-            val entry = TranscriptEntry(id, directory, clock(), model, audioId, RetentionMark(clock(), pinned), modelId)
+            // Source chronology is independent of saving time; retention starts now.
+            val now = clock()
+            val entry = TranscriptEntry(id, directory, created ?: now, model, audioId, RetentionMark(now, pinned), modelId,
+                durationMs, speakerLabels)
             try {
                 source.inputStream().use { input -> entry.file.outputStream().use { input.copyTo(it, 64 * 1024) } }
                 persist(entry)
@@ -74,6 +82,58 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
     }
 
     @Synchronized fun get(id: String): TranscriptEntry = checkNotNull(entries[id]?.takeIf { id !in deleted }) { "Transcript is unavailable" }
+
+    /** Explicit Keep creates a new identity only when the previous saved copy is
+     * absent. Its working provenance must publish that same identity. */
+    @Synchronized fun saveWorking(store: TranscriptStore, model: String, audioId: String?, modelId: String?,
+        metadata: TranscriptMetadata): TranscriptEntry {
+        val saved = save(store.file, model, audioId, pinned = true, attempt = UUID.randomUUID().toString(),
+            modelId = modelId, created = metadata.created, durationMs = metadata.durationMs, speakerLabels = metadata.speakerLabels)
+        try {
+            store.attachSource(TranscriptSource(audioId, saved.id, model, modelId))
+            return saved
+        } catch (error: Exception) {
+            // This ID belongs solely to this incomplete Keep. Roll it back on
+            // sidecar IO failure or a concurrent ordinary working-copy dismissal;
+            // never leave an unassociated pinned result, or touch a sibling ID.
+            try { delete(saved.id) } catch (cleanup: Exception) { error.addSuppressed(cleanup) }
+            throw error
+        }
+    }
+
+    /** The history monitor is already the publication lock (history -> source).
+     * Extend it over identity rechecks/provenance, not coroutine suspension or
+     * waiting for producers. All dialogs share this repository; unrelated source
+     * locks remain bounded and no second lock order is introduced. Call on IO. */
+    @Synchronized fun <T> withPublicationLock(action: () -> T): T = action()
+
+    /** Consume an unexposed owner: return that same live store after migration,
+     * or release its leases without discarding recoverable bytes on failure. */
+    fun migrateWorking(store: TranscriptStore, legacy: TranscriptSource): TranscriptStore {
+        var transferred = false
+        try {
+            return withPublicationLock {
+                // Construction can predate another owner's complete Keep. Read,
+                // fill missing associations and write within the same transaction
+                // as Keep/confirmation; the constructor snapshot is not authority.
+                // Lock order remains history -> store -> source (no source lock
+                // is held while waiting for the history or store monitor).
+                val current = TranscriptSource.read(store.file)
+                if (current.discarded) throw TranscriptDiscardedException()
+                store.attachSource(current.copy(audioId = current.audioId ?: legacy.audioId,
+                    transcriptId = current.transcriptId ?: legacy.transcriptId,
+                    modelName = current.modelName.ifBlank { legacy.modelName },
+                    modelId = current.modelId ?: legacy.modelId))
+                transferred = true
+                store
+            }
+        } finally {
+            // The model has not exposed this owner yet. A sidecar IO failure is
+            // not explicit dismissal; closing leases must not mark valid text.
+            if (!transferred) store.keepForRecovery()
+        }
+    }
+
     @Synchronized fun find(id: String?): TranscriptEntry? {
         initialize()
         return entries[id]?.takeIf { it.id !in deleted }
@@ -95,9 +155,16 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
     }
 
     @Synchronized fun setPinned(id: String, value: Boolean, duration: HistoryRetention, launch: String) {
-        val entry = get(id)
+        checkNotNull(setPinnedIfPresent(id, value, duration, launch)) { "Transcript is unavailable" }
+    }
+
+    /** Absence and pinning are one index operation: callers can offer a new
+     * explicit copy without mistaking a discarded-but-leased file for history. */
+    @Synchronized fun setPinnedIfPresent(id: String, value: Boolean, duration: HistoryRetention, launch: String): TranscriptEntry? {
+        val entry = entries[id]?.takeUnless { id in deleted } ?: return null
         val updated = entry.copy(retention = entry.retention.pin(value, duration, clock(), launch))
         persist(updated); put(updated)
+        return updated
     }
     @Synchronized fun onUserLaunch(launch: String) {
         initialize()
@@ -160,6 +227,7 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
             setProperty("created", entry.created.toString()); setProperty("model", entry.model)
             entry.audioId?.let { setProperty("audioId", it) }
             entry.modelId?.let { setProperty("modelId", it) }
+            setProperty("durationMs", entry.durationMs.toString()); setProperty("speakerLabels", entry.speakerLabels.toString())
             setProperty("discarded", discarded.toString())
             HistoryMetadata.writeMark(this, entry.retention)
         }

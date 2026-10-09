@@ -10,7 +10,7 @@ data class HistoryEntry(val id: String, val directory: File, val started: Long, 
     val needsRecovery: Boolean = false, val temporary: Boolean = false,
     val pinned: Boolean = false, val holdForLaunch: String? = null,
     val sourceName: String? = null, val mimeType: String = "audio/wav", val importedDurationMs: Long = 0,
-    val failureMessage: String? = null, val failureKind: String? = null) {
+    val failureMessage: String? = null, val failureKind: String? = null, val speakerLabels: Boolean = false) {
     val retention get() = RetentionMark(reference, pinned, holdForLaunch)
     val cursor get() = HistoryCursor(started, id)
     val durationMs: Long get() = if (sourceName == null) samples * 1000 / 16000 else importedDurationMs
@@ -65,14 +65,16 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
             val entry = HistoryEntry(directory.name, directory, properties.getProperty("started", "0").toLong(), reference, samples, status,
                 properties.getProperty("recovery", "false").toBoolean(), properties.getProperty("temporary", "false").toBoolean(),
                 mark.pinned, mark.holdForLaunch, source, properties.getProperty("mime", "audio/wav"),
-                properties.getProperty("durationMs", "0").toLong(), properties.getProperty("failureMessage"), properties.getProperty("failureKind"))
+                properties.getProperty("durationMs", "0").toLong(), properties.getProperty("failureMessage"), properties.getProperty("failureKind"),
+                properties.getProperty("speakerLabels", "false").toBoolean())
             put(entry)
             if (status == "interrupted") save(entry)
         }
         initialized = true
     }
 
-    @Synchronized fun begin(retention: HistoryRetention, automatic: Boolean = retention != HistoryRetention.NONE): Recording {
+    @Synchronized fun begin(retention: HistoryRetention, automatic: Boolean = retention != HistoryRetention.NONE,
+        keepUntilDismissed: Boolean = false): Recording {
         initialize()
         val id = UUID.randomUUID().toString()
         val directory = File(root, id)
@@ -80,10 +82,10 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
         // Recovery is durable BEFORE the first PCM write. A process death must not
         // make the next startup's history-off cleanup erase an unfinished session.
         val entry = HistoryEntry(id, directory, clock(), clock(), 0, "active", needsRecovery = true,
-            temporary = !automatic)
+            temporary = !automatic || (keepUntilDismissed && retention == HistoryRetention.NONE))
         save(entry)
         put(entry)
-        return Recording(entry, retention).also { active[id] = it; leases[id] = 1 }
+        return Recording(entry, retention, keepUntilDismissed).also { active[id] = it; leases[id] = 1 }
     }
 
     /** Copy the encoded source once; the caller's original is never owned or deleted. */
@@ -99,6 +101,9 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
         }
         try {
             entry.part(0).outputStream().use { input.copyTo(it, 64 * 1024) }
+            // An empty provider stream is not owned replacement input. Reject it
+            // before publishing readiness or starting expensive model preparation.
+            check(entry.part(0).length() > 0) { "Audio file is empty" }
             val completed = entry.copy(status = "ready")
             synchronized(this) { save(completed); put(completed) }
             return completed
@@ -119,6 +124,16 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
     @Synchronized fun recoveryCount(): Int = recoveries.size
 
     @Synchronized fun get(id: String): HistoryEntry = checkNotNull(entries[id]) { "Recording is unavailable" }
+
+    /** Authorize a local-file ownership transfer against the current index, not
+     * an earlier UI entry or lease-delayed bytes. Run on IO; the callback must
+     * publish ownership synchronously and never wait for a Main-thread action. */
+    @Synchronized internal fun withCompletedImport(id: String?, promote: () -> Boolean): Boolean {
+        val entry = entries[id]?.takeUnless { it.id in deferred } ?: return false
+        if (entry.sourceName == null || entry.status in setOf("importing", "active", "discarded") ||
+            !entry.part(0).isFile || entry.part(0).length() == 0L) return false
+        return promote()
+    }
 
     @Synchronized fun acquire(id: String): AudioLease {
         check(id in entries && id !in deferred) { "Recording expired or was deleted" }
@@ -176,6 +191,15 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
     @Synchronized fun recordFailure(id: String, message: String, kind: String) {
         val entry = entries[id]?.takeUnless { id in deferred } ?: return
         val updated = entry.copy(needsRecovery = true, failureMessage = message, failureKind = kind)
+        save(updated); put(updated)
+    }
+
+    /** Record actual labeled output, including before capture finalization. Late
+     * processing must never republish input the user has already discarded. */
+    @Synchronized fun setSpeakerLabels(id: String, value: Boolean) {
+        val entry = entries[id]?.takeUnless { id in deferred } ?: return
+        if (entry.speakerLabels == value) return
+        val updated = entry.copy(speakerLabels = value)
         save(updated); put(updated)
     }
 
@@ -297,13 +321,15 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
             HistoryMetadata.writeMark(this, entry.retention)
             entry.sourceName?.let { setProperty("source", it) }
             setProperty("mime", entry.mimeType); setProperty("durationMs", entry.importedDurationMs.toString())
+            setProperty("speakerLabels", entry.speakerLabels.toString())
             entry.failureMessage?.let { setProperty("failureMessage", it) }
             entry.failureKind?.let { setProperty("failureKind", it) }
         }
         HistoryMetadata.write(File(entry.directory, "recording.properties"), properties)
     }
 
-    inner class Recording internal constructor(val entry: HistoryEntry, private val retention: HistoryRetention) {
+    inner class Recording internal constructor(val entry: HistoryEntry, private val retention: HistoryRetention,
+        private val keepUntilDismissed: Boolean = false) {
         @Volatile var writtenSamples = 0L
             private set
         private var wav: WavFile? = null
@@ -333,16 +359,22 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
             finally {
                 synchronized(this@RecordingHistory) {
                     val discarded = entry.id in deferred
-                    var completed = entry.copy(reference = clock(), samples = writtenSamples, status = if (discarded) "discarded" else if (incomplete) "failed" else "saved",
-                        needsRecovery = incomplete && writtenSamples > 0)
+                    // Recognition can publish metadata while capture owns its
+                    // original snapshot. Finalization only owns these fields.
+                    val current = get(entry.id)
+                    val keepTemporary = keepUntilDismissed && current.temporary
+                    var completed = current.copy(reference = clock(), samples = writtenSamples, status = if (discarded) "discarded" else if (incomplete) "failed" else "saved",
+                        needsRecovery = !discarded && (incomplete || keepTemporary) && writtenSamples > 0)
                     try { save(completed) }
                     catch (e: Exception) {
                         // The initial active/recovery metadata is still durable.
                         // Mirror that protection in memory if final metadata fails.
-                        completed = completed.copy(status = "failed", needsRecovery = writtenSamples > 0)
+                        completed = completed.copy(status = if (discarded) "discarded" else "failed", needsRecovery = !discarded && writtenSamples > 0)
                         throw e
                     } finally { put(completed); active.remove(entry.id); release(entry.id) }
-                    if (writtenSamples == 0L || (!incomplete && (entry.temporary || retention == HistoryRetention.NONE))) delete(entry.id)
+                    // Home explicitly owns successful temporary results until
+                    // dismissal; other entry points keep immediate cleanup.
+                    if (writtenSamples == 0L || (!incomplete && !keepTemporary && (current.temporary || retention == HistoryRetention.NONE))) delete(entry.id)
                 }
             }
         }
