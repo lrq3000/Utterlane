@@ -57,6 +57,12 @@ internal class AudioRoutingPlatform : Closeable {
     private val routes = mutableListOf<AndroidCaptureRoute>()
 
     init {
+        // Android grants this manifest-merged signature permission at install;
+        // Robolectric's plain Application does not grant it automatically.
+        val receiverPermission = "${application.packageName}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        check(application.packageManager.getPackageInfo(application.packageName,
+            android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty().contains(receiverPermission))
+        shadowOf(application).grantPermissions(receiverPermission)
         every { manager.getDevices(AudioManager.GET_DEVICES_INPUTS) } answers { inputDevices.toTypedArray() }
         every { manager.mode } answers { mode }
         every { manager.mode = any() } answers { mode = firstArg(); Unit }
@@ -79,16 +85,41 @@ internal class AudioRoutingPlatform : Closeable {
         }
         every { record.routedDevice } answers { actualInput }
         every { record.setPreferredDevice(any()) } answers { preferred = firstArg(); acceptPreference }
-        every { record.addOnRoutingChangedListener(any(), any()) } answers {
+        every { record.addOnRoutingChangedListener(any<AudioRouting.OnRoutingChangedListener>(), any()) } answers {
             val listener = firstArg<AudioRouting.OnRoutingChangedListener>()
             val handler = secondArg<Handler?>()
             routingChanged = { if (handler == null) listener.onRoutingChanged(record)
                 else handler.post { listener.onRoutingChanged(record) } }
         }
-        every { record.removeOnRoutingChangedListener(any()) } answers { routingChanged = null }
+        every { record.removeOnRoutingChangedListener(any<AudioRouting.OnRoutingChangedListener>()) } answers { routingChanged = null }
     }
 
     fun controller(): AudioInputController = selection ?: AudioInputController(devices, settings, scope).also { selection = it }
+
+    data class Headset(val source: AudioDeviceInfo, val sink: AudioDeviceInfo, val choice: AudioInput)
+    fun addHeadset(inputId: Int = 7, outputId: Int = 8, address: String = "headset",
+        type: Int = AudioDeviceInfo.TYPE_BLUETOOTH_SCO): Headset {
+        val input = device(inputId, type, address, source = true)
+        val output = device(outputId, type, address)
+        inputDevices = inputDevices + input
+        communicationDevices = communicationDevices + output
+        val choice = devices.inputs().single {
+            if (Build.VERSION.SDK_INT >= 31) it.communicationId == output.id else it.inputId == input.id
+        }
+        return Headset(input, output, choice)
+    }
+
+    fun connect(headset: Headset) {
+        if (Build.VERSION.SDK_INT < 31) scoState(AudioManager.SCO_AUDIO_STATE_CONNECTED)
+        observeRoute(headset.source, headset.sink)
+    }
+
+    fun capture(route: AndroidCaptureRoute, frames: Int = 800, silenced: Boolean = false) {
+        route.beforeRead(record, silenced)
+        route.afterRead(record, frames, silenced)
+    }
+
+    fun queuedRoutingCallback(): () -> Unit = routingChanged ?: error("No recorder listener")
 
     fun route(key: String = AudioInput.PHONE_KEY): AndroidCaptureRoute = runBlocking {
         val controller = controller()

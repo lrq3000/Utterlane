@@ -4,16 +4,291 @@ import android.app.Application
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
+import android.os.Looper
+import io.mockk.every
 import io.mockk.verify
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowSystemClock
+import org.robolectric.Shadows.shadowOf
+import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [28, 31, 36])
 class AndroidCaptureRouteTest {
+    @Test fun requestAcceptanceWaitsForActualHeadsetAndUnsilencedFrames() {
+        AudioRoutingPlatform().use { platform ->
+            val headset = platform.addHeadset()
+            val route = platform.route(headset.choice.key)
+            route.attach(platform.record); route.started()
+            assertNull("Startup must reach the Bluetooth request without a caught platform error",
+                org.robolectric.shadows.ShadowLog.getLogsForTag("CaptureRoute").lastOrNull { it.throwable != null }?.throwable?.stackTraceToString())
+            platform.capture(route)
+            assertTrue(platform.state.actual!!.isPhone)
+            assertTrue(platform.state.connecting)
+            platform.connect(headset)
+            platform.capture(route, silenced = true)
+            assertTrue("Routing alone is not successful audio capture", platform.state.connecting)
+            platform.capture(route)
+            assertFalse(platform.state.connecting)
+            assertEquals(headset.choice.key, platform.state.actual!!.key)
+            assertNull(platform.state.fallbackFrom)
+            assertEquals(headset.source.id, platform.preferred!!.id)
+            assertAcquired(platform, headset)
+            route.close(); route.close()
+            assertReleased(platform, 1)
+        }
+    }
+
+    @Test fun delayedActivationKeepsPhoneCaptureUntilTheInitialHeadsetArrives() {
+        AudioRoutingPlatform().use { platform ->
+            val headset = platform.addHeadset()
+            val route = platform.route(headset.choice.key)
+            route.attach(platform.record); route.started()
+            ShadowSystemClock.advanceBy(Duration.ofSeconds(2))
+            platform.capture(route)
+            assertTrue(platform.state.actual!!.isPhone)
+            assertTrue(platform.state.connecting)
+            platform.connect(headset)
+            platform.capture(route)
+            assertEquals(headset.choice.key, platform.state.actual!!.key)
+            assertFalse(platform.state.connecting)
+        }
+    }
+
+    @Test fun activationTimeoutKeepsRecordingOnPhoneAndReleasesTheRequest() {
+        AudioRoutingPlatform().use { platform ->
+            val headset = platform.addHeadset()
+            val route = platform.route(headset.choice.key)
+            route.attach(platform.record); route.started()
+            platform.capture(route)
+            ShadowSystemClock.advanceBy(Duration.ofSeconds(5))
+            platform.capture(route)
+            assertEquals(InputFallbackReason.UNAVAILABLE, platform.state.fallbackReason)
+            assertTrue(platform.state.receivingFallback)
+            assertReleased(platform, 1)
+        }
+    }
+
+    @Test fun rejectedOrThrowingActivationFallsBackWithoutClaimingHeadsetCapture() {
+        AudioRoutingPlatform().use { platform ->
+            val headset = platform.addHeadset()
+            if (Build.VERSION.SDK_INT >= 31) platform.acceptCommunication = false
+            else every { platform.manager.startBluetoothSco() } throws SecurityException("Denied SCO request")
+            val route = platform.route(headset.choice.key)
+            route.attach(platform.record); route.started()
+            platform.capture(route)
+            assertTrue(platform.state.receivingFallback)
+            assertTrue(platform.state.actual!!.isPhone)
+            assertEquals(AudioManager.MODE_NORMAL, platform.mode)
+            if (Build.VERSION.SDK_INT >= 31) verify(exactly = 0) { platform.manager.clearCommunicationDevice() }
+            else verify(exactly = 1) { platform.manager.stopBluetoothSco() }
+        }
+    }
+
+    @Test fun stopDuringModeAcquisitionCannotStartBluetoothAfterStop() {
+        AudioRoutingPlatform().use { platform ->
+            val headset = platform.addHeadset()
+            every { platform.manager.mode = AudioManager.MODE_IN_COMMUNICATION } answers {
+                platform.mode = AudioManager.MODE_IN_COMMUNICATION; platform.running = false
+            }
+            val route = platform.route(headset.choice.key)
+            route.attach(platform.record); route.started(); route.close()
+            assertEquals(AudioManager.MODE_NORMAL, platform.mode)
+            verify(exactly = 0) { platform.manager.startBluetoothSco() }
+            if (Build.VERSION.SDK_INT >= 31) verify(exactly = 0) { platform.manager.setCommunicationDevice(any()) }
+        }
+    }
+
+    @Test fun activeHeadsetLossFallsBackEvenWhileAnotherHeadsetRemains() = runBlocking {
+        AudioRoutingPlatform().use { platform ->
+            val first = platform.addHeadset()
+            val second = platform.addHeadset(17, 18, "other")
+            val route = platform.route(first.choice.key)
+            platform.controller().setPreferBluetooth(true)
+            route.attach(platform.record); route.started()
+            platform.connect(first); platform.capture(route)
+            platform.inputDevices = listOf(platform.phone, second.source)
+            platform.communicationDevices = listOf(second.sink)
+            platform.changed(removed = listOf(first.source, first.sink))
+            platform.observeRoute(platform.phone, null)
+            platform.capture(route)
+            assertTrue(platform.state.receivingFallback)
+            assertEquals(first.choice.key, platform.state.fallbackFrom!!.key)
+            assertEquals(second.choice.key, platform.controller().state.value!!.selected.key)
+            platform.inputDevices = platform.inputDevices + first.source
+            platform.communicationDevices = platform.communicationDevices + first.sink
+            platform.changed(added = listOf(first.source, first.sink))
+            platform.capture(route)
+            assertTrue(platform.state.actual!!.isPhone)
+            assertTrue(platform.state.receivingFallback)
+            assertAcquired(platform, first)
+        }
+    }
+
+    @Test fun rapidReconnectCannotHideActiveInputLossBetweenCaptureCycles() = runBlocking {
+        AudioRoutingPlatform().use { platform ->
+            val headset = platform.addHeadset()
+            val other = platform.addHeadset(17, 18, "other")
+            val route = platform.route(headset.choice.key)
+            route.attach(platform.record); route.started(); platform.connect(headset); platform.capture(route)
+            // Next-session preferences now watch a different headset. Active
+            // capture must independently remember losing its original connection.
+            platform.controller().select(other.choice.key)
+            platform.inputDevices = listOf(platform.phone, other.source)
+            platform.communicationDevices = listOf(other.sink)
+            platform.changed(removed = listOf(headset.source, headset.sink))
+            platform.inputDevices = platform.inputDevices + headset.source
+            platform.communicationDevices = platform.communicationDevices + headset.sink
+            platform.changed(added = listOf(headset.source, headset.sink))
+            platform.capture(route)
+            assertTrue("A removal cannot be erased by a later connected snapshot", route.isFallback)
+            assertEquals(InputFallbackReason.DISCONNECTED, platform.state.fallbackReason)
+            assertEquals(platform.phone.id, platform.preferred!!.id)
+            platform.observeRoute(platform.phone, null)
+            platform.capture(route)
+            assertTrue(platform.state.receivingFallback)
+            assertEquals(other.choice.key, platform.controller().state.value!!.selected.key)
+        }
+    }
+
+    @Test fun existingCallModeIsNeitherAcquiredNorClearedByFallback() {
+        AudioRoutingPlatform().use { platform ->
+            val headset = platform.addHeadset()
+            platform.mode = AudioManager.MODE_IN_CALL
+            val route = platform.route(headset.choice.key)
+            route.attach(platform.record); route.started(); platform.capture(route); route.close()
+            assertTrue(platform.state.receivingFallback)
+            assertEquals(AudioManager.MODE_IN_CALL, platform.mode)
+            assertNoCommunicationRequests(platform)
+        }
+    }
+
+    @Test fun externalCommunicationModeIsPreservedWhenOurDeviceRequestEnds() {
+        AudioRoutingPlatform().use { platform ->
+            val headset = platform.addHeadset()
+            platform.mode = AudioManager.MODE_IN_COMMUNICATION
+            val route = platform.route(headset.choice.key)
+            route.attach(platform.record); route.started()
+            platform.connect(headset); platform.capture(route); route.close()
+            assertEquals(AudioManager.MODE_IN_COMMUNICATION, platform.mode)
+            verify(exactly = 0) { platform.manager.mode = any() }
+            assertReleased(platform, 1)
+        }
+    }
+
+    @Test fun staleRecorderCallbackDoesNotAffectTheNextSession() {
+        AudioRoutingPlatform().use { platform ->
+            val headset = platform.addHeadset()
+            val old = platform.route(headset.choice.key)
+            old.attach(platform.record); old.started(); platform.connect(headset); platform.capture(old)
+            val callback = platform.queuedRoutingCallback()
+            old.detach(platform.record); old.close()
+            platform.observeRoute(platform.phone, null)
+            val next = platform.route()
+            next.attach(platform.record); next.started()
+            callback(); shadowOf(Looper.getMainLooper()).idle()
+            platform.capture(next)
+            assertTrue(platform.state.actual!!.isPhone)
+            assertNull(platform.state.fallbackFrom)
+            assertAcquired(platform, headset)
+            assertReleased(platform, 1)
+        }
+    }
+
+    @Test @Config(sdk = [31, 36]) fun partialCommunicationRequestFailureStillReleasesItsOwnership() {
+        AudioRoutingPlatform().use { platform ->
+            val headset = platform.addHeadset()
+            every { platform.manager.setCommunicationDevice(any()) } answers {
+                platform.currentCommunication = firstArg()
+                throw IllegalStateException("Simulated failure after service accepted request")
+            }
+            val route = platform.route(headset.choice.key)
+            route.attach(platform.record); route.started(); platform.capture(route); route.close()
+            assertTrue(platform.state.receivingFallback)
+            verify(exactly = 1) { platform.manager.clearCommunicationDevice() }
+            assertEquals(AudioManager.MODE_NORMAL, platform.mode)
+        }
+    }
+
+    @Test fun partialModeAcquisitionFailureAlsoReleasesTheModeClaim() {
+        AudioRoutingPlatform().use { platform ->
+            val headset = platform.addHeadset()
+            every { platform.manager.mode = AudioManager.MODE_IN_COMMUNICATION } answers {
+                platform.mode = AudioManager.MODE_IN_COMMUNICATION
+                throw IllegalStateException("Simulated failure after mode acquisition")
+            }
+            val route = platform.route(headset.choice.key)
+            route.attach(platform.record); route.started(); platform.capture(route); route.close()
+            assertTrue(platform.state.receivingFallback)
+            assertEquals(AudioManager.MODE_NORMAL, platform.mode)
+        }
+    }
+
+    @Test @Config(sdk = [31, 36]) fun bleSourceAppearingAfterActivationIsConfirmedFromFreshInventory() {
+        AudioRoutingPlatform().use { platform ->
+            val sink = AudioRoutingPlatform.device(8, AudioDeviceInfo.TYPE_BLE_HEADSET, "headset")
+            platform.communicationDevices = listOf(sink)
+            val choice = platform.devices.inputs().single { it.bluetooth }
+            assertNull(choice.inputId)
+            val route = platform.route(choice.key)
+            route.attach(platform.record); route.started()
+            val source = AudioRoutingPlatform.device(7, AudioDeviceInfo.TYPE_BLE_HEADSET, "", true)
+            platform.inputDevices = listOf(platform.phone, source)
+            platform.observeRoute(source, sink)
+            platform.capture(route)
+            assertTrue("Unknown source identity cannot prematurely confirm the requested headset", platform.state.connecting)
+            platform.changed(added = listOf(source))
+            platform.capture(route)
+            assertEquals(choice.key, platform.state.actual!!.key)
+            assertFalse(platform.state.connecting)
+            assertNull(platform.state.fallbackFrom)
+        }
+    }
+
+    @Test fun failedReleaseGetsOneFinalRetryWithoutPerFrameRetrySpam() {
+        AudioRoutingPlatform().use { platform ->
+            val headset = platform.addHeadset()
+            var attempts = 0
+            if (Build.VERSION.SDK_INT >= 31) {
+                every { platform.manager.clearCommunicationDevice() } answers {
+                    if (++attempts == 1) throw IllegalStateException("Transient release failure")
+                }
+            } else {
+                every { platform.manager.stopBluetoothSco() } answers {
+                    if (++attempts == 1) throw IllegalStateException("Transient release failure")
+                }
+            }
+            val route = platform.route(headset.choice.key)
+            route.attach(platform.record); route.started(); platform.connect(headset); platform.capture(route)
+            platform.inputDevices = listOf(platform.phone); platform.communicationDevices = emptyList()
+            platform.changed(removed = listOf(headset.source, headset.sink))
+            platform.observeRoute(platform.phone, null)
+            repeat(10) { platform.capture(route) }
+            assertEquals("Do not retry cleanup on every PCM block", 1, attempts)
+            route.close(); route.close()
+            assertEquals("Close makes one final attempt to release owned resources", 2, attempts)
+        }
+    }
+
+    @Test @Config(sdk = [28]) fun legacyScoRoutingExceptionContinuesPhoneCapture() {
+        AudioRoutingPlatform().use { platform ->
+            val headset = platform.addHeadset()
+            every { platform.manager.isBluetoothScoOn = true } throws SecurityException("SCO routing denied")
+            val route = platform.route(headset.choice.key)
+            route.attach(platform.record); route.started()
+            platform.scoState(AudioManager.SCO_AUDIO_STATE_CONNECTED)
+            platform.capture(route)
+            platform.capture(route)
+            assertTrue(platform.state.receivingFallback)
+            assertEquals(InputFallbackReason.UNAVAILABLE, platform.state.fallbackReason)
+        }
+    }
+
     @Test fun phoneCaptureNeverAcquiresOrClearsBluetoothRouting() {
         AudioRoutingPlatform().use { platform ->
             val route = platform.route()
@@ -52,5 +327,15 @@ class AndroidCaptureRouteTest {
             verify(exactly = 0) { platform.manager.setCommunicationDevice(any()) }
             verify(exactly = 0) { platform.manager.clearCommunicationDevice() }
         }
+    }
+
+    private fun assertAcquired(platform: AudioRoutingPlatform, headset: AudioRoutingPlatform.Headset) {
+        if (Build.VERSION.SDK_INT >= 31) verify(exactly = 1) { platform.manager.setCommunicationDevice(headset.sink) }
+        else verify(exactly = 1) { platform.manager.startBluetoothSco() }
+    }
+
+    private fun assertReleased(platform: AudioRoutingPlatform, count: Int) {
+        if (Build.VERSION.SDK_INT >= 31) verify(exactly = count) { platform.manager.clearCommunicationDevice() }
+        else verify(exactly = count) { platform.manager.stopBluetoothSco() }
     }
 }
