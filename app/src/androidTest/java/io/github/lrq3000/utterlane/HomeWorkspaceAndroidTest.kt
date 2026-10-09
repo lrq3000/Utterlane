@@ -146,7 +146,12 @@ class HomeWorkspaceAndroidTest {
                 app.homeController.load(Uri.fromFile(original))
                 assertFalse(app.homeController.state.value.permissionDenied)
             }
-            val result = withTimeout(120000) { app.homeController.state.first { it.model != null && !it.busy } }
+            // importing=false is published immediately before automatic retry
+            // starts on the same Main turn. That transient idle is not completion;
+            // this invalid-file fixture specifically expects a terminal error.
+            val result = withTimeout(120000) { app.homeController.state.first {
+                it.model != null && !it.busy && it.result.message != null
+            } }
             assertFalse("File errors must offer file recovery rather than microphone settings", result.permissionDenied)
             assertNotNull(result.result.message)
             val audio = checkNotNull(result.result.audio)

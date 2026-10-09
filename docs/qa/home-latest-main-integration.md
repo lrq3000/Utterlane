@@ -138,3 +138,19 @@ Focused command:
 ```powershell
 .\gradlew.bat :app:testDebugUnitTest --tests '*TranscriptKeepPublicationTest' --tests '*LinkedHistoryTest' --tests '*TranscriptRepinTest' :app:compileDebugAndroidTestKotlin "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q --offline
 ```
+
+## Runtime fixture follow-up
+
+The parent's prior combined APK run reported 34/37 passing Android tests. Both
+reported source patterns remained in this integration:
+
+- The invalid-file Home test observed `model != null && !busy`, which can match
+  the explicit `importing=false` -> `running=true` handoff in the model's Main
+  turn. The production `HomeServiceIdleStop.recheck` already yields and rechecks
+  that handoff. The fixture now also waits for the expected terminal error message;
+  its permission, owned-source, recovery and retry assertions remain intact.
+- The legacy Settings links and fixed bottom navigation share visible labels.
+  Add `settings_audio_history` / `settings_transcript_history` native tags to the
+  existing section links. The two affected tests scroll to and click those tags,
+  preserving Activity identity, Back, geometry and retained-anchor assertions.
+  Navigation callbacks are unchanged. Runtime rerun remains with the parent.

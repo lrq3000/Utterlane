@@ -128,7 +128,9 @@ class HistoryScreenAndroidTest {
         var history: Activity? = null
         try {
             val title = app.getString(if (transcripts) R.string.transcript_history_title else R.string.history_title)
-            ui.clickText(title)
+            val link = if (transcripts) "settings_transcript_history" else "settings_audio_history"
+            ui.scrollTo(link)
+            ui.click(link)
             history = monitor.waitForActivityWithTimeout(5000)
             assertNotNull("History must launch a real full-screen Activity, not a dialog", history)
             val floating = TypedValue()

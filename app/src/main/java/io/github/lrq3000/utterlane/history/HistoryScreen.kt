@@ -63,6 +63,7 @@ fun HistoryRetention.label(): Int = when (this) {
     HistoryRetention.FOREVER -> R.string.history_forever
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun HistorySettings() {
     val app = UtterlaneApp.instance
@@ -78,8 +79,13 @@ fun HistorySettings() {
     HistoryPolicySetting(stringResource(R.string.history_auto_text), textEnabled, textRetention,
         enabled = { scope.launch { settings.setTranscriptHistoryEnabled(it) } }, duration = { scope.launch { settings.setTranscriptHistoryRetention(it) } })
     Text(stringResource(R.string.history_policy_description), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall)
-    TextButton(onClick = { context.startActivity(HistoryActivity.intent(context)) }) { Text(stringResource(R.string.history_title)) }
-    TextButton(onClick = { context.startActivity(HistoryActivity.intent(context, transcripts = true)) }) { Text(stringResource(R.string.transcript_history_title)) }
+    // These legacy links intentionally launch HistoryActivity, unlike the fixed
+    // primary navigation with identical labels. Keep their native QA identity exact.
+    val historyLink = Modifier.semantics { testTagsAsResourceId = true }
+    TextButton(onClick = { context.startActivity(HistoryActivity.intent(context)) },
+        modifier = historyLink.testTag("settings_audio_history")) { Text(stringResource(R.string.history_title)) }
+    TextButton(onClick = { context.startActivity(HistoryActivity.intent(context, transcripts = true)) },
+        modifier = historyLink.testTag("settings_transcript_history")) { Text(stringResource(R.string.transcript_history_title)) }
     TextButton(onClick = { io.github.lrq3000.utterlane.service.TranscriptRecovery.open(app) }) { Text(stringResource(R.string.stream_recover)) }
 }
 

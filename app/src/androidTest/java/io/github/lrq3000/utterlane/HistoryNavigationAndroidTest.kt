@@ -96,7 +96,8 @@ class HistoryNavigationAndroidTest {
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
             val onboarding = OnboardingRepository(app).progress.first()
             val launch = app.historyCleanup.launchToken
-            ui.clickText(app.getString(R.string.history_title))
+            ui.scrollTo("settings_audio_history")
+            ui.click("settings_audio_history")
             history = historyMonitor.waitForActivityWithTimeout(8000)
             assertNotNull(history)
             assertFalse(history!!.isTaskRoot)
