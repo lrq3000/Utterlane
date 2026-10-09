@@ -25,7 +25,8 @@
     select, button { cursor:pointer; }
     :focus-visible { outline:3px solid var(--primary); outline-offset:3px; }
     .demo-note { margin-left:auto; color:var(--muted); font-size:12px; }
-    .concepts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:26px; align-items:start; }
+    .concepts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:26px; align-items:start; max-width:900px; margin:auto; }
+    .concepts[data-view="d"] { grid-template-columns:1fr; max-width:420px; }
     .concept { min-width:0; }
     .concept-head { display:flex; align-items:center; gap:9px; min-height:40px; margin-bottom:12px; }
     .letter { display:grid; place-items:center; width:29px; height:29px; border-radius:9px; background:var(--surface); border:1px solid var(--line); font-weight:750; }
@@ -80,6 +81,9 @@
     .dock .bar { margin:8px 0; background:var(--surface); }
     .dock .stage { font-size:13px; }
     .dock .status-row { gap:4px 8px; }
+    /* D inherits A's strip typography and bar, placed in C's reader footer.
+       A quiet divider defines the edge without C's attention-grabbing fill. */
+    .dock-minimal { border-top:1px solid var(--line); padding-left:12px; padding-right:12px; }
     .error-message { color:var(--red); margin-top:6px; font-size:12px; }
     .concept-caption { margin:15px 2px 0; color:var(--muted); font-size:13px; }
     .concept-caption strong { color:var(--text); font-weight:600; }
@@ -96,22 +100,23 @@
 <main>
   <header class="masthead">
     <div><div class="eyebrow">Utterlane / Design review</div><h1>A clearer wait. More room to read.</h1>
-      <p class="intro">Three progress treatments for the transcription dialog. Which feels most helpful while you read?</p></div>
-    <span class="tag">3 concepts · Based on dialog D</span>
+      <p class="intro">Design D: C’s bottom placement, with A’s familiar, minimal progress styling. Your reading comes first.</p></div>
+    <span class="tag">New: progress design D</span>
   </header>
   <div class="controls" aria-label="Preview controls">
+    <label>Compare <select id="view"><option value="compare">C &amp; D</option><option value="d">D only</option><option value="all">All four designs</option></select></label>
     <label>State <select id="state"><option value="transcribing">Transcribing · 67%</option><option value="loading">Loading model</option><option value="estimating">First segments · estimating ETA</option><option value="unknown">Unknown audio duration</option><option value="finalizing">Finishing speaker labels</option><option value="complete">Complete</option><option value="interrupted">Interrupted · partial text kept</option></select></label>
     <label>Width <select id="width"><option value="360">360 px</option><option value="320">320 px · narrow</option></select></label>
     <label>Theme <select id="theme"><option value="light">Light</option><option value="dark">Dark</option></select></label>
     <span class="demo-note">Illustrative values and text · No audio is processed</span>
   </div>
-  <section class="concepts" id="concepts" aria-label="Three dialog mockups"></section>
+  <section class="concepts" id="concepts" aria-label="Transcription progress mockups"></section>
   <section class="principles" aria-label="Design principles">
     <div><strong>Progress means transcribed audio.</strong>The percentage follows completed speech processing, not how much of the file has been decoded. Finalizing remains a separate, honest stage.</div>
     <div><strong>Approximate, never pretend-precise.</strong>Show a completion ETA only when measurable. Otherwise say “Estimating time…” or name the active stage. No countdown to a false zero.</div>
-    <div><strong>The text remains the main event.</strong>A persistent status area stays outside the scrollable text. Incoming segments must preserve the reader’s position; controls stay within reach.</div>
+    <div><strong>The text remains the main event.</strong>D keeps progress at the bottom. When complete, its bar collapses to a quiet confirmation: the reader expands downward, keeping the top anchored.</div>
   </section>
-  <p class="review-prompt">My recommendation: A — Compact strip. Tell me A, B, or C in the conversation, or what you would combine.</p>
+  <p class="review-prompt">D combines your preferred placement with the lighter styling. Try “Complete” to see the reading area expand downward.</p>
 </main>
 <script>
   // These are presentation fixtures, deliberately not a transcription simulator.
@@ -145,10 +150,12 @@
         'And when the last words are ready, we should say so clearly. If speaker labels are still being finished, that is a separate step worth explaining.'
       ];
       this.designs = [
-        {id:'a', name:'Compact strip', recommended:true, caption:'<strong>Clear, quiet, familiar.</strong> Percentage, time left, and audio position above the text. Best balance of information and reading space.'},
+        {id:'a', name:'Compact strip', caption:'<strong>The original minimal styling.</strong> Percentage, time left, and audio position above the text. This is the visual treatment reused at the bottom in D.'},
         {id:'b', name:'Time-first card', caption:'<strong>The remaining wait comes first.</strong> A larger ETA and progress ring are easy to spot. More prominent, but uses more vertical space.'},
-        {id:'c', name:'Reader status dock', caption:'<strong>Progress at the foot of the document.</strong> A fixed dock beside the text actions keeps the header quiet. Less immediately visible than A.'}
+        {id:'c', name:'Reader status dock', caption:'<strong>Your preferred placement.</strong> A fixed, colored dock beneath the text keeps progress away from the top of the reading area.'},
+        {id:'d', name:'Minimal reader dock', recommended:true, caption:'<strong>C’s placement + A’s simplicity.</strong> A plain background, thin familiar bar, and compact labels. On completion, space returns beneath the text without shifting its top.'}
       ];
+      document.querySelector('#view').addEventListener('change', () => this.render());
       document.querySelector('#state').addEventListener('change', () => this.render());
       document.querySelector('#theme').addEventListener('change', event => { document.documentElement.dataset.theme = event.target.value; });
       document.querySelector('#width').addEventListener('change', event => { document.documentElement.style.setProperty('--device-width', event.target.value + 'px'); });
@@ -170,7 +177,10 @@
           <div class="ring" ${state.percent === null ? 'aria-hidden="true"' : `role="progressbar" aria-label="${state.stage}" aria-valuenow="${state.percent}" aria-valuemin="0" aria-valuemax="100"`} style="--progress:${state.percent ?? 20}"><svg viewBox="0 0 70 70" aria-hidden="true"><circle cx="35" cy="35" r="29"/><circle class="fill" cx="35" cy="35" r="29" pathLength="100"/></svg><strong>${percent || '…'}</strong></div></div>
           <div class="stage">${state.stage}</div><div class="audio-work">${state.work}</div>${error}</div>`;
       }
-      return `<div class="status ${variant === 'c' ? 'dock' : 'strip'}"><div class="status-row"><span class="stage">${state.stage}</span><span class="percent">${percent}</span></div>${this.bar(state)}<div class="status-row"><span class="eta">${state.eta}</span><span class="audio-work">${state.work}</span></div>${error}</div>`;
+      const style = variant === 'c' ? 'dock' : variant === 'd' ? 'strip dock-minimal' : 'strip';
+      // Completion gives space back below the reader, never above its first line.
+      const finishedDock = variant === 'd' && state.percent === 100;
+      return `<div class="status ${style}"><div class="status-row"><span class="stage">${state.stage}</span><span class="percent">${percent}</span></div>${finishedDock ? '' : `${this.bar(state)}<div class="status-row"><span class="eta">${state.eta}</span><span class="audio-work">${state.work}</span></div>`}${error}</div>`;
     }
     reader(state) {
       const text = this.paragraphs.slice(0,state.paragraphs).map(paragraph => `<p>${paragraph}</p>`).join('');
@@ -180,17 +190,28 @@
     }
     render() {
       const state = this.states[document.querySelector('#state').value];
-      document.querySelector('#concepts').innerHTML = this.designs.map(design => `
+      const view = document.querySelector('#view').value;
+      const concepts = document.querySelector('#concepts');
+      // Review-state changes append sample text without pulling a reader back to
+      // the start. This models the reading continuity requested for native D.
+      const scrollPositions = new Map([...concepts.querySelectorAll('.concept')].map(element =>
+        [element.dataset.concept, element.querySelector('.reader').scrollTop]));
+      concepts.dataset.view = view;
+      const designs = this.designs.filter(design => view === 'all' || design.id === 'd' || (view === 'compare' && design.id === 'c'));
+      concepts.innerHTML = designs.map(design => `
         <article class="concept" data-concept="${design.id}" aria-labelledby="title-${design.id}">
-          <div class="concept-head"><span class="letter">${design.id.toUpperCase()}</span><div><h2 id="title-${design.id}">${design.name}</h2>${design.recommended ? '<div class="recommended">Recommended</div>' : ''}</div></div>
+          <div class="concept-head"><span class="letter">${design.id.toUpperCase()}</span><div><h2 id="title-${design.id}">${design.name}</h2>${design.recommended ? '<div class="recommended">New refinement</div>' : ''}</div></div>
           <div class="phone"><div class="app">
             <div class="app-header">${this.icon('back','Back','back')}<h3>Transcription</h3>${this.icon('retry','Retranscribe',state.percent === 100 || state.error ? '' : 'disabled')}${this.icon('download','Save or share audio')}${this.icon('delete','Delete','delete')}</div>
-            ${design.id === 'c' ? '' : this.status(state,design.id)}
+            ${['c','d'].includes(design.id) ? '' : this.status(state,design.id)}
             <p class="retention">Audio saved · 8 min recording</p>
-            <div class="reading-surface">${this.reader(state)}${design.id === 'c' ? this.status(state,'c') : ''}</div>
+            <div class="reading-surface">${this.reader(state)}${['c','d'].includes(design.id) ? this.status(state,design.id) : ''}</div>
             <div class="bottom-actions">${this.icon('play','Play audio')}<div class="playback"><div class="seek"></div>0:00 / 8:00</div><span class="divider"></span>${this.icon('pin','Pin audio or transcript')}${this.icon('copy','Copy transcript',state.paragraphs ? '' : 'disabled')}${this.icon('share','Share transcript',state.paragraphs ? '' : 'disabled')}</div>
           </div></div><p class="concept-caption">${design.caption}</p>
         </article>`).join('');
+      concepts.querySelectorAll('.concept').forEach(element => {
+        element.querySelector('.reader').scrollTop = scrollPositions.get(element.dataset.concept) ?? 0;
+      });
       // Unknown-duration fixtures must not accidentally promise a known total in
       // the retention line or playback chrome just because the template has one.
       if (document.querySelector('#state').value === 'unknown') {

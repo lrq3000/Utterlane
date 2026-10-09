@@ -1,4 +1,4 @@
-# Transcription progress: three review concepts
+# Transcription progress: review concepts and D refinement
 
 Design review requested on 2026-10-09. These are browser mockups, not implemented
 Android behavior or an approved final design. Open `content/progress-layouts.html`
@@ -30,7 +30,7 @@ This was a source inspection, not an observation of the user's installed APK.
 
 ## Proposed alternatives
 
-1. **A — Compact strip (recommended).** Stage and percentage, linear bar, then
+1. **A — Compact strip (initial recommendation).** Stage and percentage, linear bar, then
    approximate time remaining and processed/total audio above the reader. Closest
    to the existing dialog; a small, persistent footprint supports reading.
 2. **B — Time-first card.** A tonal card emphasizes the ETA alongside a progress
@@ -38,6 +38,19 @@ This was a source inspection, not an observation of the user's installed APK.
 3. **C — Reader status dock.** A compact status area fixed below the scrollable
    document, inside its border and above the playback/text controls. Clear top
    area, but remaining-time information is farther from the dialog title.
+4. **D — Minimal reader dock (requested refinement).** C's bottom placement with
+   A's plain surface, thin linear bar, and compact stage/percentage/ETA labels.
+   A subtle divider replaces the colored card treatment. On completion the bar
+   and timing row give way to a single completion row, expanding the reader
+   downward while keeping its top fixed.
+
+The user preferred C because top-mounted progress competes with reading, freeing
+space above the reader can shift its position, and new text arrives toward the
+bottom where the progress belongs. These reasons supersede the initial A
+recommendation. D preserves that reading-first placement while borrowing A's
+minimal visual style. The preview now opens with C and D side by side; the Compare
+control also offers D alone and all four designs. State changes retain each
+visible reader's scroll offset when the resulting document has enough content.
 
 All share the existing BlueHarmony palette, dialog-D action arrangement, visible
 scrollbar, and partial transcript. Dropdowns preview light/dark themes, 360/320 px
@@ -106,3 +119,18 @@ Browser mockups do not establish Compose geometry or ETA accuracy on a device.
 - No Android build was needed for these self-contained design artifacts. Native
   large-font/localization behavior and real ETA accuracy await an approved design
   and its implementation.
+
+### D refinement verification
+
+- Rechecked all seven states in both themes at both widths for all four designs:
+  **28 combinations, 112 layouts** passed, with no runtime/console errors.
+- Verified C/D comparison, D-only, and all-four preview selection.
+- Checked D's finalizing-to-complete transition at 320 px: the reader's top stayed
+  at the same measured browser coordinate, gained 39.5 px downward, and retained a
+  50 px scroll offset. The completed footer contains no progress bar.
+- Inspected the light C/D comparison, isolated light D, and narrow dark D at a
+  390 × 844 mobile viewport; no horizontal page overflow.
+- Used the existing Python Playwright/Chrome validation path and
+  `git diff --check`. Updated screenshots are local:
+  `transcription-progress-c-d.png`, `transcription-progress-design-d.png`, and
+  `transcription-progress-d-mobile-dark.png` in the same temporary directory.
