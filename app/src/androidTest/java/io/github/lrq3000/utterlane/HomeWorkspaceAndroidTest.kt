@@ -70,7 +70,13 @@ class HomeWorkspaceAndroidTest {
                 .putExtra(io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             withTimeout(10000) { app.homeController.state.first { it.metrics.capturedSamples > before } }
-            ui.click("home_nav_record")
+            // startActivitySync returns before every accessibility window has
+            // switched. The same navigation tag still exists in the old Home;
+            // target Settings' actual window rather than a stale background node.
+            val settingsTitle = ui.textNode(app.getString(R.string.settings_title))
+            val settingsWindow = settingsTitle.windowId
+            settingsTitle.recycle()
+            ui.click("home_nav_record", windowId = settingsWindow)
             ui.node("home_screen").recycle()
             val old = home!!
             val recreation = instrumentation.addMonitor(HomeActivity::class.java.name, null, false)
