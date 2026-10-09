@@ -1,6 +1,9 @@
 package io.github.lrq3000.utterlane.settings
 
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -8,6 +11,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BluetoothAudio
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,40 +33,53 @@ import kotlinx.coroutines.launch
 
 /** Settings observe the next input; active recording owns its independent route. */
 @Composable
-fun AudioInputSettings(controller: AudioInputController = UtterlaneApp.instance.audioInputs) {
+fun AudioInputSettings(
+    controller: AudioInputController = UtterlaneApp.instance.audioInputs,
+    repository: SettingsRepository = UtterlaneApp.instance.settingsRepository,
+) {
     val state by controller.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val scope = rememberCoroutineScope()
     var choose by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val permission = remember(context) { HfpPermissionState(context) }
     fun update(action: suspend () -> Unit) {
         scope.launch {
             try { error = null; action() }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 Log.w("AudioInputSettings", "Could not update audio input", e)
-                error = context.getString(R.string.audio_input_refresh_failed)
+                error = context.getString(R.string.microphone_processing_update_failed)
             }
         }
     }
-    DisposableEffect(lifecycle, controller) {
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        permission.onResult(granted)
+        update { controller.refresh() }
+    }
+    val requestPermission = { permission.requestIfNeeded { launcher.launch(it) } }
+    val actions = remember(repository, controller, permission, launcher) {
+        MicrophoneSettingsActions(repository, controller, requestPermission)
+    }
+    DisposableEffect(lifecycle, controller, permission) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) update { controller.refresh() }
+            if (event == Lifecycle.Event.ON_RESUME) {
+                permission.refresh()
+                update { controller.refresh() }
+            }
         }
         lifecycle.addObserver(observer)
+        permission.refresh()
         update { controller.refresh() }
         onDispose { lifecycle.removeObserver(observer) }
     }
     ListItem(
+        modifier = Modifier.clickable(role = Role.Button) { choose = true; update { controller.refresh() } },
         headlineContent = { Text(stringResource(R.string.audio_input_title)) },
         supportingContent = { Text(state?.selected?.let { AudioInputText.name(context, it) }
             ?: stringResource(R.string.audio_input_loading)) },
-        trailingContent = {
-            TextButton(onClick = { choose = true; update { controller.refresh() } }) {
-                Text(stringResource(R.string.model_idle_change))
-            }
-        }
+        trailingContent = { Icon(Icons.Default.ChevronRight, null) }
     )
     SwitchSettingItem(
         title = stringResource(R.string.audio_input_prefer_bluetooth),
@@ -70,11 +87,12 @@ fun AudioInputSettings(controller: AudioInputController = UtterlaneApp.instance.
         icon = Icons.Default.BluetoothAudio,
         checked = state?.preferences?.preferBluetooth == true,
         enabled = state != null,
-        onCheckedChange = { enabled -> update { controller.setPreferBluetooth(enabled) } }
+        onCheckedChange = { enabled -> update { actions.setPreferBluetooth(enabled) } }
     )
     Text(stringResource(R.string.audio_input_description), Modifier.padding(horizontal = 16.dp),
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     error?.let { Text(it, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error) }
+    MicrophoneProcessingSettings(repository, actions, permission, requestPermission, ::update)
 
     if (choose) AlertDialog(
         onDismissRequest = { choose = false },
@@ -90,7 +108,7 @@ fun AudioInputSettings(controller: AudioInputController = UtterlaneApp.instance.
                             update {
                                 // Selection is revalidated inside the controller's
                                 // transaction, even if this open dialog became stale.
-                                if (controller.select(input.key)) choose = false
+                                if (actions.selectInput(input)) choose = false
                                 else error = context.getString(R.string.audio_input_selection_gone)
                             }
                         }), verticalAlignment = Alignment.CenterVertically) {
