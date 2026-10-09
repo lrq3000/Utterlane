@@ -276,9 +276,14 @@ class FloatingMicService : Service() {
         floatingView.setPadding(padding, padding, padding, padding)
         val geometry = displayGeometry()
         val diameter = geometry.diameterPx(preferredDiameterDp, density, 2 * padding, 2 * padding)
-        micButton.layoutParams = micButton.layoutParams.apply { width = diameter; height = diameter }
+        if (micButton.layoutParams.width != diameter || micButton.layoutParams.height != diameter) {
+            micButton.layoutParams = micButton.layoutParams.apply { width = diameter; height = diameter }
+        }
         layoutParams.width = diameter + 2 * padding
         layoutParams.height = diameter + 2 * padding
+        // Window gravity is not a View layout direction: resolve START explicitly
+        // so the system frame and our start-relative drag/clamp use the same edge.
+        layoutParams.gravity = Gravity.getAbsoluteGravity(Gravity.TOP or Gravity.START, floatingView.layoutDirection)
         val (x, y) = geometry.clampPosition(layoutParams.x, layoutParams.y, layoutParams.width, layoutParams.height,
             floatingView.layoutDirection == View.LAYOUT_DIRECTION_RTL)
         layoutParams.x = x
