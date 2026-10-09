@@ -8,6 +8,7 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
+import androidx.annotation.MainThread
 import androidx.core.content.ContextCompat
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.history.HistoryEntry
@@ -84,6 +85,15 @@ class AudioPlaybackController(private val app: UtterlaneApp) {
     }
 
     fun setRate(owner: String, rate: Int) { if (mutable.value.owner == owner) periodMs = VisualRefreshRate.intervalMillis(rate) }
+
+    /**
+     * Call on Main only after microphone admission succeeds. Pauses this controller's
+     * current owner, including pending preparation/seek autoplay, without releasing
+     * its source lease or position. Capture completion does not resume playback;
+     * only a later explicit play request can do so. Inactive playback is a no-op.
+     */
+    @MainThread
+    fun pauseForCapture() { mutable.value.owner?.let(::pause) }
 
     fun pause(owner: String) {
         if (mutable.value.owner != owner || !mutable.value.active) return
