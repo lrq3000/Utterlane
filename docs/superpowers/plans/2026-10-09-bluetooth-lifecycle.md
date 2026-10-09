@@ -29,13 +29,13 @@ Files: `app/build.gradle.kts`,
 `app/src/test/java/io/github/lrq3000/utterlane/audio/AudioRoutingPlatform.kt`,
 `app/src/test/java/io/github/lrq3000/utterlane/audio/AndroidCaptureRouteTest.kt`.
 
-- [ ] Add pinned, test-only Robolectric and MockK dependencies and Android resources.
-- [ ] Use an ordinary Application in tests so model/native application startup is
+- [x] Add pinned, test-only Robolectric and MockK dependencies and Android resources.
+- [x] Use an ordinary Application in tests so model/native application startup is
   not required. Mock AudioManager/AudioRecord boundary calls, retain real Android
   Context/receiver/looper behavior and real production routing classes.
-- [ ] Establish working Phone and Stop-before-start cases across API 28/31/36;
+- [x] Establish working Phone and Stop-before-start cases across API 28/31/36;
   assert that these do not acquire or clear a communication route.
-- [ ] Run `gradlew.bat :app:testDebugUnitTest --tests "*.AndroidCaptureRouteTest"
+- [x] Run `gradlew.bat :app:testDebugUnitTest --tests "*.AndroidCaptureRouteTest"
   "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q`.
   Commit the working test infrastructure before unrelated fixes.
 
@@ -45,16 +45,16 @@ Files: `audio/AndroidAudioInputDevices.kt`, `audio/AudioInputPolicy.kt`,
 `audio/AndroidCaptureRoute.kt` under the main package; corresponding Android-platform
 catalogue and route tests under `app/src/test/java/io/github/lrq3000/utterlane/audio/`.
 
-- [ ] Reproduce raw-source entries without a communication ID on API 31+ and a
+- [x] Reproduce raw-source entries without a communication ID on API 31+ and a
   source assigned to multiple communication endpoints when addresses are absent.
-- [ ] Keep modern Bluetooth candidates exclusively in the communication inventory.
+- [x] Keep modern Bluetooth candidates exclusively in the communication inventory.
   Match source ports by a unique exact type/address, or an unambiguous one-to-one
   remaining association where an address is absent. Different known addresses must
   never match. Use indexes so catalogue construction is O(devices).
-- [ ] Preserve raw Bluetooth source selection on legacy Android, wired/USB inputs,
+- [x] Preserve raw Bluetooth source selection on legacy Android, wired/USB inputs,
   Phone, and stable identities. Confirm routing from fresh Android evidence even
   when an input port appears after the initial communication endpoint.
-- [ ] Verify and commit with regression cases for duplicate names, blank addresses,
+- [x] Verify and commit with regression cases for duplicate names, blank addresses,
   changed ports, activation ordering, and output-only devices.
 
 ## 3. Preserve disconnects through conflation
@@ -62,33 +62,39 @@ catalogue and route tests under `app/src/test/java/io/github/lrq3000/utterlane/a
 Files: `audio/AudioInputController.kt`, `audio/AndroidAudioInputDevices.kt`,
 `audio/AudioInputPolicy.kt`, `audio/AudioInputControllerTest.kt` and platform tests.
 
-- [ ] Reproduce disconnect followed by reconnect before the refresh coroutine runs.
+- [x] Reproduce disconnect followed by reconnect before the refresh coroutine runs.
   Auto-off must reset to Phone; auto-on can choose the newly connected device.
-- [ ] Retain removal identity in bounded state, not an unbounded event queue. A
+- [x] Retain removal identity in bounded state, not an unbounded event queue. A
   modern SCO input-port teardown is not removal of its still-available communication
   endpoint. Events for unrelated devices do not reset the selection.
-- [ ] Serialize manual choices with removal reconciliation; stale events cannot
+- [x] Serialize manual choices with removal reconciliation; stale events cannot
   overwrite a newer manual selection, including selecting the same headset again.
-- [ ] Verify startup, background operation, removal/selection races and commit.
+- [x] Verify startup, background operation, removal/selection races and commit.
 
 ## 4. Routing lifecycle and ownership
 
 Files: `audio/AndroidCaptureRoute.kt`, `audio/CaptureRoutePolicy.kt`,
 `asr/AudioRecorder.kt` only if a reproduced case requires it, and platform tests.
 
-- [ ] Exercise successful/delayed/rejected activation, timeout, Stop during setup,
+- [x] Exercise successful/delayed/rejected activation, timeout, Stop during setup,
   active-headset loss while another remains, rapid reconnect, stale callbacks,
   repeated sessions and cleanup after partial platform failures on API 28/31/36.
-- [ ] Require observed input and unsilenced PCM before confirming capture. Preserve
+- [x] Require observed input and unsilenced PCM before confirming capture. Preserve
   actual state, sticky fallback, Stop precedence and worker-owned native lifetimes.
-- [ ] Fix only reproduced issues; validate and commit coherent corrections.
+- [x] Fix only reproduced issues; validate and commit coherent corrections.
 
 ## 5. Final evidence
 
-- [ ] Run the full unit suite, `assembleDebug` and `assembleDebugAndroidTest` in
+- [x] Run the full unit suite, `assembleDebug` and `assembleDebugAndroidTest` in
   normal incremental mode; exercise the existing isolated API 28 device tests.
-- [ ] Build the standard debug APK and verify its application identity and hash.
-- [ ] Update `docs/qa/bluetooth-input.md` with exact checks and distinguish JVM
+- [x] Build the standard debug APK and verify its application identity and hash.
+- [x] Update `docs/qa/bluetooth-input.md` with exact checks and distinguish JVM
   Android-simulation, emulator PCM/UI evidence, and remaining physical-radio checks.
-- [ ] Review the complete change, commit all test/source/documentation files and
+- [x] Review the complete change, commit all test/source/documentation files and
   report the follow-up branch, commits, APK and validation limits.
+
+**Outcome:** 423 full-suite tests passed, including 76 Android-platform simulations;
+seven API 28 instrumentation tests and the rendered Settings flow passed. Independent
+review found four additional ordering/binding cases, all reproduced and corrected. Exact
+commands, transient host-test observations and the physical-radio verification
+boundary are recorded in `docs/qa/bluetooth-input.md`.
