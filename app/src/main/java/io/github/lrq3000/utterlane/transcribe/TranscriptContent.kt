@@ -7,6 +7,9 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Share
@@ -15,6 +18,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -34,7 +38,7 @@ import kotlinx.coroutines.withContext
 /**
  * Full-store transfers shared by Home and the detail dialog. Copy is byte-bounded;
  * Share uses the existing file snapshot/export path for arbitrarily long results.
- * additionalActions puts caller-owned More/Keep text controls in the same wrapping row;
+ * additionalActions puts caller-owned More/Keep text controls beside the transfers;
  * enabled gates only Copy/Share, so the caller controls its other actions independently.
  */
 @OptIn(ExperimentalLayoutApi::class)
@@ -63,20 +67,30 @@ fun TranscriptTransferActions(
         Unit
     }
     val share = { store?.let { shareTranscript(context, it) }; Unit }
-    FlowRow(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(if (iconsOnly) 0.dp else 8.dp)) {
-        if (iconsOnly) {
+    if (iconsOnly) {
+        FlowRow(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(0.dp)) {
             // Keep D's geometry/tags while sharing the exact leased transfer path.
             DialogAction(Icons.Outlined.ContentCopy, stringResource(R.string.transcribe_copy), "dialog_copy",
                 enabled && store != null, onClick = copy)
             DialogAction(Icons.Outlined.Share, stringResource(R.string.dialog_share_text), "dialog_share",
                 enabled && store != null, onClick = share)
-        } else {
-            Button(onClick = copy, enabled = enabled && store != null) { Text(stringResource(R.string.transcribe_copy)) }
-            FilledTonalButton(onClick = share, enabled = enabled && store != null) {
-                Text(stringResource(R.string.dialog_share_text))
-            }
+            additionalActions()
         }
-        additionalActions()
+    } else {
+        // Reserve More first, then share the available width. Short localized
+        // labels keep the Home action row compact at large system text sizes.
+        Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Button(onClick = copy, enabled = enabled && store != null, modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)) {
+                Text(stringResource(R.string.transcribe_copy))
+            }
+            FilledTonalButton(onClick = share, enabled = enabled && store != null, modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)) {
+                Text(stringResource(R.string.transcribe_share))
+            }
+            additionalActions()
+        }
     }
 }
 

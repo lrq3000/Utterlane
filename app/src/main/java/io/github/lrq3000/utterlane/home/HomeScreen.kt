@@ -72,7 +72,7 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 15.dp)) {
-                    if (state.result.preview.isEmpty()) EmptyTranscript(Modifier.heightIn(min = previewHeight).padding(vertical = 20.dp))
+                    if (state.result.preview.isEmpty()) EmptyTranscript(state, Modifier.heightIn(min = previewHeight).padding(vertical = 12.dp))
                     else TranscriptReader(model?.document ?: controller.liveDocument, state.result,
                         Modifier.height(previewHeight).fillMaxWidth(), followTail = state.capture.active || state.result.running)
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -151,7 +151,8 @@ private fun HomeIntro(enabled: Boolean, onLoad: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
         }
         IconButton(onClick = onLoad, enabled = enabled, modifier = Modifier.testTag("home_load_audio")) {
-            Icon(Icons.Outlined.FileUpload, stringResource(R.string.home_load_audio), Modifier.size(28.dp), tint = MaterialTheme.colorScheme.primary)
+            Icon(Icons.Outlined.FileUpload, stringResource(R.string.home_load_audio), Modifier.size(28.dp),
+                tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = .38f))
         }
     }, modifier = Modifier.fillMaxWidth()) { measurables, constraints ->
         val gap = 12.dp.roundToPx()
@@ -174,21 +175,30 @@ private fun HomeIntro(enabled: Boolean, onLoad: () -> Unit) {
 }
 
 @Composable
-private fun EmptyTranscript(modifier: Modifier) {
+private fun EmptyTranscript(state: HomeState, modifier: Modifier) {
+    val title = when (state.capture.phase) {
+        HomeCapturePhase.STARTING -> R.string.home_starting
+        HomeCapturePhase.RECORDING -> R.string.capture_listening
+        HomeCapturePhase.STOPPING -> R.string.capture_stopping
+        HomeCapturePhase.PROCESSING -> R.string.capture_processing
+        HomeCapturePhase.IDLE -> if (state.busy) R.string.state_processing else R.string.home_empty_title
+    }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(Icons.Outlined.Description, null, Modifier.size(28.dp), tint = MaterialTheme.colorScheme.primary)
-        Text(stringResource(R.string.home_empty_title), Modifier.padding(top = 12.dp, bottom = 8.dp),
+        Text(stringResource(title), Modifier.padding(top = 12.dp, bottom = 8.dp),
             style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
-        Text(stringResource(R.string.home_empty_record), style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-        val hint = buildAnnotatedString {
-            append(stringResource(R.string.home_empty_load_prefix)); append(" ")
-            appendInlineContent("load", stringResource(R.string.home_load_audio))
-            append(" "); append(stringResource(R.string.home_empty_load_suffix))
+        if (!state.busy) {
+            Text(stringResource(R.string.home_empty_record), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            val hint = buildAnnotatedString {
+                append(stringResource(R.string.home_empty_load_prefix)); append(" ")
+                appendInlineContent("load", stringResource(R.string.home_load_audio))
+                append(" "); append(stringResource(R.string.home_empty_load_suffix))
+            }
+            Text(hint, inlineContent = mapOf("load" to InlineTextContent(Placeholder(1.em, 1.em, PlaceholderVerticalAlign.TextCenter)) {
+                Icon(Icons.Outlined.FileUpload, null, tint = MaterialTheme.colorScheme.primary)
+            }), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         }
-        Text(hint, inlineContent = mapOf("load" to InlineTextContent(Placeholder(1.em, 1.em, PlaceholderVerticalAlign.TextCenter)) {
-            Icon(Icons.Outlined.FileUpload, null, tint = MaterialTheme.colorScheme.primary)
-        }), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         Text(stringResource(R.string.home_empty_result), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
     }
@@ -237,7 +247,7 @@ private fun HomeCaptureControl(state: HomeState, onRecord: () -> Unit) {
 private fun HomeProgress(state: HomeState) {
     val metrics = if (state.capture.active) state.metrics else state.result.capture
     // During a candidate copy the visible result still belongs to the prior
-    // workspace. Its completed percentage must not describe the new import.
+    // workspace. Its completed percentage must not describe the new file load.
     val percent = if (state.preparing) null else if (metrics.phase == CapturePhase.PROCESSING) metrics.percent else state.result.progress
     Column(Modifier.fillMaxWidth().heightIn(min = 104.dp).padding(17.dp), verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)) {
         if (percent == null) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Color.White, trackColor = Color.White.copy(alpha = .25f))
@@ -247,7 +257,7 @@ private fun HomeProgress(state: HomeState) {
             LinearProgressIndicator(progress = { percent.coerceIn(0, 100) / 100f }, modifier = Modifier.fillMaxWidth(),
                 color = Color.White, trackColor = Color.White.copy(alpha = .25f))
         }
-        if (metrics.phase == CapturePhase.PROCESSING) metrics.remainingSeconds?.takeIf { it.isFinite() && it > 0 }?.let {
+        if (!state.preparing && metrics.phase == CapturePhase.PROCESSING) metrics.remainingSeconds?.takeIf { it.isFinite() && it > 0 }?.let {
             Text(stringResource(R.string.capture_eta, it.roundToInt().coerceAtLeast(1)), style = MaterialTheme.typography.bodySmall, color = Color.White)
         }
     }
@@ -262,13 +272,20 @@ private fun PrivacyNote() {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val width = with(density) { maxWidth.roundToPx() }
         val size = remember(width, density.fontScale, sentence, baseStyle) {
-            // A short bounded search uses actual glyph widths. If even 9sp does
-            // not fit, wrapping remains allowed; accessibility never gets clipped.
-            (22 downTo 18).map { it / 2f }.firstOrNull { candidate ->
-                measurer.measure(sentence, style = baseStyle.copy(fontSize = candidate.sp), softWrap = false).size.width <= width
-            } ?: 9f
+            // Fit the complete privacy sentence on one line using actual glyph
+            // widths. This bounded calculation runs only when width/font/locale
+            // changes, not with every waveform frame; the text remains semantic.
+            var low = 1f
+            var high = 11f
+            repeat(10) {
+                val candidate = (low + high) / 2
+                if (measurer.measure(sentence, style = baseStyle.copy(fontSize = candidate.sp), softWrap = false).size.width <= width) low = candidate
+                else high = candidate
+            }
+            low
         }
-        Text(sentence, Modifier.fillMaxWidth(), style = baseStyle.copy(fontSize = size.sp),
+        Text(sentence, Modifier.fillMaxWidth().testTag("home_privacy"),
+            style = baseStyle.copy(fontSize = size.sp, lineHeight = (size * 1.4f).sp), maxLines = 1, softWrap = false,
             color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
     }
 }
@@ -308,7 +325,12 @@ private fun HomeFeedback(state: HomeState, onModels: () -> Unit, onRetry: () -> 
         context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             android.net.Uri.parse("package:${context.packageName}")))
     }) { Text(stringResource(R.string.home_microphone_settings)) }
-    if (messages.isNotEmpty() && !state.busy && !state.permissionDenied) {
+    // Save confirmations and failed picker replacements are not recognition
+    // failures. Offer these actions only for the current result's recovery.
+    val recoverableResult = state.result.capture.phase == CapturePhase.FAILED || state.result.audio?.let {
+        it.failureKind != null || it.failureMessage != null || it.status == "failed" || it.status == "interrupted"
+    } == true
+    if (recoverableResult && messages.isNotEmpty() && !state.busy && !state.permissionDenied) {
         Row {
             if (state.result.audio != null) TextButton(onClick = onRetry) { Text(stringResource(R.string.history_retry)) }
             TextButton(onClick = onModels) { Text(stringResource(R.string.recording_choose_model)) }

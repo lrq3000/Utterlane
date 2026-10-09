@@ -13,6 +13,25 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class HomeJournalAndroidTest {
+    @Test fun checkpointDistinguishesEpochCreationFromUnknownLegacyMetadata() {
+        val base = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "home-journal-epoch-${UUID.randomUUID()}"
+        val context = object : ContextWrapper(base) {
+            override fun getSharedPreferences(ignored: String, mode: Int) = base.getSharedPreferences(name, mode)
+        }
+        try {
+            val input = DialogInput(transcriptPath = "/private/working.txt", metadata = TranscriptMetadata(0L, 1200L, true))
+            HomeJournal(context).write(input)
+            assertEquals(input.metadata, HomeJournal(context).restore()!!.metadata)
+            HomeJournal(context).write(input.copy(metadata = TranscriptMetadata()))
+            assertNull(HomeJournal(context).restore()!!.metadata!!.created)
+            // Older Home checkpoints encoded unknown creation as zero.
+            base.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear()
+                .putString("path", input.transcriptPath).putLong("created", 0L).commit()
+            assertNull(HomeJournal(context).restore()!!.metadata!!.created)
+        } finally { base.deleteSharedPreferences(name) }
+    }
+
     @Test fun processReconstructionPreservesIndependentMetadataButNeverRestartsCapture() {
         val base = InstrumentationRegistry.getInstrumentation().targetContext
         val name = "home-journal-test-${UUID.randomUUID()}"
