@@ -21,7 +21,8 @@ data class TranscriptionDialogState(
     val audio: HistoryEntry? = null, val store: TranscriptStore? = null, val transcriptId: String? = null,
     val preview: String = "", val transcriptBytes: Long = 0, val transcriptPinned: Boolean = false, val running: Boolean = false,
     val importing: Boolean = false, val saving: Boolean = false, val closing: Boolean = false,
-    val progress: Int? = null, val message: String? = null, val model: String = "",
+    val message: String? = null, val model: String = "",
+    val fileProgress: FileProgressSnapshot? = null,
     val capture: CaptureSnapshot = CaptureSnapshot(), val visualRate: Int = VisualRefreshRate.DEFAULT,
     val deletion: DialogDeletionRequest? = null, val checkingDeletion: Boolean = false,
     val deleting: Boolean = false, val finished: Boolean = false
@@ -49,7 +50,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     private val temporaryResults = linkedSetOf<File>()
     @Volatile private var currentStore: TranscriptStore? = null
     @Volatile private var latestPreview = ""
-    private var latestProgress: Int? = null
+    @Volatile private var fileProgress = FileTranscriptionProgress()
     private var chosenModel = input.modelName
     private var resultModelId: String? = input.modelId
     private var lastRequestedModelId: String? = input.modelId
@@ -153,9 +154,9 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
 
     private suspend fun transcribe(useCurrentModel: Boolean = false) {
         val audioId = ownedAudioId ?: return
-        mutable.update { it.copy(running = true, progress = null, message = null) }
         metrics = CaptureMetrics().also { it.setVisualRefreshRate(state.value.visualRate) }
-        latestProgress = null
+        fileProgress = FileTranscriptionProgress()
+        mutable.update { it.copy(running = true, fileProgress = fileProgress.snapshot(metrics.state.value), message = null) }
         var session: TranscriptionSession? = null
         var presenter: Job? = null
         var activity: Job? = null
@@ -174,6 +175,11 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         }
                         lastRequestedModelId = app.modelManager.selected.value.id
                         val source = app.recordingHistory.get(audioId)
+                        // Captured PCM has an exact total. Imported container duration
+                        // is provisional until decoding establishes the real EOF.
+                        val total = if (source.sourceName == null) source.samples else
+                            source.durationMs.takeIf { it in 1..(Long.MAX_VALUE / 16) }?.times(16)
+                        fileProgress = FileTranscriptionProgress(total, estimatedTotal = source.sourceName != null)
                         val options = app.settingsRepository.runtimeOptions.first()
                         val retainText = app.settingsRepository.transcriptHistoryEnabled.first()
                         val textDuration = app.settingsRepository.transcriptHistoryRetention.first()
@@ -184,8 +190,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                             while (isActive) {
                                 metrics.tick()
                                 document.refresh()
-                                mutable.update { old -> old.copy(progress = latestProgress, capture = metrics.state.value,
-                                    preview = latestPreview, transcriptBytes = currentStore?.bytes ?: 0) }
+                                publishTranscriptionState()
                                 delay(VisualRefreshRate.intervalMillis(mutable.value.visualRate))
                             }
                         }
@@ -193,24 +198,32 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                             latestPreview = checkNotNull(session).store.preview()
                         }
                         val created = checkNotNull(session)
+                        fileProgress.start(created.hasSpeakerFinalization)
                         chosenModel = app.modelManager.selected.value.name
                         resultModelId = app.modelManager.selected.value.id
                         lastRequestedModelId = resultModelId
                         created.store.attachSource(TranscriptSource(audioId, modelName = chosenModel, modelId = resultModelId))
                         exposeStore(created.store)
+                        publishTranscriptionState()
                         val accept: suspend (ShortArray) -> Unit = { pcm -> metrics.captured(pcm.size); created.accept(pcm) }
-                        if (source.sourceName != null) AudioDecoder(app).decode(source.part(0).absolutePath, accept) { latestProgress = it?.coerceIn(0, 99) }
+                        if (source.sourceName != null) AudioDecoder(app).decode(source.part(0).absolutePath, accept)
                         else audioLease.reader().use { reader ->
                             while (reader.offset < source.samples) {
                                 currentCoroutineContext().ensureActive()
                                 val pcm = reader.read()
                                 check(pcm.isNotEmpty()) { "Recording became unavailable" }
                                 accept(pcm)
-                                latestProgress = (reader.offset * 100 / source.samples).toInt().coerceAtMost(99)
                             }
                         }
                         metrics.captureEnded()
-                        created.finish() // Includes the enabled speaker finisher before saving results.
+                        fileProgress.inputEnded(metrics.state.value.capturedSamples)
+                        publishTranscriptionState()
+                        created.finish { speakers ->
+                            fileProgress.finalizing(speakers)
+                            publishTranscriptionState()
+                        }
+                        fileProgress.saving()
+                        publishTranscriptionState()
                         if (retainText && textDuration != HistoryRetention.NONE && created.store.segments > 0) {
                             try {
                                 val saved = app.transcriptHistory.save(created.store.file, chosenModel, audioId, modelId = resultModelId)
@@ -222,16 +235,18 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         }
                         app.recordingHistory.completeRecovery(audioId, app.settingsRepository.audioHistoryRetention.first())
                         metrics.completed(null)
-                        latestPreview = created.store.preview(); latestProgress = 100
+                        fileProgress.complete()
+                        latestPreview = created.store.preview()
                         document.refresh()
-                        mutable.update { it.copy(preview = latestPreview, transcriptBytes = created.store.bytes, progress = 100, capture = metrics.state.value,
+                        publishTranscriptionState()
+                        mutable.update { it.copy(
                             message = if (created.store.segments == 0) app.getString(R.string.toast_no_speech) else null) }
                     }
                 }
             }
-        } catch (e: CancellationException) { metrics.cancelled(); throw e
+        } catch (e: CancellationException) { metrics.cancelled(); fileProgress.fail(cancelled = true); throw e
         } catch (e: Exception) {
-            metrics.completed(e.message); showError(e)
+            metrics.completed(e.message); fileProgress.fail(); showError(e)
             withContext(Dispatchers.IO) { app.recordingHistory.recordFailure(audioId, e.message.orEmpty(), if (session == null) "MODEL" else "INFERENCE") }
         } finally {
             presenter?.cancel(); activity?.cancel(); diagnostics?.cancel()
@@ -243,9 +258,17 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
             val surviving = currentStore
             latestPreview = surviving?.preview().orEmpty()
             document.refresh()
-            mutable.update { it.copy(running = false, capture = metrics.state.value,
-                preview = latestPreview, transcriptBytes = surviving?.bytes ?: 0) }
+            publishTranscriptionState()
+            mutable.update { it.copy(running = false) }
         }
+    }
+
+    /** One consistent presentation snapshot, including terminal updates between
+     * timer ticks. The producer never reads the transcript body to calculate ETA. */
+    private fun publishTranscriptionState() {
+        val capture = metrics.state.value
+        mutable.update { it.copy(fileProgress = fileProgress.snapshot(capture), capture = capture,
+            preview = latestPreview, transcriptBytes = currentStore?.bytes ?: 0) }
     }
 
     fun saveAudioToHistory() = saveAction {
@@ -395,7 +418,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                     if (target != HistoryDeletionTarget.AUDIO && workingTranscriptId() in request.plan.transcriptIds) {
                         document.show(null)
                         currentStore?.dispose(); currentStore = null; latestPreview = ""
-                        mutable.update { it.copy(store = null, preview = "", transcriptBytes = 0, transcriptId = null, transcriptPinned = false) }
+                        mutable.update { it.copy(store = null, preview = "", transcriptBytes = 0, transcriptId = null,
+                            transcriptPinned = false, fileProgress = null) }
                     }
                     if (target != HistoryDeletionTarget.TRANSCRIPTS) ownedAudioId?.let { RecordingRecovery.dismissNotification(app, it) }
                     refreshAudio(); refreshTranscript()
