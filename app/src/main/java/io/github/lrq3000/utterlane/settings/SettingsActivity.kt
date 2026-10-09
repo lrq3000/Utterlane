@@ -59,6 +59,7 @@ import io.github.lrq3000.utterlane.ui.theme.UtterlaneTheme
 import io.github.lrq3000.utterlane.ui.BrandHeader
 import io.github.lrq3000.utterlane.ui.BrandSection
 import io.github.lrq3000.utterlane.onboarding.OnboardingActivity
+import androidx.compose.ui.platform.testTag
 import io.github.lrq3000.utterlane.home.HomeActivity
 import io.github.lrq3000.utterlane.home.HomeNavigationBar
 import kotlinx.coroutines.flow.first
@@ -872,10 +873,9 @@ fun SettingsScreen(
             }
 
             ListItem(
-                headlineContent = { Text(stringResource(R.string.onboarding_title)) },
-                supportingContent = { Text(stringResource(R.string.onboarding_replay)) },
-                leadingContent = { Icon(Icons.Default.AutoStories, contentDescription = null) },
-                modifier = Modifier.clickable {
+                headlineContent = { Text(stringResource(R.string.onboarding_run_again)) },
+                leadingContent = { Icon(Icons.Default.AutoFixHigh, contentDescription = null) },
+                modifier = Modifier.testTag("settings_onboarding").clickable {
                     context.startActivity(Intent(context, OnboardingActivity::class.java)
                         .putExtra(OnboardingActivity.EXTRA_REPLAY, true))
                 }

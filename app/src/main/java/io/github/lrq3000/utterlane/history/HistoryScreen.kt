@@ -165,7 +165,7 @@ internal fun HistoryScreen(model: HistoryViewModel, transcripts: Boolean, onBack
                             style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
                     }
                 } else HistoryLoadStatus(rows.loadState.refresh, rows::retry)
-            } else Surface(Modifier.weight(1f, fill = false).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+            } else Surface(Modifier.weight(1f).padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                 shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                 LazyColumn(Modifier.fillMaxWidth().testTag("history_list"), state = listState) {
@@ -182,6 +182,7 @@ internal fun HistoryScreen(model: HistoryViewModel, transcripts: Boolean, onBack
                     item(key = "history_append") { HistoryLoadStatus(rows.loadState.append, rows::retry) }
                 }
             }
+            HistoryLegend(transcripts)
         }
     }
 }
@@ -223,7 +224,7 @@ private fun HistoryEntryRow(entry: HistoryRow, transcripts: Boolean, labels: His
         .clickable(role = Role.Button, onClickLabel = stringResource(R.string.history_open), onClick = onOpen)
         .padding(horizontal = 14.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(when { entry.recovery -> Icons.Default.Restore; transcripts -> Icons.Default.Description; else -> Icons.Outlined.GraphicEq },
-            contentDescription = if (entry.recovery) stringResource(R.string.history_recovery_item) else null,
+            contentDescription = if (entry.recovery) stringResource(R.string.history_recovered_entry) else null,
             tint = colors.primary, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {

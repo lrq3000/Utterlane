@@ -132,6 +132,9 @@ internal fun InputSetupPage(page: OnboardingPage, state: OnboardingUiState, acti
     SetupCard(Icons.Default.Keyboard, R.string.onboarding_keyboard, R.string.onboarding_keyboard_body) {
         StatusOrAction(granted.keyboard, R.string.onboarding_keyboard_action, { action(OnboardingAction.Settings(AndroidSetup.KEYBOARD)) })
     }
+    SetupCard(Icons.Default.Accessibility, R.string.onboarding_accessibility, R.string.onboarding_accessibility_body) {
+        StatusOrAction(granted.accessibility, R.string.onboarding_accessibility_action, { action(OnboardingAction.Settings(AndroidSetup.ACCESSIBILITY)) })
+    }
     SetupCard(Icons.Default.Mic, R.string.onboarding_floating, R.string.onboarding_floating_body) {
         val (label, next) = when {
             !granted.microphone -> R.string.onboarding_allow_mic to OnboardingAction.Permission(SetupPermission.MICROPHONE)
@@ -144,9 +147,6 @@ internal fun InputSetupPage(page: OnboardingPage, state: OnboardingUiState, acti
         if (!granted.notifications) TextButton(onClick = { action(OnboardingAction.Permission(SetupPermission.NOTIFICATIONS)) }) {
             Text(stringResource(R.string.onboarding_notifications_action))
         }
-    }
-    SetupCard(Icons.Default.Accessibility, R.string.onboarding_accessibility, R.string.onboarding_accessibility_body) {
-        StatusOrAction(granted.accessibility, R.string.onboarding_accessibility_action, { action(OnboardingAction.Settings(AndroidSetup.ACCESSIBILITY)) })
     }
 }
 

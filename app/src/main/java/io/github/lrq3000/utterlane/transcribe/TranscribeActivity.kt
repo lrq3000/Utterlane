@@ -44,18 +44,19 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
             automatic = savedInstanceState == null && audio == null && textId == null && !intent.hasExtra("transcript_path"),
             transcriptOrigin = savedInstanceState?.getBoolean("text_origin") ?: intent.hasExtra(EXTRA_TRANSCRIPT_ID),
             modelName = savedInstanceState?.getString("result_model").orEmpty(), modelId = savedInstanceState?.getString("result_model_id"),
-            metadata = TranscriptMetadata.fromBundle(savedInstanceState))
+            metadata = TranscriptMetadata.fromBundle(savedInstanceState),
+            recovered = intent.hasExtra(EXTRA_RECOVERY_ID) || intent.hasExtra("transcript_path"))
         model = ViewModelProvider(this, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = TranscriptionDialogModel(app, request) as T
         })[TranscriptionDialogModel::class.java]
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() { model.dismiss { finish() } }
+            override fun handleOnBackPressed() { model.requestExit() }
         })
         setContent {
             val theme by app.settingsRepository.themeMode.collectAsStateWithLifecycle(initialValue = SettingsRepository.THEME_SYSTEM)
             val dark = when (theme) { SettingsRepository.THEME_DARK -> true; SettingsRepository.THEME_LIGHT -> false; else -> isSystemInDarkTheme() }
             UtterlaneTheme(darkTheme = dark) {
-                TranscriptionDialog(model, onClose = { model.dismiss { finish() } }, onEmpty = { finish() })
+                TranscriptionDialog(model, onClose = model::requestExit, onEmpty = { finish() })
             }
         }
     }

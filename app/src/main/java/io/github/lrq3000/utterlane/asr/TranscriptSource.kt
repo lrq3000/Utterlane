@@ -12,20 +12,25 @@ data class WorkingTranscriptCopy(val file: File, val source: TranscriptSource) {
 class TranscriptDiscardedException : IllegalStateException("Transcript was deleted")
 
 /** Private provenance for working text, including history-disabled/recovery paths.
- * It contains identifiers only; exports and clipboard text never include it. */
+ * It contains identifiers and recovery state; exports and clipboard text never include it. */
 data class TranscriptSource(val audioId: String? = null, val transcriptId: String? = null,
-    val modelName: String = "", val modelId: String? = null, val discarded: Boolean = false) {
+    val modelName: String = "", val modelId: String? = null, val discarded: Boolean = false,
+    val recovered: Boolean = false) {
     fun write(file: File) {
         synchronized(lockFor(file)) {
             // Late producer metadata must not clear a durable deletion marker.
             // Serialize the check/write and the shared atomic temporary filename.
-            if (!discarded && read(file).discarded) throw TranscriptDiscardedException()
+            val previous = read(file)
+            if (!discarded && previous.discarded) throw TranscriptDiscardedException()
             val properties = Properties().apply {
                 audioId?.let { setProperty("audioId", it) }
                 transcriptId?.let { setProperty("transcriptId", it) }
                 setProperty("modelName", modelName)
                 modelId?.let { setProperty("modelId", it) }
                 setProperty("discarded", discarded.toString())
+                // Origin is monotonic: an older producer snapshot may add an ID,
+                // but cannot erase a recovery acknowledgement from another owner.
+                setProperty("recovered", (recovered || previous.recovered).toString())
             }
             HistoryMetadata.write(metadata(file), properties)
         }
@@ -55,7 +60,8 @@ data class TranscriptSource(val audioId: String? = null, val transcriptId: Strin
             if (!metadata.isFile) return TranscriptSource()
             val p = HistoryMetadata.read(metadata)
             return TranscriptSource(p.getProperty("audioId"), p.getProperty("transcriptId"),
-                p.getProperty("modelName", ""), p.getProperty("modelId"), p.getProperty("discarded", "false").toBoolean())
+                p.getProperty("modelName", ""), p.getProperty("modelId"), p.getProperty("discarded", "false").toBoolean(),
+                p.getProperty("recovered", "false").toBoolean())
         }
         fun retentionReference(file: File): Long {
             if (!file.name.endsWith(".source")) return file.lastModified()

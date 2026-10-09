@@ -25,11 +25,11 @@ internal data class HistoryRow(val cursor: HistoryCursor, val detail: String,
             // Result metadata belongs to this transcript, never to the current
             // speaker setting or a subsequently retranscribed source recording.
             HistoryRow(entry.cursor, preview, entry.retention,
-                durationMs = entry.durationMs, speakerLabels = entry.speakerLabels)
+                durationMs = entry.durationMs, recovery = entry.recovered, speakerLabels = entry.speakerLabels)
 
         fun from(entry: HistoryEntry) =
             HistoryRow(entry.cursor, "", entry.retention, durationMs = entry.durationMs,
-                recovery = entry.needsRecovery, speakerLabels = entry.speakerLabels)
+                recovery = entry.recovered, speakerLabels = entry.speakerLabels)
     }
 }
 

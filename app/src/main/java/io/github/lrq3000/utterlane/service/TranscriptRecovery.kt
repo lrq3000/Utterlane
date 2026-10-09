@@ -19,6 +19,7 @@ object TranscriptRecovery {
     fun show(context: Context, store: TranscriptStore) {
         UtterlaneApp.instance.applicationScope.launch(Dispatchers.IO) {
             if (store.file.length() == 0L || TranscriptSource.read(store.file).discarded) { store.dispose(); return@launch }
+            store.attachSource(TranscriptSource.read(store.file).copy(recovered = true))
             store.keepForRecovery()
             // The Settings recovery action also works when notification permission is
             // denied. No transcription text is placed in the notification itself.

@@ -102,8 +102,7 @@ class OnboardingAndroidTest {
             waitForNode("home_screen").recycle()
             click("home_settings")
             waitForResumed(SettingsActivity::class.java)
-            instrumentation.startActivitySync(Intent(app, OnboardingActivity::class.java)
-                .putExtra(OnboardingActivity.EXTRA_REPLAY, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            ui.clickText(app.getString(R.string.onboarding_run_again))
             waitForNode("onboarding_page_welcome").recycle()
             assertTrue(repository.progress.first().completed)
             repository.update { it.copy(stepId = OnboardingStep.COMPLETE.id) }
@@ -116,6 +115,36 @@ class OnboardingAndroidTest {
                 (monitor.getActivitiesInStage(Stage.RESUMED) + monitor.getActivitiesInStage(Stage.STOPPED)).toList()
                     .filter { it is OnboardingActivity || it is SettingsActivity || it is HomeActivity }.forEach { it.finish() }
             }
+            repository.update { original }
+        }
+    }
+
+    @Test fun openingReplayThenGoingBackPreservesConfiguration() = runBlocking {
+        val repository = OnboardingRepository(app)
+        val original = repository.progress.first()
+        val settings = app.settingsRepository
+        val theme = settings.themeMode.first()
+        var activity: OnboardingActivity? = null
+        suspend fun configuration() = listOf(settings.themeMode.first(), settings.runtimeOptions.first(),
+            settings.audioHistoryEnabled.first(), settings.audioHistoryRetention.first(),
+            settings.transcriptHistoryEnabled.first(), settings.transcriptHistoryRetention.first(),
+            settings.serviceEnabled.first(), settings.audioMonitorEnabled.first(),
+            settings.monitoredFolders.first(), app.modelManager.selected.value.id)
+        try {
+            app.modelManager.initializeSelection()
+            settings.setThemeMode("dark")
+            repository.complete()
+            val before = configuration()
+            activity = instrumentation.startActivitySync(Intent(app, OnboardingActivity::class.java)
+                .putExtra(OnboardingActivity.EXTRA_REPLAY, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as OnboardingActivity
+            waitForNode("onboarding_page_welcome").recycle()
+            instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+            withTimeout(5000) { while (!activity.isFinishing) kotlinx.coroutines.delay(50) }
+            assertEquals(before, configuration())
+            assertTrue(repository.progress.first().completed)
+        } finally {
+            activity?.let { current -> instrumentation.runOnMainSync { current.finish() } }
+            settings.setThemeMode(theme)
             repository.update { original }
         }
     }

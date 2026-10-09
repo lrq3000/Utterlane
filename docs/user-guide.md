@@ -52,7 +52,7 @@ New installations open a step-by-step guide explaining dictation, shared audio,
 and meeting transcripts. Use the top-right **Appearance** selector on any page
 to choose **System**, **Light**, or **Dark**. Incomplete setup resumes after a
 restart. Previously configured installations and completed setup open **Record**.
-Use its gear to open Settings, then **Setup guide** to revisit the introduction or
+Use its gear to open Settings, then **Run onboarding wizard again** to revisit the introduction or
 try-it pages. Completing a replay returns to Settings.
 
 The model recommendation uses Android-reported total RAM, not free RAM:
@@ -105,7 +105,7 @@ still apply.
 - Read the complete disk-backed transcript in its scrollable area. **Copy** uses
   the clipboard transfer limit; when a result is too large, **Share** exports its
   full text file instead. Neither action substitutes the short history preview.
-- **More** provides Keep transcript, Keep audio, details and explicit Dismiss.
+- **More** provides **Pin transcript**, **Pin audio**, **Show more details** and **Reset**.
   Keeping audio/text is independent and pins the chosen item. Closing Home's
   borrowed details returns to the workspace; it does not dismiss that workspace.
 - **Record / Audio history / Transcripts** remain available below the scrolling
@@ -113,7 +113,7 @@ still apply.
   browsing position. File loading is available on Record, not inside history.
 
 Home keeps the current working recording available even with automatic audio
-history disabled. Explicit Dismiss or accepting useful replacement input releases
+history disabled. Explicit Reset or accepting useful replacement input releases
 temporary work; keep/export anything you want to retain. Unexpected interruption
 leaves recoverable input and committed text. A failed microphone start or failed
 file copy does not discard the prior result. Recognition errors offer retry/model
@@ -339,7 +339,8 @@ pending expiration. Pinned entries can still be explicitly deleted.
 
 Pruning uses metadata at startup and scheduled background intervals matching each
 finite retention setting. Opening/closing ordinary dialogs or refreshing lists
-does not scan and prune history. Forever has no periodic expiration job. Android
+does not scan and prune the entire history. The transcription dialog checks its
+own result before closing. Forever has no periodic expiration job. Android
 can delay jobs while asleep or force-stopped, so a deadline is eligibility for the
 next cleanup opportunity rather than an exact deletion time.
 
@@ -355,12 +356,19 @@ keeps recovery inline. Settings and
 recording-specific notifications also provide access. **Choose transcription model**
 opens the actual picker, with the same audio available when you return.
 
-Explicit Cancel/Discard deletes temporary work; unexpected interruption preserves
-it for recovery. Closing a temporary dialog discards its working audio, including
-after a failed or successful retry, so use **Save audio** first if you want to keep
-it. Closing a saved-history entry leaves it in history. Saved recovery audio expires
-normally unless pinned. Text already inserted, exported or saved in transcript
-history is independent of the temporary audio's lifetime.
+Unexpected interruption preserves useful work for recovery. Ordinary dialog Back
+retains recovered audio and text according to their independent history settings,
+without restarting an existing retention countdown. If leaving would lose audio
+or text, both Android Back and the dialog arrow explain which content is at risk:
+**Discard** permits that loss, **Pin** preserves both available audio and the displayed
+transcript indefinitely before closing, and **Go back** stays in the dialog. A failed
+save keeps the dialog open. Explicit deletion remains available separately.
+
+The bottom legend in **Audio history** and **Transcripts** explains normal entries,
+the recovered-entry icon, pins, and that history's current retention policy.
+Recovered entries keep their icon after successful retry, pinning, and app restart;
+the marker does not exempt them from retention. Text already inserted, exported
+or saved in transcript history remains independent of its source audio's lifetime.
 
 ### One transcription dialog
 
@@ -383,13 +391,16 @@ Shared audio, history and recovery use the same actions:
 - **Re-transcribe:** use the same model, or choose another model and retry.
 - **Save audio:** save to history (pinned forever), share with another app, or save
   to a device/document-provider destination. Multipart recordings use a chosen folder.
-- **Copy / Share transcript / Keep transcript forever:** operate on text separately
+- **Copy / Share transcript / Pin transcript:** operate on text separately
   from audio, with manual text saving available even when automatic text history is off.
 - **Close**, and **Delete recording/transcript** or **Discard** according to ownership.
 
 Temporary private copies of shared audio support retries and playback; discarding
 them never deletes the original file supplied by the sending app. A cancelled
 destination picker or failed save does not falsely report that a copy was saved.
+Short toasts confirm successful pin/unpin, copy, history saving and audio export;
+existing failure paths report errors. Sharing confirms that the Android share menu
+opened, rather than claiming another app delivered the content.
 
 Press **Play** to reveal Pause/Resume, Stop playback, a seek bar, and elapsed/total
 time. Seeking while paused keeps playback paused; Stop or reaching the end resets

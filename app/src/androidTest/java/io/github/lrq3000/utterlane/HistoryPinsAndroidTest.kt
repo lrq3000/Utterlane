@@ -100,7 +100,9 @@ class HistoryPinsAndroidTest {
             assertTrue(text.file.exists())
             HistoryTestUi(ui).awaitPinned(text.id, true)
             HistoryTestUi(ui).assertNavigationOnly(text.id)
-            assertFalse(ui.hasVisibleText(app.getString(R.string.history_pinned)))
+            // Rows remain navigation-only; the new bottom legend explains pins.
+            ui.node("history_legend").recycle()
+            assertTrue(ui.hasVisibleText(app.getString(R.string.history_pinned)))
             ui.screenshot("history-transcript-pinned")
             app.settingsRepository.setThemeMode(io.github.lrq3000.utterlane.settings.SettingsRepository.THEME_DARK)
             ui.screenshot("history-transcript-design-d-dark")

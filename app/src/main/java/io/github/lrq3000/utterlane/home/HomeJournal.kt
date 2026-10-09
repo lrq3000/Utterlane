@@ -27,7 +27,8 @@ internal class HomeJournal(context: Context) {
             .putString("path", input.transcriptPath).putString("model", input.modelName).putString("model_id", input.modelId)
             .putLong("created", metadata?.created ?: 0).putLong("duration", metadata?.durationMs ?: 0)
             .putBoolean("has_created", metadata?.created != null)
-            .putBoolean("speakers", metadata?.speakerLabels ?: false).apply()
+            .putBoolean("speakers", metadata?.speakerLabels ?: false)
+            .putBoolean("recovered", metadata?.recovered ?: false).apply()
     }
     fun restore(): DialogInput? {
         val input = DialogInput(audioId = prefs.getString("audio", null), transcriptId = prefs.getString("text", null),
@@ -38,7 +39,7 @@ internal class HomeJournal(context: Context) {
             metadata = TranscriptMetadata(prefs.getLong("created", 0).takeIf {
                 prefs.getBoolean("has_created", it > 0)
             },
-                prefs.getLong("duration", 0), prefs.getBoolean("speakers", false)))
+                prefs.getLong("duration", 0), prefs.getBoolean("speakers", false), prefs.getBoolean("recovered", false)))
         return input.takeIf { it.audioId != null || it.transcriptId != null || it.transcriptPath != null }
     }
     fun clear() { previous = null; prefs.edit().clear().apply() }

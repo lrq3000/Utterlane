@@ -57,8 +57,11 @@ fun TranscriptTransferActions(
     val copy = {
         val copyContext = context.applicationContext
         store?.let { source -> TranscriptCopyOperation(scope).start(source, onRead = { text ->
-            if (text != null) (copyContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                .setPrimaryClip(ClipData.newPlainText("Transcript", text))
+            if (text != null) {
+                (copyContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                    .setPrimaryClip(ClipData.newPlainText("Transcript", text))
+                ActionFeedback.show(copyContext, R.string.action_feedback_copied)
+            }
             else Toast.makeText(copyContext, R.string.stream_use_export, Toast.LENGTH_LONG).show()
         }, onFailure = { failure ->
             android.util.Log.e("TranscriptContent", "Transcript copy failed", failure)

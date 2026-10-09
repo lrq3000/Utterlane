@@ -5,21 +5,22 @@ import java.io.File
 
 /** A result owns this small snapshot independently of its source's lifetime.
  * Saving text never needs to reread audio or scan the transcript for labels. */
-data class TranscriptMetadata(val created: Long? = null, val durationMs: Long = 0, val speakerLabels: Boolean = false) {
+data class TranscriptMetadata(val created: Long? = null, val durationMs: Long = 0, val speakerLabels: Boolean = false,
+    val recovered: Boolean = false) {
     companion object {
         private const val STATE_KEY = "result_metadata"
 
         /** Missing metadata is an older checkpoint, not a fabricated timestamp. */
         fun fromBundle(state: Bundle?): TranscriptMetadata? = state?.getBundle(STATE_KEY)?.let {
             TranscriptMetadata(if (it.containsKey("created")) it.getLong("created") else null,
-                it.getLong("durationMs", 0), it.getBoolean("speakerLabels", false))
+                it.getLong("durationMs", 0), it.getBoolean("speakerLabels", false), it.getBoolean("recovered", false))
         }
     }
 
     constructor(audio: HistoryEntry, durationMs: Long = audio.durationMs, speakerLabels: Boolean = audio.speakerLabels) :
-        this(audio.started, durationMs, speakerLabels)
+        this(audio.started, durationMs, speakerLabels, audio.recovered)
 
-    constructor(text: TranscriptEntry) : this(text.created, text.durationMs, text.speakerLabels)
+    constructor(text: TranscriptEntry) : this(text.created, text.durationMs, text.speakerLabels, text.recovered)
 
     /** A bounded checkpoint independent of audio/history availability. Share this
      * codec between Activity restoration and Home journals rather than their keys. */
@@ -28,11 +29,12 @@ data class TranscriptMetadata(val created: Long? = null, val durationMs: Long = 
             created?.let { putLong("created", it) }
             putLong("durationMs", durationMs)
             putBoolean("speakerLabels", speakerLabels)
+            putBoolean("recovered", recovered)
         })
     }
 
     fun save(history: TranscriptHistory, source: File, model: String, audioId: String? = null,
         pinned: Boolean = false, modelId: String? = null): TranscriptEntry =
         history.save(source, model, audioId, pinned, modelId = modelId,
-            created = created, durationMs = durationMs, speakerLabels = speakerLabels)
+            created = created, durationMs = durationMs, speakerLabels = speakerLabels, recovered = recovered)
 }

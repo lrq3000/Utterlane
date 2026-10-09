@@ -24,7 +24,7 @@ class HomeDetailOwnershipAndroidTest {
     private val ui = OnboardingTestUi()
 
     @Test fun detailArrowAndSystemBackRetainTheOwnedTemporaryWorkspace() = runBlocking<Unit> {
-        assertTrue("Use the parent-owned isolated QA install", app.packageName.endsWith(".dhome"))
+        assertTrue("Use an isolated QA install", app.packageName.endsWith(".dhome") || app.packageName.endsWith(".polishqa"))
         ui.prepare()
         val onboarding = OnboardingRepository(app)
         val previous = onboarding.progress.first()

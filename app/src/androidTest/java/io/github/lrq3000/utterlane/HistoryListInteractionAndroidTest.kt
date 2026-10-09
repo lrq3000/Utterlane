@@ -39,7 +39,9 @@ class HistoryListInteractionAndroidTest {
             historyUi.assertNavigationOnly(id)
             assertFalse("Deletion must not be exposed by the history listing", ui.hasVisibleText(app.getString(R.string.history_delete)))
             assertFalse("Opening is the whole entry's action, not another button", ui.hasVisibleText(app.getString(R.string.history_open)))
-            assertFalse("Pin state must not consume another text row", ui.hasVisibleText(app.getString(R.string.history_pinned)))
+            assertFalse("Pin state must not consume another entry text row",
+                historyUi.text(id).contains(app.getString(R.string.history_pinned)))
+            ui.node("history_legend").recycle()
             assertEquals("Passive indicators must not open a detail", 0, monitor.hits)
             ui.click("history_entry_$id")
             detail = monitor.waitForActivityWithTimeout(5000)

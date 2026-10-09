@@ -3,6 +3,7 @@
     <!-- Kept separate from Settings copy so the guide can evolve independently.
          New translations are batched after the feature is stable, before release. -->
     <string name="onboarding_title">Setup guide</string>
+    <string name="onboarding_run_again">Run onboarding wizard again</string>
     <string name="onboarding_replay">Revisit the introduction, setup, and try-it screens.</string>
     <string name="onboarding_continue">Continue</string>
     <string name="onboarding_back">Previous step</string>

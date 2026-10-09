@@ -433,10 +433,22 @@ class TranscriptionDialogDAndroidTest {
                         fixture.screen!!.window.setLayout((width * density).toInt(), WindowManager.LayoutParams.MATCH_PARENT)
                     }
                     await { fixture.screen!!.window.decorView.width == (width * density).toInt() }
-                    val back = bounds("dialog_back")
-                    val retry = bounds("dialog_retranscribe")
-                    val title = bounds("dialog_title")
-                    val delete = bounds("dialog_delete")
+                    // Window size publication precedes Compose layout/accessibility
+                    // updates. Inspect one settled layout, not nodes from two frames.
+                    var previous = emptyList<Rect>()
+                    var settled = emptyList<Rect>()
+                    await {
+                        val snapshot = listOf(bounds("dialog_back"), bounds("dialog_retranscribe"),
+                            bounds("dialog_title"), bounds("dialog_delete"))
+                        val stable = snapshot == previous
+                        previous = snapshot
+                        if (stable) settled = snapshot
+                        stable && kotlin.math.abs(snapshot[0].centerY() - snapshot[3].centerY()) <= 2 &&
+                            snapshot[2].left >= snapshot[0].right && snapshot[2].right <= snapshot[1].left
+                    }
+                    // Assert the same stable snapshot; re-querying individual
+                    // nodes here can mix another accessibility update into it.
+                    val (back, retry, title, delete) = settled
                     assertTrue(kotlin.math.abs(back.centerY() - delete.centerY()) <= 2)
                     assertTrue("Title must fit between the icon groups", title.left >= back.right && title.right <= retry.left)
                     assertTrue("Icon targets must remain 48 dp", back.width() >= 48 * density - 2)
