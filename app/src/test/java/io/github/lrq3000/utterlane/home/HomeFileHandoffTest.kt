@@ -136,6 +136,53 @@ class HomeFileHandoffTest {
         }
     }
 
+    @Test fun completedImportAfterNegativeValidationIsRevalidatedBeforeTerminalRejection() {
+        val main = QueuedDispatcher()
+        val io = QueuedDispatcher()
+        Fixture(io, main).use { f ->
+            main.drain() // Subscribe and queue validation of importing/no source.
+            io.drain() // Negative validation; its Main continuation remains queued.
+            assertEquals(0, f.accepted)
+            assertTrue(f.rejected.isEmpty())
+            val audio = f.recordings.importAudio(byteArrayOf(1, 2, 3).inputStream(), "wav", "audio/wav")
+            f.model.value = TranscriptionDialogState(audio = audio, message = "Decoder rejected the format")
+            main.drain()
+            assertTrue("An old negative check must not reject new owned input", f.rejected.isEmpty())
+            assertTrue(f.home.value.preparing)
+            assertEquals("prior checkpoint", f.checkpoint)
+            io.drain()
+            main.drain()
+            assertEquals(1, f.accepted)
+            assertTrue(f.rejected.isEmpty())
+            assertEquals(audio, f.home.value.result.audio)
+            assertEquals("Decoder rejected the format", f.home.value.result.message)
+            assertTrue(audio.part(0).isFile)
+            assertEquals("candidate checkpoint", f.checkpoint)
+            assertFalse(f.home.value.preparing)
+            assertTrue(f.job.isCompleted)
+        }
+    }
+
+    @Test fun changedValidationReturningToEqualEmittedStateDoesNotLoseTheTerminalDecision() {
+        val main = QueuedDispatcher()
+        val io = QueuedDispatcher()
+        val terminal = TranscriptionDialogState(message = "Unavailable source")
+        Fixture(io, main, terminal).use { f ->
+            main.drain() // first() emitted the terminal state, then dispatched IO.
+            f.model.value = TranscriptionDialogState(importing = true)
+            io.drain() // The actual validated snapshot is now pending.
+            f.model.value = terminal.copy() // Equal to first()'s last emitted value.
+            main.drain()
+            assertTrue(f.rejected.isEmpty())
+            io.drain()
+            main.drain()
+            assertEquals(listOf("Unavailable source"), f.rejected)
+            assertEquals(0, f.accepted)
+            assertEquals("prior checkpoint", f.checkpoint)
+            assertTrue("Revalidation cannot depend on a conflated-away emission", f.job.isCompleted)
+        }
+    }
+
     @Test fun staleOrCancelledCandidateCannotReplacePriorWorkspace() {
         val io = QueuedDispatcher()
         Fixture(io).use { f ->
@@ -244,11 +291,13 @@ class HomeFileHandoffTest {
         }
     }
 
-    private inner class Fixture(io: CoroutineDispatcher = Dispatchers.Unconfined) : Closeable {
+    private inner class Fixture(io: CoroutineDispatcher = Dispatchers.Unconfined,
+        main: CoroutineDispatcher = Dispatchers.Unconfined,
+        initial: TranscriptionDialogState = TranscriptionDialogState(importing = true)) : Closeable {
         val recordings = RecordingHistory(folder.newFolder())
         val transcripts = TranscriptHistory(folder.newFolder())
         val home = MutableStateFlow(HomeState(result = TranscriptionDialogState(preview = "prior working text"), preparing = true))
-        val model = MutableStateFlow(TranscriptionDialogState(importing = true))
+        val model = MutableStateFlow(initial)
         val observed = mutableListOf<HomeState>()
         var checkpoint = "prior checkpoint"
         var current = true
@@ -260,7 +309,7 @@ class HomeFileHandoffTest {
         val job: Job
         init {
             scope.launch { home.collect { observed.add(it) } }
-            job = HomeFileHandoff(scope, recordings, transcripts, Dispatchers.Unconfined, io).observe(model, { current }, onAccepted = {
+            job = HomeFileHandoff(scope, recordings, transcripts, main, io).observe(model, { current }, onAccepted = {
                 beforePublication()
                 accepted++
                 checkpoint = "candidate checkpoint"

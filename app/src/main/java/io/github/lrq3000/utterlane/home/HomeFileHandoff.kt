@@ -24,31 +24,48 @@ internal class HomeFileHandoff(
             // first() retires this temporary observer on either outcome. It never
             // mirrors candidate state into Home or writes the recovery journal.
             results.first {
-                if (!isCurrent()) return@first true
-                val promoted = withContext(ioDispatcher) { promoteCurrent(results, isCurrent, onAccepted) }
-                val current = results.value
-                if (!isCurrent()) true
-                else if (promoted) true
-                else if (!current.importing && !current.running) { onRejected(current.message); true }
+                var validation: Validation
+                do {
+                    if (!isCurrent()) return@first true
+                    validation = withContext(ioDispatcher) { validateCurrent(results, isCurrent, onAccepted) }
+                    if (!isCurrent() || validation.promoted) return@first true
+                    // A copy can complete (and decoding fail) before this Main
+                    // continuation runs. Never combine its new terminal flags
+                    // with a negative ownership check of an earlier snapshot.
+                    // Retry here rather than relying on another StateFlow emission:
+                    // conflation can hide a transition back to equal state.
+                } while (results.value !== validation.snapshot)
+                val checked = validation.snapshot
+                if (!checked.importing && !checked.running) { onRejected(checked.message); true }
                 else false
             }
         } catch (cancelled: CancellationException) { throw cancelled
         } catch (error: Exception) { if (isCurrent()) onRejected(error.message) }
     }
 
-    private fun promoteCurrent(results: StateFlow<TranscriptionDialogState>, isCurrent: () -> Boolean,
-        onAccepted: () -> Unit): Boolean = transcripts.withPublicationLock {
-        if (!isCurrent()) return@withPublicationLock false
+    private data class Validation(val snapshot: TranscriptionDialogState, val promoted: Boolean)
+
+    private fun validateCurrent(results: StateFlow<TranscriptionDialogState>, isCurrent: () -> Boolean,
+        onAccepted: () -> Unit): Validation = transcripts.withPublicationLock {
+        val snapshot = results.value
+        Validation(snapshot, promoteSnapshot(snapshot, results, isCurrent, onAccepted))
+    }
+
+    /** Called only inside validateCurrent's publication guard. Negative decisions
+     * remain tied to its snapshot; successful publication still uses current state. */
+    private fun promoteSnapshot(snapshot: TranscriptionDialogState, results: StateFlow<TranscriptionDialogState>,
+        isCurrent: () -> Boolean, onAccepted: () -> Unit): Boolean {
+        if (!isCurrent()) return false
         // Match confirmed deletion's lock order: transcript history, then audio
         // history or working-source disposition. All filesystem checks stay on IO.
-        val audioId = results.value.audio?.id
+        val audioId = snapshot.audio?.id
         if (recordings.withCompletedImport(audioId) {
             if (!isCurrent() || results.value.audio?.id != audioId) false
             else { onAccepted(); true }
-        }) return@withPublicationLock true
+        }) return true
 
-        val store = results.value.store ?: return@withPublicationLock false
-        try {
+        val store = snapshot.store ?: return false
+        return try {
             TranscriptSource.withActiveSource(store.file) {
                 val current = results.value
                 if (!isCurrent() || current.store !== store || current.transcriptBytes == 0L ||
