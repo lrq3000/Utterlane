@@ -45,6 +45,8 @@ class AndroidCaptureRoute(
     private var inventoryVersion = -1L
     private val policy = CaptureRoutePolicy(target, SystemClock::uptimeMillis, if (useHfp) 8000 else 5000)
     private var hfp: HfpMicrophoneRoute? = null
+    private var hfpExactTarget = false
+    private var hfpPreferredInputId: Int? = null
     private var inventory = initial
     private var inputs = emptyMap<Int, AudioDeviceInfo>()
     private var communications = emptyMap<Int, AudioDeviceInfo>()
@@ -116,6 +118,7 @@ class AndroidCaptureRoute(
             }
             if (useHfp) {
                 val device = target.communicationId?.let(communications::get) ?: target.inputId?.let(inputs::get)
+                hfpExactTarget = Build.VERSION.SDK_INT >= 28 && !device?.address.isNullOrBlank()
                 hfp = HfpMicrophoneRoute(context, device, shouldContinue, { dirty.set(true) }).also { it.start() }
                 if (hfp?.status?.phase == HfpMicrophoneRoute.Phase.FAILED) {
                     policy.fallback(InputFallbackReason.UNAVAILABLE)
@@ -229,6 +232,17 @@ class AndroidCaptureRoute(
             else -> target.inputId != null && inputs.containsKey(target.inputId)
         }
         inventoryVersion = version
+        synchronized(bindingLock) {
+            hfpPreferredInputId = null
+            if (useHfp && inventoryVersion == deviceVersion.get() && hfp?.status?.requestAccepted == true && !policy.isFallback) {
+                // Filter once so addressless matching stays linear even when many
+                // unrelated USB/phone ports precede the SCO candidates.
+                val classic = inputs.values.filter { it.isSource && it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+                val matches = classic.filter { hfp?.matchInput(it, classic) == HfpMicrophoneRoute.InputMatch.MATCH }
+                if (matches.any { hfpTargetDisproved(it.id) }) policy.fallback(InputFallbackReason.ROUTE_CHANGED)
+                else hfpPreferredInputId = matches.singleOrNull()?.id
+            }
+        }
     }
 
     private fun refreshActual(record: AudioRecord) {
@@ -245,6 +259,10 @@ class AndroidCaptureRoute(
             val bound = validSourceBindingLocked()
             val hfpMatch = if (useHfp && routed != null && !policy.isFallback)
                 hfp?.matchInput(routed, inputs.values) else null
+            if (hfpMatch == HfpMicrophoneRoute.InputMatch.MATCH && hfpTargetDisproved(routed?.id)) {
+                sourceBinding?.takeIf { it.input.inputId == routed?.id }?.removed = true
+                policy.fallback(InputFallbackReason.ROUTE_CHANGED)
+            }
             if (hfpMatch == HfpMicrophoneRoute.InputMatch.DIFFERENT && routed != null &&
                 AndroidAudioInputDevices.isBluetooth(routed.type)) {
                 sourceBinding?.takeIf { it.input.inputId == routed.id }?.removed = true
@@ -253,7 +271,7 @@ class AndroidCaptureRoute(
             actual = when {
                 routed == null -> null
                 routed.type == AudioDeviceInfo.TYPE_BUILTIN_MIC -> AudioInput(AudioInput.PHONE_KEY, "", false, routed.id)
-                hfpMatch == HfpMicrophoneRoute.InputMatch.MATCH -> AudioInput(target.key,
+                hfpMatch == HfpMicrophoneRoute.InputMatch.MATCH && !policy.isFallback -> AudioInput(target.key,
                     hfp?.status?.deviceName ?: target.name, true, routed.id, inventory.byInputId[routed.id]?.communicationId)
                 hfpMatch == HfpMicrophoneRoute.InputMatch.DIFFERENT -> AudioInput("actual:${routed.id}",
                     routed.productName.toString(), AndroidAudioInputDevices.isBluetooth(routed.type), routed.id)
@@ -286,9 +304,19 @@ class AndroidCaptureRoute(
         // ambiguity must not resurrect a disproved association.
         if (bound.input.inputId !in inputs || (mapped != null && mapped.connectionId != bound.input.connectionId)) {
             bound.removed = true
+            if (hfpTargetDisproved(bound.input.inputId)) policy.fallback(InputFallbackReason.ROUTE_CHANGED)
             return null
         }
         return bound.input
+    }
+
+    // An exact target/profile address can establish a BLE-to-classic transport
+    // association. A sole-peer inference cannot override positive catalogue
+    // evidence that its source belongs to a different selected endpoint.
+    private fun hfpTargetDisproved(inputId: Int?): Boolean {
+        if (!useHfp || hfp == null || hfpExactTarget) return false
+        val mapped = inventory.byInputId[inputId] ?: return false
+        return mapped.connectionId != target.connectionId
     }
 
     private fun communicationReady(): Boolean {
@@ -302,7 +330,13 @@ class AndroidCaptureRoute(
         val inputId = synchronized(bindingLock) {
             if (inventoryVersion != deviceVersion.get()) { dirty.set(true); return }
             if (key == AudioInput.PHONE_KEY) phoneId
-            else validSourceBindingLocked()?.inputId ?: inventory.byKey[key]?.inputId
+            else if (useHfp) {
+                // Never pin the original BLE source when the requested transport
+                // is classic HFP. A proven SCO binding or unique verified SCO port
+                // wins; otherwise let the active HFP link choose its default input.
+                validSourceBindingLocked()?.inputId?.takeIf { inputs[it]?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+                    ?: hfpPreferredInputId
+            } else validSourceBindingLocked()?.inputId ?: inventory.byKey[key]?.inputId
         }
         val preference = key to inputId
         if (lastPreference == preference) return
@@ -343,7 +377,8 @@ class AndroidCaptureRoute(
             onDiagnostic((if (closed) "Capture route teardown attempted.\n" else "") + if (!target.bluetooth) "Bluetooth route not requested for this input" else
                 "Requested Bluetooth: ${options.route}; requested mode=${options.mode}; observed mode=$mode\n" +
                     (hfpState?.let { "HFP: ${it.phase}; request=${it.requestAccepted}; ${it.detail}" }
-                        ?: "Standard Bluetooth request; actual microphone confirmation is independent"))
+                        ?: if (useHfp) "HFP was not requested; input or capture availability prevented setup"
+                        else "Standard Bluetooth request; actual microphone confirmation is independent"))
         }
     }
 
