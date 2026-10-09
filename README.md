@@ -135,21 +135,15 @@ speech and transcript content from shared logs.
 See [CONTRIBUTING.md](CONTRIBUTING.md). **AI-assisted contributions are welcome
 when humans sanity check the outputs before submission.**
 
-## License and acknowledgments
+## License and acknowledgements
 
-Licensed under [Apache-2.0](LICENSE). Upstream copyright notices are retained;
-Utterlane contributions are copyright 2026 **Stephen Karl Larroque and Utterlane
-contributors**. Models and third-party libraries retain their own licenses;
+Licensed under [Apache-2.0](LICENSE). Utterlane development is led by [Stephen Karl Larroque](https://github.com/lrq3000).
+
+Forked from [TranSlander](https://github.com/hatsch/TranSlander), originally developed by
+[hatsch](https://github.com/hatsch) and its contributors with credited assistance
+from [Claude Code](https://claude.ai/claude-code) as a straightforward Android implementation of Parakeet TDT v3.
+
+Models and third-party libraries retain their own licenses;
 see [dependency acknowledgments](docs/development.md#dependency-acknowledgments).
 
-## Lineage and maintenance
-
-Utterlane is an independently maintained fork of
-[TranSlander](https://github.com/hatsch/TranSlander), originally developed by
-[hatsch](https://github.com/hatsch) and its contributors with credited assistance
-from [Claude Code](https://claude.ai/claude-code).
-
-Maintained by **[Stephen Karl Larroque](https://github.com/lrq3000)**
-([LRQ3000@GMAIL.COM](mailto:LRQ3000@GMAIL.COM)), with a focus on responsive,
-local-first transcription. It installs separately from its predecessor;
-settings and recordings do not migrate automatically.
+This project would not be possible without the incredible work of the folks at [CrispASR](https://github.com/CrispStrobe/CrispASR), [Moondream](https://moondream.ai/), NVIDIA and the general AI research community.
