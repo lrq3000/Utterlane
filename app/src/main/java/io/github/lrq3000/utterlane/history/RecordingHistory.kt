@@ -5,13 +5,14 @@ import java.io.File
 import java.io.InputStream
 import java.util.Properties
 import java.util.UUID
+import io.github.lrq3000.utterlane.audio.MicrophoneOptions
 
 data class HistoryEntry(val id: String, val directory: File, val started: Long, val reference: Long, val samples: Long, val status: String,
     val needsRecovery: Boolean = false, val temporary: Boolean = false,
     val pinned: Boolean = false, val holdForLaunch: String? = null,
     val sourceName: String? = null, val mimeType: String = "audio/wav", val importedDurationMs: Long = 0,
     val failureMessage: String? = null, val failureKind: String? = null, val speakerLabels: Boolean = false,
-    val recovered: Boolean = false) {
+    val recovered: Boolean = false, val microphone: MicrophoneOptions? = null) {
     val retention get() = RetentionMark(reference, pinned, holdForLaunch)
     val cursor get() = HistoryCursor(started, id)
     val durationMs: Long get() = if (sourceName == null) samples * 1000 / 16000 else importedDurationMs
@@ -72,7 +73,10 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
                 // Old pending-recovery flags also covered ordinary temporary
                 // results. Only actual failure/interruption establishes origin.
                 properties.getProperty("recovered", "false").toBoolean() || status in setOf("failed", "interrupted") ||
-                    properties.getProperty("failureKind") != null)
+                    properties.getProperty("failureKind") != null,
+                microphone = if (properties.containsKey("microphone.gain")) MicrophoneOptions.fromMap(
+                    MicrophoneOptions.HFP.toMap().keys.mapNotNull { name -> properties.getProperty("microphone.$name")?.let { name to it } }.toMap(),
+                    MicrophoneOptions.STANDARD) else null)
             put(entry)
             if (status == "interrupted") save(entry)
         }
@@ -80,7 +84,7 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
     }
 
     @Synchronized fun begin(retention: HistoryRetention, automatic: Boolean = retention != HistoryRetention.NONE,
-        keepUntilDismissed: Boolean = false): Recording {
+        keepUntilDismissed: Boolean = false, microphone: MicrophoneOptions? = null): Recording {
         initialize()
         val id = UUID.randomUUID().toString()
         val directory = File(root, id)
@@ -88,7 +92,7 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
         // Recovery is durable BEFORE the first PCM write. A process death must not
         // make the next startup's history-off cleanup erase an unfinished session.
         val entry = HistoryEntry(id, directory, clock(), clock(), 0, "active", needsRecovery = true,
-            temporary = !automatic || (keepUntilDismissed && retention == HistoryRetention.NONE))
+            temporary = !automatic || (keepUntilDismissed && retention == HistoryRetention.NONE), microphone = microphone)
         save(entry)
         put(entry)
         return Recording(entry, retention, keepUntilDismissed).also { active[id] = it; leases[id] = 1 }
@@ -363,6 +367,9 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
             setProperty("recovered", entry.recovered.toString())
             entry.failureMessage?.let { setProperty("failureMessage", it) }
             entry.failureKind?.let { setProperty("failureKind", it) }
+            // Android source/effects are already reflected in these original
+            // samples. Only software gain is replayed; old/imported audio has none.
+            entry.microphone?.toMap()?.forEach { (name, value) -> setProperty("microphone.$name", value) }
         }
         HistoryMetadata.write(File(entry.directory, "recording.properties"), properties)
     }
