@@ -322,22 +322,26 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     private suspend fun persistTranscriptPin(pinned: Boolean) {
         check(!state.value.running) { "Wait for the current attempt to finish" }
         val store = checkNotNull(currentStore) { "There is no transcript to save" }
-        check(!TranscriptSource.read(store.file).discarded) { "Transcript was deleted" }
-        val existing = mutable.value.transcriptId
-        val saved = existing?.let {
-            app.transcriptHistory.setPinnedIfPresent(it, pinned, app.settingsRepository.transcriptHistoryRetention.first(), app.historyCleanup.launchToken)
-        } ?: if (pinned) {
-            // Working text has an independent lifetime. Explicit Keep authorizes
-            // a fresh copy after expiry/history cleanup, never reuse of an old ID.
-            // Confirmed discard of this working source is still authoritative.
-            // Automatic saves still use their stable attempt ID for deduplication.
-            val metadata = resultMetadata
-            app.transcriptHistory.save(store.file, chosenModel, ownedAudioId, pinned = true,
-                attempt = java.util.UUID.randomUUID().toString(), modelId = resultModelId,
-                created = metadata.created, durationMs = metadata.durationMs, speakerLabels = metadata.speakerLabels)
-        } else null
-        if (saved != null) store.attachSource(TranscriptSource(ownedAudioId, saved.id, chosenModel, resultModelId))
-        mutable.update { it.copy(transcriptId = saved?.id, transcriptPinned = saved?.retention?.pinned == true) }
+        val retention = app.settingsRepository.transcriptHistoryRetention.first()
+        app.transcriptHistory.withPublicationLock {
+            val source = TranscriptSource.read(store.file)
+            check(!source.discarded) { "Transcript was deleted" }
+            // Another owner may already have kept this same working file. Its
+            // durable identity supersedes our older presentation snapshot.
+            val existing = source.transcriptId ?: mutable.value.transcriptId
+            val present = existing?.let {
+                app.transcriptHistory.setPinnedIfPresent(it, pinned, retention, app.historyCleanup.launchToken)
+            }
+            val saved = if (present != null) {
+                store.attachSource(TranscriptSource(ownedAudioId, present.id, chosenModel, resultModelId))
+                present
+            } else if (pinned) {
+                // Complete fresh identity + provenance publication, with rollback
+                // on failure, shares confirmation's recheck/mark transaction.
+                app.transcriptHistory.saveWorking(store, chosenModel, ownedAudioId, resultModelId, resultMetadata)
+            } else null
+            mutable.update { it.copy(transcriptId = saved?.id, transcriptPinned = saved?.retention?.pinned == true) }
+        }
     }
 
     fun shareAudio(launch: (android.content.Intent) -> Unit) = saveAction(successMessage = null) {
@@ -361,8 +365,10 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         }
     }
 
-    private fun workingTranscriptId(): String? = currentStore?.takeIf { it.bytes > 0 }?.let {
-        it.source.transcriptId ?: TranscriptHistory.idForAttempt(it.file.name)
+    private fun workingTranscriptId(): String? = currentStore?.takeIf { it.bytes > 0 && it.file.isFile }?.let {
+        // The model's store snapshot can predate another owner's Keep/discard.
+        val source = TranscriptSource.read(it.file)
+        if (source.discarded) null else source.transcriptId ?: TranscriptHistory.idForAttempt(it.file.name)
     }
 
     private fun workingFiles(): List<File> = synchronized(temporaryResults) { temporaryResults.toList() }
@@ -426,17 +432,19 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                 // Joining prevents a pending autosave from resurrecting deleted IDs.
                 operation?.cancelAndJoin(); saving?.join()
                 withContext(Dispatchers.IO) {
-                    val fresh = deletionPlan()
-                    val expanded = target != HistoryDeletionTarget.AUDIO && !request.plan.transcriptIds.containsAll(fresh.transcriptIds)
-                    val changedAudio = target != HistoryDeletionTarget.TRANSCRIPTS && fresh.audioId != null && fresh.audioId != request.plan.audioId
-                    if (expanded || changedAudio) {
+                    var discardedCurrent = false
+                    val fresh = linkedHistory.confirmDeletion(request.plan, target, ::deletionPlan) { ids ->
+                        // Snapshot selection before the durable marker makes the
+                        // current source unavailable to subsequent availability IO.
+                        discardedCurrent = workingTranscriptId() in ids
+                        deleteWorkingCopies(ids)
+                    }
+                    if (fresh != null) {
                         mutable.update { it.copy(deletion = DialogDeletionRequest(fresh, target.takeIf { it in fresh.choices }),
                             message = app.getString(R.string.dialog_deletion_changed)) }
                         return@withContext
                     }
-                    if (target != HistoryDeletionTarget.AUDIO) deleteWorkingCopies(request.plan.transcriptIds)
-                    linkedHistory.delete(request.plan, target)
-                    if (target != HistoryDeletionTarget.AUDIO && workingTranscriptId() in request.plan.transcriptIds) {
+                    if (discardedCurrent) {
                         document.show(null)
                         currentStore?.dispose(); currentStore = null; latestPreview = ""
                         mutable.update { it.copy(store = null, preview = "", transcriptBytes = 0, transcriptId = null, transcriptPinned = false) }

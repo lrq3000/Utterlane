@@ -1,6 +1,7 @@
 package io.github.lrq3000.utterlane.history
 
 import io.github.lrq3000.utterlane.asr.TranscriptSource
+import io.github.lrq3000.utterlane.asr.TranscriptStore
 import java.io.Closeable
 import java.io.File
 import java.util.Properties
@@ -80,6 +81,30 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
     }
 
     @Synchronized fun get(id: String): TranscriptEntry = checkNotNull(entries[id]?.takeIf { id !in deleted }) { "Transcript is unavailable" }
+
+    /** Explicit Keep creates a new identity only when the previous saved copy is
+     * absent. Its working provenance must publish that same identity. */
+    @Synchronized fun saveWorking(store: TranscriptStore, model: String, audioId: String?, modelId: String?,
+        metadata: TranscriptMetadata): TranscriptEntry {
+        val saved = save(store.file, model, audioId, pinned = true, attempt = UUID.randomUUID().toString(),
+            modelId = modelId, created = metadata.created, durationMs = metadata.durationMs, speakerLabels = metadata.speakerLabels)
+        try {
+            store.attachSource(TranscriptSource(audioId, saved.id, model, modelId))
+            return saved
+        } catch (error: Exception) {
+            // This ID belongs solely to this incomplete Keep. Roll it back on
+            // sidecar IO failure or a concurrent ordinary working-copy dismissal;
+            // never leave an unassociated pinned result, or touch a sibling ID.
+            try { delete(saved.id) } catch (cleanup: Exception) { error.addSuppressed(cleanup) }
+            throw error
+        }
+    }
+
+    /** The history monitor is already the publication lock (history -> source).
+     * Extend it over identity rechecks/provenance, not coroutine suspension or
+     * waiting for producers. All dialogs share this repository; unrelated source
+     * locks remain bounded and no second lock order is introduced. Call on IO. */
+    @Synchronized fun <T> withPublicationLock(action: () -> T): T = action()
     @Synchronized fun find(id: String?): TranscriptEntry? {
         initialize()
         return entries[id]?.takeIf { it.id !in deleted }

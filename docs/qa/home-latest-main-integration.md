@@ -105,3 +105,36 @@ This integration did not apply, pop, drop or alter that stash, access devices,
 build APKs, push, merge main, or modify the root/parent worktrees.
 
 Agentic stack: OpenCode with OpenAI GPT-6 Astra (openai/gpt-6-astra).
+
+## Integration review follow-up: two-owner Keep publication
+
+The review found a valid P1 in the initial integration: fresh Keep ID N could be
+saved after another owner's fresh check of W but before its working-source marker.
+N's later provenance attachment would then fail, leaving N pinned and outside W's
+confirmed deletion. Joining only the deleting model's save job did not coordinate
+the second owner.
+
+- Extracted the actual Keep publication and confirmed-delete operations into
+  `TranscriptHistory.saveWorking` and `LinkedHistory.confirmDeletion`. Two JVM
+  regressions **failed before the fix**: marker-before-attachment and a pinned
+  orphan after a real sidecar publication failure.
+- Complete fresh Keep publication now holds the existing history monitor through
+  source attachment. Confirmation uses that same monitor for fresh identity lookup,
+  discard marking and exact-ID deletion. No coroutine suspension or producer join
+  happens inside it; history-before-source lock ordering is preserved.
+- A failed provenance attachment rolls back only the fresh ID owned by that
+  incomplete Keep. A completed Keep instead receives renewed confirmation when
+  its identity expands the selected scope; unconfirmed siblings remain untouched.
+- The model reads durable working identity rather than another owner's stale
+  in-memory provenance. Pinning an already-kept shared working file reuses that
+  identity. Selection of the current store is captured before marking it discarded.
+- **16 focused JVM tests passed** (including all three new publication races/error
+  cases), and Android instrumentation Kotlin compiled. Added a two-real-ViewModel
+  regression holding the keeper's store monitor between save and attach; native
+  execution remains with the parent.
+
+Focused command:
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests '*TranscriptKeepPublicationTest' --tests '*LinkedHistoryTest' --tests '*TranscriptRepinTest' :app:compileDebugAndroidTestKotlin "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q --offline
+```

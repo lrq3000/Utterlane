@@ -160,6 +160,63 @@ class TranscriptionResultMetadataAndroidTest {
         dismissDuringPendingKeep(delete = true)
     }
 
+    @Test fun twoOwnersReconfirmKeepPausedBetweenSaveAndSourceAttachment() = runBlocking {
+        val source = workingText()
+        val original = metadata.save(app.transcriptHistory, source, "Fixture model", "two-owner-audio", pinned = true)
+        val sibling = app.transcriptHistory.save(source, "Other model", original.audioId, attempt = "sibling-${source.name}")
+        var replacement: String? = null
+        try {
+            DialogOwner(DialogInput(transcriptId = original.id, transcriptPath = source.absolutePath)).use { keeper ->
+                keeper.ready()
+                DialogOwner(DialogInput(transcriptId = original.id, transcriptPath = source.absolutePath)).use { deleter ->
+                    deleter.ready()
+                    app.transcriptHistory.delete(original.id)
+                    instrumentation.runOnMainSync { deleter.model.requestDeletion() }
+                    withTimeout(5000) { deleter.model.state.first { !it.checkingDeletion && it.deletion != null } }
+                    assertEquals(setOf(original.id), deleter.model.state.value.deletion!!.plan.transcriptIds)
+                    // Hold only this owner's store monitor. The real Keep worker
+                    // saves N, then blocks at attachSource(N); the other model is
+                    // free to attempt confirmation using its independent store.
+                    synchronized(checkNotNull(keeper.model.state.value.store)) {
+                        instrumentation.runOnMainSync { keeper.model.setPinned(DialogPinTarget.TRANSCRIPT, true) }
+                        awaitBlockedWorker("attachSource", "saveWorking")
+                        instrumentation.runOnMainSync { deleter.model.confirmDeletion() }
+                        awaitBlockedWorker("withPublicationLock", "confirmDeletion")
+                        assertTrue(deleter.model.state.value.deleting)
+                        assertFalse(io.github.lrq3000.utterlane.asr.TranscriptSource.read(source).discarded)
+                    }
+                    withTimeout(5000) { keeper.model.state.first { !it.saving } }
+                    withTimeout(5000) { deleter.model.state.first { !it.deleting && it.deletion != null } }
+                    replacement = keeper.model.state.value.transcriptId
+                    assertNotNull(replacement)
+                    assertNotEquals(original.id, replacement)
+                    assertEquals(setOf(replacement), deleter.model.state.value.deletion!!.plan.transcriptIds)
+                    assertTrue(app.transcriptHistory.get(checkNotNull(replacement)).retention.pinned)
+                    instrumentation.runOnMainSync { deleter.model.confirmDeletion() }
+                    withTimeout(5000) { deleter.model.state.first { !it.deleting && it.finished } }
+                    assertNull(app.transcriptHistory.find(replacement))
+                    assertEquals(listOf(sibling.id), app.transcriptHistory.forAudio(original.audioId!!).map { it.id })
+                }
+            }
+        } finally {
+            replacement?.let(app.transcriptHistory::delete)
+            app.transcriptHistory.delete(original.id); app.transcriptHistory.delete(sibling.id)
+            source.delete()
+        }
+    }
+
+    private fun awaitBlockedWorker(method: String, caller: String) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            if (Thread.getAllStackTraces().any { (thread, stack) ->
+                thread.state == Thread.State.BLOCKED && stack.any { it.methodName == method } &&
+                    stack.any { it.methodName == caller }
+            }) return
+            Thread.yield()
+        }
+        fail("No worker blocked in $method from $caller")
+    }
+
     @Test fun ordinaryDismissPreservesReplacementPublishedByPendingKeep() = runBlocking {
         dismissDuringPendingKeep(delete = false)
     }
