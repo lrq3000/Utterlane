@@ -277,3 +277,61 @@ was authorized or performed. The parent must rebuild/install the target with
 this cache fix, then rerun the already-installed updated test method (or the same
 three-method batch). The two navigation methods are native-green as recorded
 above. No parent worktree, stash, or pending tests were touched.
+
+## Preserve Home input across failed local-file replacement
+
+The parent found that `serviceStarted` dismissed the existing result and cleared
+its journal immediately after a URI was selected, before private copying could
+succeed. A revoked, missing or empty provider could therefore destroy prior
+temporary audio and unsaved text without producing replacement input.
+
+### Ownership and foreground contracts
+
+- Keep the visible `ResultOwner` and its journal while one bounded pending
+  `ResultOwner` imports through the existing dialog model. No second import or
+  second model is created when it is accepted.
+- `HomeFileHandoff` observes only the candidate. On IO, accept a completed private
+  nonempty audio copy or useful, committed, non-discarded text. URI availability,
+  an allocated ID, partial copying, empty bytes, decoding success and model
+  availability are not interchangeable acceptance evidence.
+- On acceptance, checkpoint that candidate, move it into the visible slot, and
+  publish its **current** model state together with `preparing=false` in one
+  update. This retains the existing FGS import-to-running handoff. Only then
+  retire the previous owner under ordinary dismissal semantics.
+- On rejection, show the selection error while preserving prior model, text,
+  audio and checkpoint. Keep preparation/busy until the failed candidate's
+  cancellation and cleanup finish; then clear its bounded slot. Retire collectors
+  on both success and cleanup failure using the shared owner-retirement path.
+  Foreground-service failure/loss also retires an unaccepted candidate.
+- Empty streams are rejected by `RecordingHistory.importAudio` before readiness
+  publication or model preparation, and their private import directory is removed.
+  A corrupt **nonempty** copied source is still accepted for retry even when
+  decoding or ASR later fails. Existing history/provenance/scoped-delete rules
+  continue to govern retained and explicitly dismissed data.
+- While preparation holds the previous result on screen, show indeterminate
+  progress instead of reusing the previous result's completed percentage.
+
+### Verification and remaining native work
+
+- Added 12 JVM cases across `HomeFileHandoffTest` and `EmptyAudioImportTest` for
+  pending/missing/revoked/empty/partial/missing-payload input, useful text,
+  discarded text, corrupt nonempty audio, stale/cancelled callbacks, bounded
+  cleanup holds and atomic current-state publication. The initial nine checks
+  failed under eager acceptance / the old empty-import contract before correction.
+- Focused Home/import tests passed. Full offline verification passed **434 JVM
+  tests, zero failures/ignored**, plus Android instrumentation Kotlin compilation:
+
+  ```powershell
+  .\gradlew.bat :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q --offline
+  ```
+
+- Added `HomeFileReplacementAndroidTest#missingAndEmptyFilesPreservePriorOwnerAudioTextAndJournal`:
+  start with a copied nonempty corrupt source, repeatedly select missing and
+  empty files, and assert retained model/audio/store/preview/checkpoint plus no
+  extra history entries. This fixture is compilation-verified; native execution
+  and the parent's recognized-text reproduction remain pending after cherry-pick.
+- No device, test-APK install, target/native build, parent worktree or stash
+  operation was performed during this follow-up. The parent's new
+  `HomeRecognitionAndroidTest` and `OnboardingRecognitionAndroidTest` were not
+  touched. Candidate state is constant-sized; validation reads file metadata and
+  bounded preview/provenance, never the full input into memory.

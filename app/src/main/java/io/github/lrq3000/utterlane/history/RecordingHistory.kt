@@ -101,6 +101,9 @@ class RecordingHistory(private val root: File, private val clock: () -> Long = S
         }
         try {
             entry.part(0).outputStream().use { input.copyTo(it, 64 * 1024) }
+            // An empty provider stream is not owned replacement input. Reject it
+            // before publishing readiness or starting expensive model preparation.
+            check(entry.part(0).length() > 0) { "Audio file is empty" }
             val completed = entry.copy(status = "ready")
             synchronized(this) { save(completed); put(completed) }
             return completed

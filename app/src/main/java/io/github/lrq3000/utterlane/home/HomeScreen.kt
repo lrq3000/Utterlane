@@ -236,7 +236,9 @@ private fun HomeCaptureControl(state: HomeState, onRecord: () -> Unit) {
 @Composable
 private fun HomeProgress(state: HomeState) {
     val metrics = if (state.capture.active) state.metrics else state.result.capture
-    val percent = if (metrics.phase == CapturePhase.PROCESSING) metrics.percent else state.result.progress
+    // During a candidate copy the visible result still belongs to the prior
+    // workspace. Its completed percentage must not describe the new import.
+    val percent = if (state.preparing) null else if (metrics.phase == CapturePhase.PROCESSING) metrics.percent else state.result.progress
     Column(Modifier.fillMaxWidth().heightIn(min = 104.dp).padding(17.dp), verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)) {
         if (percent == null) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Color.White, trackColor = Color.White.copy(alpha = .25f))
         else {
