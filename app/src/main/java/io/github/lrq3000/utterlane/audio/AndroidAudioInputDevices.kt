@@ -16,7 +16,9 @@ class AndroidAudioInputDevices(context: Context) : AudioInputDevices {
     private val manager = context.getSystemService(AudioManager::class.java)
     private val processIdentity = UUID.randomUUID().toString()
     private var callback: AudioDeviceCallback? = null
+    private val communicationKeys = mutableMapOf<Int, String>()
 
+    @Synchronized
     override fun inputs(): List<AudioInput> {
         val inputs = manager.getDevices(AudioManager.GET_DEVICES_INPUTS)
         val result = linkedMapOf<String, AudioInput>()
@@ -46,6 +48,7 @@ class AndroidAudioInputDevices(context: Context) : AudioInputDevices {
     private fun communicationInputs(inputs: Array<AudioDeviceInfo>, devices: List<AudioDeviceInfo>): List<AudioInput> {
         val sources = inputs.filter { isBluetooth(it.type) }
         val sinks = devices.filter { isBluetooth(it.type) }
+        communicationKeys.keys.retainAll(sinks.mapTo(mutableSetOf()) { it.id })
         val sourcesByAddress = sources.groupBy { it.type to it.address }
         val sinksByAddress = sinks.groupBy { it.type to it.address }
         val remainingSources = sources.associateBy { it.id }.toMutableMap()
@@ -75,10 +78,12 @@ class AndroidAudioInputDevices(context: Context) : AudioInputDevices {
             if (sinkCounts[sink.type] == 1 && source != null && (sink.address.isBlank() || source.address.isBlank())) pair(sink, source)
         }
         return sinks.map { sink ->
-            // Duplicate addresses cannot be durable identities either. Keep both
-            // choices distinct for this process instead of overwriting one entry.
+            // A connected endpoint's key must not change when an unrelated
+            // duplicate arrives/leaves. Mint once per connection, retain ambiguous
+            // process-scoped keys, and prune disconnected IDs to bound the cache.
             val uniqueAddress = sinksByAddress[sink.type to sink.address]?.size == 1
-            AudioInput(key(sink, uniqueAddress), sink.productName.toString(), true, sourceIds[sink.id], sink.id)
+            val identity = communicationKeys.getOrPut(sink.id) { key(sink, uniqueAddress) }
+            AudioInput(identity, sink.productName.toString(), true, sourceIds[sink.id], sink.id)
         }
     }
 
@@ -96,8 +101,11 @@ class AndroidAudioInputDevices(context: Context) : AudioInputDevices {
         check(callback == null)
         callback = object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = onChanged(emptySet())
-            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) =
-                onChanged(removedDevices.mapTo(mutableSetOf()) { it.id })
+            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
+                val removed = removedDevices.mapTo(mutableSetOf()) { it.id }
+                synchronized(this@AndroidAudioInputDevices) { removed.forEach(communicationKeys::remove) }
+                onChanged(removed)
+            }
         }.also { manager.registerAudioDeviceCallback(it, Handler(Looper.getMainLooper())) }
     }
 

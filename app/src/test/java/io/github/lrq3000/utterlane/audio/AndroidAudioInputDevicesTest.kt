@@ -57,6 +57,37 @@ class AndroidAudioInputDevicesTest {
         }
     }
 
+    @Test fun removingUnselectedDuplicateKeepsTheSurvivingChoiceIdentity() = runBlocking {
+        AudioRoutingPlatform().use { platform ->
+            val first = AudioRoutingPlatform.device(8, sco, "same")
+            val other = AudioRoutingPlatform.device(9, sco, "same")
+            platform.communicationDevices = listOf(first, other)
+            val original = platform.devices.inputs().single { it.communicationId == first.id }
+            val controller = platform.controller()
+            assertTrue(controller.select(original.key))
+            platform.communicationDevices = listOf(first)
+            platform.changed(removed = listOf(other))
+            assertEquals(original.key, platform.devices.inputs().single { it.bluetooth }.key)
+            assertEquals(original.key, controller.snapshotForRecording().selected.key)
+        }
+    }
+
+    @Test fun addingDuplicateMetadataDoesNotRenameAnExistingChoice() = runBlocking {
+        AudioRoutingPlatform().use { platform ->
+            val first = AudioRoutingPlatform.device(8, sco, "same")
+            platform.communicationDevices = listOf(first)
+            val original = platform.devices.inputs().single { it.bluetooth }
+            val controller = platform.controller()
+            assertTrue(controller.select(original.key))
+            val other = AudioRoutingPlatform.device(9, sco, "same")
+            platform.communicationDevices = listOf(first, other)
+            platform.changed(added = listOf(other))
+            val choices = platform.devices.inputs().filter { it.bluetooth }
+            assertEquals(2, choices.map { it.key }.distinct().size)
+            assertEquals(original.key, controller.snapshotForRecording().selected.key)
+        }
+    }
+
     @Test fun matchExactAddressesBeforePairingUniqueUnmatchedPorts() {
         AudioRoutingPlatform().use { platform ->
             platform.inputDevices = listOf(platform.phone, AudioRoutingPlatform.device(7, sco, "a", true), AudioRoutingPlatform.device(10, sco, "b", true))
