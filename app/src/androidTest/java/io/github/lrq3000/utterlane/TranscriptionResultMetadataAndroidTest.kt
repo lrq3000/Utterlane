@@ -139,18 +139,24 @@ class TranscriptionResultMetadataAndroidTest {
         try {
             DialogOwner(DialogInput(transcriptId = saved.id, transcriptPath = source.absolutePath)).use { producer ->
                 producer.ready()
-                DialogOwner(DialogInput(transcriptId = saved.id)).use { deletion ->
-                    deletion.ready()
-                    instrumentation.runOnMainSync { deletion.model.requestDeletion() }
-                    withTimeout(5000) { deletion.model.state.first { !it.checkingDeletion && it.deletion != null } }
-                    instrumentation.runOnMainSync { deletion.model.confirmDeletion() }
-                    withTimeout(5000) { deletion.model.state.first { !it.deleting && it.finished } }
-                    assertTrue("The other owner's reader still leases the bytes", source.isFile)
-                    producer.pin(true)
-                    assertNull(app.transcriptHistory.find(saved.id))
-                    assertNull(app.transcriptHistory.find(producer.model.state.value.transcriptId))
-                    assertTrue(io.github.lrq3000.utterlane.asr.TranscriptSource.read(source).discarded)
-                    assertNotNull(producer.model.state.value.message)
+                val working = checkNotNull(producer.model.state.value.store)
+                android.util.Log.i("TranscriptMetadataQA", "Input=${source.absolutePath}, working=${working.file.absolutePath}, canonical=${working.file.canonicalPath}")
+                // This assertion is about an external reader, not incidental
+                // ViewModel ownership. Lease the actual restored/copied store.
+                working.acquire().use {
+                    DialogOwner(DialogInput(transcriptId = saved.id)).use { deletion ->
+                        deletion.ready()
+                        instrumentation.runOnMainSync { deletion.model.requestDeletion() }
+                        withTimeout(5000) { deletion.model.state.first { !it.checkingDeletion && it.deletion != null } }
+                        instrumentation.runOnMainSync { deletion.model.confirmDeletion() }
+                        withTimeout(5000) { deletion.model.state.first { !it.deleting && it.finished } }
+                        assertTrue("The external reader still leases ${working.file}", working.file.isFile)
+                        producer.pin(true)
+                        assertNull(app.transcriptHistory.find(saved.id))
+                        assertNull(app.transcriptHistory.find(producer.model.state.value.transcriptId))
+                        assertTrue(io.github.lrq3000.utterlane.asr.TranscriptSource.read(working.file).discarded)
+                        assertNotNull(producer.model.state.value.message)
+                    }
                 }
             }
         } finally { app.transcriptHistory.delete(saved.id); source.delete() }

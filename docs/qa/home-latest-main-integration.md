@@ -241,3 +241,39 @@ usual offline/in-process/two-worker/quiet flags, then installed only
   versus the restored store's canonical `/data/data/` path. This is being
   investigated at the cache lease identity boundary rather than hidden by a weaker
   assertion or by leasing an unrelated fixture file.
+
+### Confirmed cache-identity production defect
+
+The explicit external reader still failed on the installed 0397643 target:
+`Input=/data/user/0/io.github.lrq3000.utterlane.dhome/cache/transcripts/...`,
+`working=/data/data/io.github.lrq3000.utterlane.dhome/cache/transcripts/...`.
+Restoration canonicalizes the working path, while recovery scans use `cacheDir`'s
+alias. `CacheArtifacts` indexed absolute path strings, so the aliased deletion
+missed the canonical reader's count and physically removed both text and marker.
+
+- The native fixture now explicitly leases `producer.model.state.value.store`
+  and checks that store's file and discard marker. Its original restore input,
+  logical deletion and no-repin assertions are preserved. The lease closes in
+  `use`/finally, including on assertion failure.
+- Added three JVM regressions for working text/sidecar deletion via another
+  pathname, readers acquired through either alias, and pruning through an alias.
+  **All three failed before the production fix.** Dot-segment aliases exercise
+  canonical identity without requiring Windows symlink privileges.
+- `CacheArtifacts.acquire`, `deleteWhenReleased`, and `prune` now resolve canonical
+  identity before entering the registry monitor. Reader release and deferred
+  deletion retain that captured identity. This unifies aliases without changing
+  discard intent, clipboard limits, or history deletion scopes.
+- **46 focused JVM tests passed**, followed by **422 full JVM tests, zero
+  failures/ignored**, plus Android instrumentation Kotlin compilation:
+
+  ```powershell
+  .\gradlew.bat :app:testDebugUnitTest --tests '*CacheArtifactIdentityTest' --tests '*Transcript*Test' :app:compileDebugAndroidTestKotlin "-PqaApplicationIdSuffix=.dhome" "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q --offline
+  .\gradlew.bat :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin "-PqaApplicationIdSuffix=.dhome" "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q --offline
+  ```
+
+The third native method is **not yet green**: the installed target still contains
+the proven pre-fix lease registry. No target/app/native build or target install
+was authorized or performed. The parent must rebuild/install the target with
+this cache fix, then rerun the already-installed updated test method (or the same
+three-method batch). The two navigation methods are native-green as recorded
+above. No parent worktree, stash, or pending tests were touched.
