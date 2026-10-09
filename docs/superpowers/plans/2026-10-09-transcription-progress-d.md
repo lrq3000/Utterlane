@@ -37,19 +37,23 @@ local caches; all build outputs stay in this worktree.
 
 ## Milestone 1 — Measurement contract
 
-- [ ] Extend `asr/CaptureSnapshot` with the existing measured processing rate,
+- [x] Extend `asr/CaptureSnapshot` with the existing measured processing rate,
   published on the same cadence. Test that it is available during file input and
   remains unavailable before a timed completed window.
-- [ ] Add `transcribe/FileTranscriptionProgress.kt`: source total/uncertainty,
+- [x] Add `transcribe/FileTranscriptionProgress.kt`: source total/uncertainty,
   exact EOF accounting, explicit preparing/transcribing/finalizing/saving/terminal
   stages, and an immutable snapshot derived from CaptureSnapshot. Methods:
   `start(hasSpeakerFinalization)`, `inputEnded(samples)`, `finalizing(speakers)`,
   `saving()`, `complete()`, `fail(cancelled)`, `snapshot(capture)`.
-- [ ] Add focused JVM tests for decoded-ahead input, unknown/incorrect metadata,
+- [x] Add focused JVM tests for decoded-ahead input, unknown/incorrect metadata,
   overlapping/repeated processed watermarks, EMA adaptation, zero-length input,
   finalization, errors, cancellation, and no clock-only countdown.
-- [ ] Run the failing tests before implementation; implement and rerun. Commit
+- [x] Run the failing tests before implementation; implement and rerun. Commit
   the working measurement contract and its tests together.
+
+Evidence: baseline CaptureMetrics tests passed. The new contract's red run had
+10 expected failures out of 17 tests (missing rate/progress/stage behavior).
+After implementation, the same focused 17-test command passed.
 
 ## Milestone 2 — Native integration
 

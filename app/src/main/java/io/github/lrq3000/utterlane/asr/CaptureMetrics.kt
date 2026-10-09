@@ -15,6 +15,9 @@ data class CaptureSnapshot(
     val processedSamples: Long = 0,
     val percent: Int? = null,
     val remainingSeconds: Double? = null,
+    // Shared measured window cost: file transcription knows its total before EOF,
+    // whereas the microphone panel only knows its final total after Stop.
+    val processingSecondsPerSample: Double? = null,
     val modelName: String = "",
     val error: String? = null,
     val modelPreparing: Boolean = false,
@@ -143,6 +146,7 @@ class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 10000
             else nextVisual + ((now - nextVisual) / 1000 + 1) * 1000
         val processed = processedEndSample.coerceIn(0, capturedSamples)
         pending = pending.copy(capturedSamples = capturedSamples, processedSamples = processed,
+            processingSecondsPerSample = processingRate,
             waveform = waveform.snapshot(), level = if (pending.signal in setOf(CaptureSignal.NO_FRAMES, CaptureSignal.BLOCKED)) 0f else waveform.level)
         if (pending.phase == CapturePhase.PROCESSING) {
             pending = pending.copy(percent = if (capturedSamples == 0L) 0 else (processed.toDouble() * 100 / capturedSamples).toInt().coerceIn(0, 99),
