@@ -4,6 +4,7 @@ import io.github.lrq3000.utterlane.settings.RuntimeOptions
 
 /** A blocking PCM16 capture source. The worker owns resources; stop is thread-safe. */
 interface AudioCapture {
+    fun configureMicrophone(options: io.github.lrq3000.utterlane.audio.MicrophoneOptions) {}
     fun startRecording(onSamples: (ShortArray) -> Unit, shouldContinue: () -> Boolean = { true })
     // Existing injected PCM sources need not know about Android buffer sizing.
     // Forward to their original entry point rather than replacing the fake source.
