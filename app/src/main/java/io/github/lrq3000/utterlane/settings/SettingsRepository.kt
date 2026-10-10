@@ -58,6 +58,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         private val RUNTIME_GROUP_KEYS = RuntimeOptions.fields.groupBy { it.group }
             .mapValues { (_, fields) -> fields.map { it.key }.toSet() }
 
+        // Legacy persisted names remain readable after removal of the size menu.
         const val BUTTON_SIZE_SMALL = "small"   // 44dp
         const val BUTTON_SIZE_MEDIUM = "medium" // 56dp (default)
         const val BUTTON_SIZE_LARGE = "large"   // 72dp
@@ -261,21 +262,12 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     }
 
     val floatingButtonSizeDp: Flow<Int> = dataStore.data.map(::readFloatingButtonSizeDp)
-    val floatingButtonSize: Flow<String> = floatingButtonSizeDp.map { FloatingButtonSize.preset(it) ?: "custom" }
-
-    suspend fun setFloatingButtonSize(size: String) {
-        require(size in setOf(BUTTON_SIZE_SMALL, BUTTON_SIZE_MEDIUM, BUTTON_SIZE_LARGE))
-        dataStore.edit { preferences ->
-            preferences[FLOATING_BUTTON_SIZE_KEY] = size
-            preferences.remove(FLOATING_BUTTON_SIZE_DP_KEY)
-        }
-    }
 
     suspend fun setFloatingButtonSizeDp(dp: Int) {
         val bounded = FloatingButtonSize.bounded(dp)
         dataStore.edit { preferences ->
-            // Publish mode and size together; a collector must never see a stale
-            // custom diameter paired with a newly selected preset (or vice versa).
+            // Keep the legacy representation in sync with the pinched diameter
+            // for existing installations, publishing both keys atomically.
             preferences[FLOATING_BUTTON_SIZE_KEY] = FloatingButtonSize.preset(bounded) ?: "custom"
             preferences[FLOATING_BUTTON_SIZE_DP_KEY] = bounded
         }

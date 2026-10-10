@@ -54,8 +54,8 @@ class FloatingMicServiceTest {
 
     @After fun destroy() { controller.destroy() }
 
-    @Test fun presetChangeUpdatesExistingViewWithoutClosingSession() = runBlocking {
-        repository.setFloatingButtonSize(SettingsRepository.BUTTON_SIZE_LARGE)
+    @Test fun persistedDiameterUpdatesExistingViewWithoutClosingSession() = runBlocking {
+        repository.setFloatingButtonSizeDp(72)
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals((72 * service.resources.displayMetrics.density).toInt(), button.layoutParams.width)
         assertSame(button, ReflectionHelpers.getField<View>(service, "micButton"))
@@ -85,7 +85,7 @@ class FloatingMicServiceTest {
         verify(exactly = 1) { session.stop() }
     }
 
-    @Test fun pinchResizesWithoutTogglingAndPersistsCustomDpAfterLastPointer() = runBlocking {
+    @Test fun pinchResizesWithoutTogglingAndRestoresCustomDpAfterServiceRecreation() = runBlocking {
         touch(MotionEvent.ACTION_DOWN, 20f, 20f)
         multiTouch(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 20f, 60f)
         multiTouch(MotionEvent.ACTION_MOVE, 10f, 70f)
@@ -96,6 +96,12 @@ class FloatingMicServiceTest {
         assertEquals((84 * service.resources.displayMetrics.density).toInt(), button.layoutParams.width)
         assertEquals(84, repository.floatingButtonSizeDp.first())
         verify(exactly = 0) { session.stop() }
+        controller.destroy()
+        controller = Robolectric.buildService(FloatingMicService::class.java).create()
+        service = controller.get()
+        shadowOf(Looper.getMainLooper()).idle()
+        val restored = ReflectionHelpers.getField<View>(service, "micButton")
+        assertEquals((84 * service.resources.displayMetrics.density).toInt(), restored.layoutParams.width)
     }
 
     @Test fun coincidentSecondPointerStillSuppressesTap() {
@@ -151,7 +157,7 @@ class FloatingMicServiceTest {
     @Test fun restoredPositionAndResizedWindowFitInsideTheDisplay() = runBlocking {
         controller.destroy()
         repository.setButtonPosition(Int.MAX_VALUE, Int.MAX_VALUE)
-        repository.setFloatingButtonSize("large")
+        repository.setFloatingButtonSizeDp(72)
         controller = Robolectric.buildService(FloatingMicService::class.java).create()
         service = controller.get()
         shadowOf(Looper.getMainLooper()).idle()

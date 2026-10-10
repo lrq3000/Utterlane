@@ -20,18 +20,15 @@ class FloatingButtonSizeTest {
         }
     }
 
-    @Test fun customSizeIsBoundedPersistedAndReplacedByAPresetAtomically() = runBlocking {
+    @Test fun pinchedSizeIsBoundedPersistedAndOverridesLegacySizeWithoutChangingEnablement() = runBlocking {
         val store = MemoryStore()
         val repository = SettingsRepository(store)
         repository.setServiceEnabled(true)
+        store.edit { it[stringPreferencesKey("floating_button_size")] = "large" }
         for ((requested, expected) in listOf(83 to 83, -100 to 44, 10000 to 144)) {
             repository.setFloatingButtonSizeDp(requested)
             assertEquals(expected, SettingsRepository(store).floatingButtonSizeDp.first())
-            assertEquals(FloatingButtonSize.preset(expected) ?: "custom", repository.floatingButtonSize.first())
         }
-        repository.setFloatingButtonSize("medium")
-        assertEquals(56, repository.floatingButtonSizeDp.first())
-        assertFalse(store.data.value.asMap().containsKey(intPreferencesKey("floating_button_size_dp")))
         assertTrue(repository.serviceEnabled.first())
     }
 
