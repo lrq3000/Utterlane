@@ -8,6 +8,8 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
+import android.media.PlaybackParams
+import androidx.annotation.MainThread
 import androidx.core.content.ContextCompat
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.history.HistoryEntry
@@ -19,7 +21,10 @@ import kotlinx.coroutines.flow.StateFlow
 
 data class AudioPlaybackState(val owner: String? = null, val audioId: String? = null, val active: Boolean = false,
     val playing: Boolean = false, val preparing: Boolean = false, val positionMs: Long = 0,
-    val durationMs: Long = 0, val error: String? = null)
+    val durationMs: Long = 0, val error: String? = null,
+    // Selection survives source/owner changes; applied speed belongs to the native
+    // player only. Null means it has not been observed, never an assumed success.
+    val requestedSpeed: Float = 1f, val appliedSpeed: Float? = null, val speedUnavailable: Boolean = false)
 
 /**
  * Main-thread-confined local playback, shared across dialogs. Each dialog owns a
@@ -27,6 +32,9 @@ data class AudioPlaybackState(val owner: String? = null, val audioId: String? = 
  * Only the active player holds a source lease; sharing/transcription own theirs.
  */
 class AudioPlaybackController(private val app: UtterlaneApp) {
+    companion object {
+        val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+    }
     private val mutable = MutableStateFlow(AudioPlaybackState())
     val state: StateFlow<AudioPlaybackState> = mutable
     private var player: MediaPlayer? = null
@@ -61,7 +69,8 @@ class AudioPlaybackController(private val app: UtterlaneApp) {
         val token = generation
         wantsPlayback = true
         periodMs = VisualRefreshRate.intervalMillis(rate)
-        mutable.value = AudioPlaybackState(owner, id, active = true, preparing = true)
+        mutable.value = AudioPlaybackState(owner, id, active = true, preparing = true,
+            requestedSpeed = mutable.value.requestedSpeed)
         preparation = app.applicationScope.launch {
             var acquired: Closeable? = null
             try {
@@ -83,7 +92,27 @@ class AudioPlaybackController(private val app: UtterlaneApp) {
         }
     }
 
+    /** UI position refresh cadence, independent of audible playback speed. */
     fun setRate(owner: String, rate: Int) { if (mutable.value.owner == owner) periodMs = VisualRefreshRate.intervalMillis(rate) }
+
+    @MainThread
+    fun setPlaybackSpeed(owner: String, speed: Float) {
+        if (mutable.value.owner != owner || !mutable.value.active) return
+        require(speed in PLAYBACK_SPEEDS) { "Unsupported playback speed: $speed" }
+        mutable.value = mutable.value.copy(requestedSpeed = speed, speedUnavailable = false)
+        // Android's playbackParams setter can start a paused MediaPlayer. Keep
+        // changes purely declarative until an authorized start (including seeks).
+        if (prepared && !seeking && wantsPlayback && mutable.value.playing) applyPlaybackSpeed()
+    }
+
+    /**
+     * Call on Main only after microphone admission succeeds. Pauses this controller's
+     * current owner, including pending preparation/seek autoplay, without releasing
+     * its source lease or position. Capture completion does not resume playback;
+     * only a later explicit play request can do so. Inactive playback is a no-op.
+     */
+    @MainThread
+    fun pauseForCapture() { mutable.value.owner?.let(::pause) }
 
     fun pause(owner: String) {
         if (mutable.value.owner != owner || !mutable.value.active) return
@@ -113,7 +142,7 @@ class AudioPlaybackController(private val app: UtterlaneApp) {
         ticker?.cancel(); ticker = null
         player?.release(); player = null
         prepared = false; seeking = false; currentPart = part
-        mutable.value = mutable.value.copy(preparing = true, playing = false)
+        mutable.value = mutable.value.copy(preparing = true, playing = false, appliedSpeed = null, speedUnavailable = false)
         val candidate = MediaPlayer()
         player = candidate
         try {
@@ -184,12 +213,31 @@ class AudioPlaybackController(private val app: UtterlaneApp) {
         }
         try {
             player?.start()
+            applyPlaybackSpeed()
             mutable.value = mutable.value.copy(playing = true, preparing = false, error = null)
             ticker?.cancel()
             ticker = app.applicationScope.launch {
                 while (isActive && wantsPlayback && prepared && !seeking) { updatePosition(); delay(periodMs) }
             }
         } catch (e: Exception) { failed(e) }
+    }
+
+    /** Called only while playing, after focus and the user's play intent are checked. */
+    private fun applyPlaybackSpeed() {
+        val current = player ?: return
+        val requested = mutable.value.requestedSpeed
+        var rejected = false
+        try {
+            current.playbackParams = PlaybackParams().allowDefaults().setPitch(1f).setSpeed(requested)
+        } catch (e: RuntimeException) {
+            // Optional speed support must not destroy otherwise usable playback.
+            android.util.Log.w("AudioPlayback", "Could not apply playback speed $requested", e)
+            rejected = true
+        }
+        val observed = runCatching { current.playbackParams.speed }
+            .getOrNull()?.takeIf { it.isFinite() && it > 0f }
+        mutable.value = mutable.value.copy(appliedSpeed = observed,
+            speedUnavailable = rejected || observed != requested)
     }
 
     private fun updatePosition() {
@@ -216,6 +264,7 @@ class AudioPlaybackController(private val app: UtterlaneApp) {
         val previous = lease; lease = null
         app.applicationScope.launch(Dispatchers.IO) { previous?.close() }
         entry = null; timeline = null
-        mutable.value = AudioPlaybackState(owner = mutable.value.owner, audioId = mutable.value.audioId)
+        mutable.value = AudioPlaybackState(owner = mutable.value.owner, audioId = mutable.value.audioId,
+            requestedSpeed = mutable.value.requestedSpeed)
     }
 }

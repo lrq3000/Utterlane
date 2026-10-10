@@ -3,7 +3,6 @@ package io.github.lrq3000.utterlane.asr
 import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
-import android.media.MediaRecorder
 import android.util.Log
 import android.os.PowerManager
 import io.github.lrq3000.utterlane.UtterlaneApp
@@ -11,6 +10,7 @@ import io.github.lrq3000.utterlane.settings.RuntimeOptions
 import java.util.concurrent.atomic.AtomicBoolean
 import io.github.lrq3000.utterlane.audio.*
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 
 class AudioRecorder : AudioCapture {
 
@@ -31,7 +31,16 @@ class AudioRecorder : AudioCapture {
     private var route: AndroidCaptureRoute? = null
     private val silencing = CaptureSilencing { observer?.onSilenced(it) }
     private var continueCapture: () -> Boolean = { false }
+    private var configuredMicrophone: MicrophoneOptions? = null
+    private var microphoneOptions = MicrophoneOptions.STANDARD
+    private var effects: MicrophoneEffects? = null
+    private var diagnostic: MicrophoneDiagnostics.Session? = null
+    private var effectInputId: Int? = null
     override fun setObserver(observer: CaptureObserver) { this.observer = observer }
+    override fun configureMicrophone(options: MicrophoneOptions) {
+        check(!isRecording.get()) { "Microphone configuration is frozen during capture" }
+        configuredMicrophone = options
+    }
 
     override fun startRecording(onSamples: (ShortArray) -> Unit, shouldContinue: () -> Boolean) =
         startRecording(RuntimeOptions(), onSamples, shouldContinue)
@@ -41,18 +50,28 @@ class AudioRecorder : AudioCapture {
         if (stopRequested.get()) return
         if (!isRecording.compareAndSet(false, true)) return
         continueCapture = { isRecording.get() && !stopRequested.get() && shouldContinue() }
+        var captureFailure: String? = null
 
         try {
             val loop = CaptureReadLoop(options = options)
             readLoop = loop
             val bufferSize = buffers.recorderBufferBytes(AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT))
             val app = UtterlaneApp.instance
+            microphoneOptions = configuredMicrophone ?: runBlocking { app.settingsRepository.microphoneSettings.first().options }
+            diagnostic = app.microphoneDiagnostics.begin(microphoneOptions)
             val selection = try { runBlocking { app.audioInputs.snapshotForRecording() } }
             catch (e: Exception) {
                 Log.w(TAG, "Input preferences unavailable; starting with phone microphone", e)
                 AudioInputState(listOf(AudioInput(AudioInput.PHONE_KEY, "", false)), InputPreferences())
             }
-            route = AndroidCaptureRoute(app, app.audioInputs, selection, continueCapture) { observer?.onInputChanged(it) }
+            route = AndroidCaptureRoute(app, app.audioInputs, selection, continueCapture, onState = { state ->
+                observer?.onInputChanged(state)
+                diagnostic?.input(state)
+                if (effectInputId != state.actual?.inputId) {
+                    effectInputId = state.actual?.inputId
+                    effects?.refresh()?.let { diagnostic?.effects(it) }
+                }
+            }, options = microphoneOptions, onDiagnostic = { diagnostic?.route(it) })
             if (!openRecorder(bufferSize)) return
             observer?.onStarted()
             // Nonblocking is supported since API 23 (minSdk is 26). Only this
@@ -75,18 +94,27 @@ class AudioRecorder : AudioCapture {
                 routeRecoveryRequested = { route?.takeReopenRequest() == true }
             )
         } catch (e: IllegalArgumentException) {
+            captureFailure = e.message ?: e.javaClass.simpleName
             Log.e(TAG, "Failed to create AudioRecord", e)
             throw e
         } catch (e: IllegalStateException) {
+            captureFailure = e.message ?: e.javaClass.simpleName
             Log.e(TAG, "AudioRecord illegal state", e)
             throw e
         } catch (e: SecurityException) {
+            captureFailure = e.message ?: e.javaClass.simpleName
             Log.e(TAG, "AudioRecord permission denied", e)
+            throw e
+        } catch (e: RuntimeException) {
+            captureFailure = e.message ?: e.javaClass.simpleName
+            Log.e(TAG, "Audio capture failed", e)
             throw e
         } finally {
             isRecording.set(false)
             readLoop = null
-            try { closeRecorder() } finally { route?.close(); route = null }
+            try { closeRecorder() } finally {
+                try { route?.close() } finally { route = null; diagnostic?.finish(captureFailure); diagnostic = null }
+            }
         }
     }
 
@@ -94,7 +122,7 @@ class AudioRecorder : AudioCapture {
     private fun openRecorder(bufferSize: Int): Boolean {
         if (!continueCapture()) return false
         audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
+            microphoneOptions.source.androidSource,
             SAMPLE_RATE,
             CHANNEL_CONFIG,
             AUDIO_FORMAT,
@@ -109,6 +137,11 @@ class AudioRecorder : AudioCapture {
         }
 
         val record = checkNotNull(audioRecord)
+        diagnostic?.format(record.audioSource, record.sampleRate, record.channelCount, record.audioSessionId,
+            record.audioFormat, capturing = false)
+        MicrophoneCaptureConfiguration.problem(UtterlaneApp.instance, record, microphoneOptions)?.let { error(it) }
+        effects = MicrophoneEffects(record.audioSessionId, microphoneOptions.preprocessing)
+        diagnostic?.effects(checkNotNull(effects).refresh())
         val invalidateConfiguration = silencing.opened {
             if (android.os.Build.VERSION.SDK_INT >= 29) record.activeRecordingConfiguration?.isClientSilenced else false
         }
@@ -128,6 +161,8 @@ class AudioRecorder : AudioCapture {
         }
         if (!continueCapture()) return false
         record.startRecording()
+        diagnostic?.format(record.audioSource, record.sampleRate, record.channelCount, record.audioSessionId, record.audioFormat)
+        diagnostic?.effects(checkNotNull(effects).refresh())
         route?.started()
         silencing.poll()
         return true
@@ -142,7 +177,10 @@ class AudioRecorder : AudioCapture {
             route?.detach(record)
             try { record.stop() } catch (e: IllegalStateException) { Log.e(TAG, "Error stopping AudioRecord", e) }
             if (android.os.Build.VERSION.SDK_INT >= 29) platformCallback?.let { record.unregisterAudioRecordingCallback(it) }
-        } finally { platformCallback = null; record.release() }
+        } finally {
+            platformCallback = null
+            try { effects?.close() } finally { effects = null; effectInputId = null; record.release() }
+        }
     }
 
     override fun resumeAfterSleep() { readLoop?.resumeAfterSleep() }

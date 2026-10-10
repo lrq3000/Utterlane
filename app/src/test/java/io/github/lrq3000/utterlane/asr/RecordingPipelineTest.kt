@@ -16,6 +16,35 @@ class RecordingPipelineTest {
     @get:Rule val temporary = TemporaryFolder()
     private val options = RuntimeOptions(queueSeconds = 1)
 
+    @Test fun transcriptionGainUsesDerivedBuffersAndDrainsTailWhileRawSpoolIsPreserved() = runBlocking {
+        val history = RecordingHistory(temporary.root)
+        val config = io.github.lrq3000.utterlane.audio.MicrophoneOptions.HFP
+        val recording = history.begin(HistoryRetention.FOREVER, microphone = config)
+        val original = ShortArray(1617) { (it % 200 - 100).toShort() }
+        val source = object : AudioCapture {
+            override fun startRecording(onSamples: (ShortArray) -> Unit, shouldContinue: () -> Boolean) {
+                for (offset in original.indices step 113) {
+                    if (!shouldContinue()) return
+                    onSamples(original.copyOfRange(offset, minOf(original.size, offset + 113)))
+                }
+            }
+            override fun stop() {}
+        }
+        val gain = io.github.lrq3000.utterlane.audio.TranscriptionGain(config.gain)
+        val derived = ArrayList<Short>()
+        val sink: suspend (ShortArray) -> Unit = { derived.addAll(it.toList()) }
+        val result = RecordingPipeline(source, history, recording, options).run(
+            prepare = {}, accept = { gain.deliver(it, sink) }, finish = { gain.drain(sink) })
+        recording.finish(false)
+        assertNull(result.captureError); assertNull(result.storageError); assertNull(result.processingError)
+        assertEquals(original.size, derived.size)
+        val expectedGain = io.github.lrq3000.utterlane.audio.TranscriptionGain(config.gain)
+        val expected = expectedGain.accept(original.copyOf()) + expectedGain.finish()
+        assertArrayEquals(expected, derived.toShortArray())
+        assertFalse(original.contentEquals(expected))
+        assertArrayEquals(original, history.read(recording.entry.id, 0, original.size))
+    }
+
     @Test fun consumerCleanupFailureDoesNotPreventAudioFinalization() = runBlocking {
         val history = RecordingHistory(temporary.root)
         val recording = history.begin(HistoryRetention.NONE)

@@ -37,7 +37,8 @@ class HomeWorkspaceAndroidTest {
     private val ui = OnboardingTestUi()
 
     @Test fun captureSurvivesNavigationAndRecreationAndNextReleasesTemporaryAudio() = runBlocking<Unit> {
-        assertTrue("Run on the parent-owned isolated QA identity", app.packageName.endsWith(".dhome"))
+        assertTrue("Run on an isolated Home/combined ports QA identity",
+            app.packageName.endsWith(".dhome") || app.packageName.endsWith(".audiorecorderports"))
         ui.prepare()
         val onboarding = OnboardingRepository(app)
         val previousOnboarding = onboarding.progress.first()
@@ -129,7 +130,8 @@ class HomeWorkspaceAndroidTest {
     }
 
     @Test fun localFileFailureRetainsOwnedCopyAndRecoveryAfterMicrophoneDenial() = runBlocking<Unit> {
-        assertTrue("Run on the parent-owned isolated QA identity", app.packageName.endsWith(".dhome"))
+        assertTrue("Run on an isolated Home/combined ports QA identity",
+            app.packageName.endsWith(".dhome") || app.packageName.endsWith(".audiorecorderports"))
         ui.prepare()
         val onboarding = OnboardingRepository(app)
         val previousOnboarding = onboarding.progress.first()

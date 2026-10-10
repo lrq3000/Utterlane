@@ -9,6 +9,9 @@ data class AudioInput(
     val communicationId: Int? = null
 ) {
     val isPhone: Boolean get() = key == PHONE_KEY
+    // Closing SCO can remove only its input port while the headset remains
+    // connected. Modern selection belongs to the communication endpoint instead.
+    val connectionId: Int? get() = communicationId ?: inputId
     companion object { const val PHONE_KEY = "phone" }
 }
 

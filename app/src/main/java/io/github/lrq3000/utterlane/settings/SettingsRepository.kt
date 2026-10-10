@@ -18,6 +18,9 @@ import io.github.lrq3000.utterlane.asr.ModelIdleTimeout
 import io.github.lrq3000.utterlane.history.HistoryRetention
 import io.github.lrq3000.utterlane.audio.InputPreferences
 import io.github.lrq3000.utterlane.audio.AudioInput
+import io.github.lrq3000.utterlane.audio.MicrophoneSettings
+import io.github.lrq3000.utterlane.audio.MicrophonePreset
+import io.github.lrq3000.utterlane.audio.MicrophoneOptions
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -28,6 +31,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         private val SERVICE_ENABLED_KEY = booleanPreferencesKey("service_enabled")
         private val AUDIO_INPUT_KEY = stringPreferencesKey("audio_input")
         private val PREFER_BLUETOOTH_KEY = booleanPreferencesKey("prefer_bluetooth_microphone")
+        private val MICROPHONE_KEYS = (MicrophoneOptions.HFP.toMap().keys + "preset")
+            .associateWith { stringPreferencesKey("microphone_$it") }
         private val THEME_KEY = stringPreferencesKey("theme_mode")
         private val SHOW_TRANSCRIPTION_STREAM_STATISTICS_KEY = booleanPreferencesKey("show_transcription_stream_statistics")
         private val VISUAL_REFRESH_RATE_KEY = intPreferencesKey("visual_refresh_rate")
@@ -40,6 +45,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         private val AUDIO_MONITOR_ENABLED_KEY = booleanPreferencesKey("audio_monitor_enabled")
         private val MONITORED_FOLDERS_KEY = stringSetPreferencesKey("monitored_folders")
         private val FLOATING_BUTTON_SIZE_KEY = stringPreferencesKey("floating_button_size")
+        private val FLOATING_BUTTON_SIZE_DP_KEY = intPreferencesKey("floating_button_size_dp")
         private val HISTORY_RETENTION_KEY = stringPreferencesKey("history_retention")
         private val AUDIO_HISTORY_ENABLED_KEY = booleanPreferencesKey("audio_history_enabled")
         private val AUDIO_HISTORY_RETENTION_KEY = stringPreferencesKey("audio_history_retention")
@@ -52,6 +58,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         private val RUNTIME_GROUP_KEYS = RuntimeOptions.fields.groupBy { it.group }
             .mapValues { (_, fields) -> fields.map { it.key }.toSet() }
 
+        // Legacy persisted names remain readable after removal of the size menu.
         const val BUTTON_SIZE_SMALL = "small"   // 44dp
         const val BUTTON_SIZE_MEDIUM = "medium" // 56dp (default)
         const val BUTTON_SIZE_LARGE = "large"   // 72dp
@@ -68,6 +75,38 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         preferences[AUDIO_INPUT_KEY] ?: AudioInput.PHONE_KEY, preferences[PREFER_BLUETOOTH_KEY] ?: false)
 
     val audioInputPreferences: Flow<InputPreferences> = dataStore.data.map(::readAudioInput)
+    private fun readMicrophone(preferences: Preferences): MicrophoneSettings {
+        val raw = preferences.asMap()
+        return MicrophoneSettings.fromMap(MICROPHONE_KEYS.mapNotNull { (name, key) ->
+            (raw[key] as? String)?.let { name to it }
+        }.toMap())
+    }
+    val microphoneSettings: Flow<MicrophoneSettings> = dataStore.data.map(::readMicrophone)
+
+    private fun writeMicrophone(preferences: MutablePreferences, preset: MicrophonePreset, options: MicrophoneOptions) {
+        (options.toMap() + ("preset" to preset.name)).forEach { (name, value) -> preferences[MICROPHONE_KEYS.getValue(name)] = value }
+    }
+
+    suspend fun setMicrophonePreset(preset: MicrophonePreset) {
+        dataStore.edit { preferences ->
+            val options = when (preset) {
+                MicrophonePreset.HFP_PRESET -> MicrophoneOptions.HFP
+                MicrophonePreset.DISABLED -> MicrophoneOptions.STANDARD
+                MicrophonePreset.CUSTOM -> readMicrophone(preferences).options
+            }
+            writeMicrophone(preferences, preset, options)
+        }
+    }
+
+    suspend fun updateMicrophoneOptions(change: (MicrophoneOptions) -> MicrophoneOptions) {
+        dataStore.edit { preferences ->
+            val previous = readMicrophone(preferences)
+            val next = change(previous.options)
+            writeMicrophone(preferences, if (next == previous.options) previous.preset else MicrophonePreset.CUSTOM, next)
+        }
+    }
+
+    suspend fun resetMicrophoneOptions() = setMicrophonePreset(MicrophonePreset.HFP_PRESET)
 
     /** The transform sees the latest values inside the transaction, including manual overrides. */
     suspend fun updateAudioInput(transform: (InputPreferences) -> InputPreferences): InputPreferences {
@@ -217,13 +256,20 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         preferences[MONITORED_FOLDERS_KEY] ?: emptySet()
     }
 
-    val floatingButtonSize: Flow<String> = dataStore.data.map { preferences ->
-        preferences[FLOATING_BUTTON_SIZE_KEY] ?: BUTTON_SIZE_MEDIUM
+    private fun readFloatingButtonSizeDp(preferences: Preferences): Int {
+        val raw = preferences.asMap()
+        return FloatingButtonSize.diameter(raw[FLOATING_BUTTON_SIZE_KEY] as? String, raw[FLOATING_BUTTON_SIZE_DP_KEY] as? Int)
     }
 
-    suspend fun setFloatingButtonSize(size: String) {
+    val floatingButtonSizeDp: Flow<Int> = dataStore.data.map(::readFloatingButtonSizeDp)
+
+    suspend fun setFloatingButtonSizeDp(dp: Int) {
+        val bounded = FloatingButtonSize.bounded(dp)
         dataStore.edit { preferences ->
-            preferences[FLOATING_BUTTON_SIZE_KEY] = size
+            // Keep the legacy representation in sync with the pinched diameter
+            // for existing installations, publishing both keys atomically.
+            preferences[FLOATING_BUTTON_SIZE_KEY] = FloatingButtonSize.preset(bounded) ?: "custom"
+            preferences[FLOATING_BUTTON_SIZE_DP_KEY] = bounded
         }
     }
 

@@ -48,22 +48,37 @@ internal class OnboardingTestUi {
         }
         return found
     }
-    fun click(id: String, windowId: Int? = null) {
-        val node = awaitNode(id, scrollAction = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) {
+    fun click(id: String, windowId: Int? = null, scroll: Boolean = true) {
+        val node = awaitNode(id, scrollAction = if (scroll) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else null) {
             it.viewIdResourceName == id && (windowId == null || it.windowId == windowId)
         }
-        try { assertTrue("Cannot click $id", node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) }
+        clickNode(node, id)
+    }
+    /** Switches carry an accessible name; their separate headline is not clickable. */
+    fun clickDescription(text: String) {
+        val node = awaitNode(text, scrollAction = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) {
+            it.contentDescription?.toString() == text && it.isVisibleToUser && it.isClickable
+        }
+        clickNode(node, text)
+    }
+    private fun clickNode(node: AccessibilityNodeInfo, label: String) {
+        try { assertTrue("Cannot click $label", node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) }
         finally { @Suppress("DEPRECATION") node.recycle() }
     }
 
     /** Text-based controls outside the guide share the same real-window scrolling rules. */
-    fun clickText(text: String) {
+    fun clickText(text: String, windowId: Int? = null) {
         var node = awaitNode(text, scrollAction = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) {
-            it.text?.toString() == text && it.isVisibleToUser
+            it.text?.toString() == text && it.isVisibleToUser && (windowId == null || it.windowId == windowId)
         }
+        val ancestry = mutableListOf<String>()
         try {
             while (!node.isClickable) {
-                val parent = node.parent ?: error("No clickable parent for $text")
+                ancestry.add("window=${node.windowId}, text=${node.text}, class=${node.className}, checkable=${node.isCheckable}")
+                val parent = node.parent ?: run {
+                    screenshot("click-text-failure")
+                    error("No clickable parent for $text (requested window=$windowId): $ancestry")
+                }
                 @Suppress("DEPRECATION") node.recycle()
                 node = parent
             }

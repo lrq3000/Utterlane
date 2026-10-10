@@ -136,8 +136,8 @@ Phone or a wired/USB input also turns off automatic Bluetooth preference.
 When a selected microphone disappears, the selector resets to Phone (or another
 available Bluetooth microphone when automatic preference is on). With automatic
 preference off, a disconnected selection is not restored just because it reconnects.
-Devices without a stable identity supplied by Android may also reset after an app
-process restart; enable automatic preference if any Bluetooth microphone is suitable.
+Devices whose identity is missing or ambiguous may also reset after an app process
+restart; enable automatic preference if any Bluetooth microphone is suitable.
 
 Settings changes and newly connected microphones apply to the **next recording**.
 The small **Input** caption in the waveform panel reports the actual recording input.
@@ -157,6 +157,80 @@ the hardware may introduce a short gap, and calls or microphone restrictions can
 prevent even the phone from capturing. If fallback also fails, the app reports the
 capture failure and uses its existing recording-recovery flow; it does not silently
 claim that recording continues. Stop and Cancel always take precedence over recovery.
+
+### Microphone processing presets
+
+**Settings → Microphone → Microphone processing** offers three choices:
+
+- **HFP preset (default):** `VOICE_RECOGNITION` audio source,
+  `HFP_VOICE_RECOGNITION` Bluetooth route, requested `NORMAL` audio mode,
+  `AGC_ONLY` Android preprocessing, and `AUTO_LEVEL` transcription gain.
+- **Disabled:** Android's default source and processing, Standard SCO routing
+  in communication mode, and no transcription software gain. Microphone recording
+  remains available.
+- **Custom:** adjust source, Bluetooth route/mode, preprocessing and gain separately.
+  Entering Custom retains the current values; its controls can be collapsed.
+  **Reset to HFP preset** restores all five defaults together.
+
+Existing installations receive the HFP processing default when no processing choice
+has been stored. The selected microphone and **Always prefer a Bluetooth microphone**
+remain separate choices; the HFP preset does not select a headset by itself.
+
+On Android 12+, HFP requires **Nearby devices** access. An explicit Bluetooth action
+can request it; simply opening Settings with the default preset does not. If denied,
+Phone and file transcription remain usable. Use **Grant Nearby devices for HFP** or
+**Open app permission settings** to grant access later. HFP also needs a compatible
+connected headset. HFP link setup has an eight-second deadline, with Phone capturing
+while it proceeds. Confirming the new input then accounts for the actual client-buffer
+duration. Failure uses the persistent Phone-fallback warning described above.
+
+Custom offers three explicit Bluetooth routes:
+
+- **STANDARD_SCO:** request classic SCO, including on Android 12 and later.
+- **HFP_VOICE_RECOGNITION:** request the headset's voice-recognition transport.
+- **COMMUNICATION_DEVICE:** explicitly use Android 12+ communication-device routing,
+  including compatible LE Audio inputs. It is unavailable on older Android.
+
+Each route honors the requested `NORMAL` or `IN_COMMUNICATION` mode. Utterlane does
+not silently select a different Bluetooth API or force another mode. If Android
+does not apply the requested combination, the persistent warning explains Phone
+fallback. The saved processing choices remain available for a subsequent attempt.
+
+Processing choices apply to the **next recording**. The active session retains its
+starting configuration, including after native microphone recovery. Android effect
+support varies by device. Explicit audio sources must match Android's declaration;
+`UNPROCESSED` also requires advertised platform support. An incompatible source or
+PCM configuration stops capture with an explanation instead of silently substituting
+another configuration. `DEFAULT` deliberately lets Android choose its default source.
+
+Actual input and mode are checked around PCM reads. Captured audio is retained through
+transitions; a new input or Phone fallback is confirmed only after stable reads have
+passed through the client buffer. Continuous matching audio during this verification
+is not treated as a recording stall, including with larger capture-buffer settings.
+
+Software gain affects the transcription/diarization stream, while history retains
+the original PCM delivered by Android. Playback and export use that preserved audio.
+Each microphone history entry retains its gain choice for retries; older entries and
+imported files use no gain. Auto level uses bounded gain rather than discarding quiet
+samples. Android/headset processing may already be present in the captured source.
+
+Expand **Microphone diagnostics** for the current or last recording's requested and
+observed source, route, mode and effects. These process-local details contain no speech,
+redact device addresses, and are copied only when you tap **Copy diagnostics**. They
+describe the recorded session, not the settings that will apply to the next one.
+
+### Resizing the floating microphone
+
+Use **two fingers directly on the floating mic**: spread them to enlarge it, or pinch
+them together to shrink it. One finger drags it to another position; a deliberate tap
+starts/stops recording. Resizing and dragging do not turn into a recording tap when
+you lift your fingers.
+
+The chosen diameter is saved and restored, with limits to keep the control usable
+and inside the display. Resizing works during capture without restarting the recording.
+There is no Button Size menu in Settings. Previously saved Small/Medium/Large sizes
+are retained until you resize. The floating mic can record without an installed speech
+model; after stopping, the retained audio is available through model recovery.
 
 ## Models and languages
 
@@ -409,9 +483,17 @@ local and independent of recognition, pauses on focus/headphone/background chang
 and uses the visual-refresh preference for position updates. A transcript whose
 source expired remains readable; audio-dependent actions explain its absence.
 
+The playback speed menu offers **0.5×, 0.75×, 1×, 1.25×, 1.5×, 1.75× and 2×**.
+Selecting a speed while paused keeps the position and does not start playback; the
+selection is applied on explicit Resume. It also survives hourly audio-part changes.
+Starting an accepted microphone recording pauses Utterlane's own playback, including
+pending playback preparation, so it does not start later over your recording.
+
 If the microphone or storage itself fails, recording stops with an error and the
 successfully saved portion remains available. Storage-writer overload drains its
 bounded buffer, including the block that detected overload, before finalization.
+Storage-full errors explain that you can free space or choose another save destination;
+other write failures retain their actual cause rather than being mislabeled as full.
 
 Saved history is private to the app and excluded from Android cloud backup and
 device transfer. Exports and clipboard transfers give data to their receiving

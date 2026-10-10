@@ -9,6 +9,7 @@ import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.asr.*
 import io.github.lrq3000.utterlane.history.*
 import io.github.lrq3000.utterlane.settings.VisualRefreshRate
+import io.github.lrq3000.utterlane.util.StorageFailure
 import java.io.File
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -222,6 +223,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         }
                         lastRequestedModelId = app.modelManager.selected.value.id
                         val source = app.recordingHistory.get(audioId)
+                        val gain = io.github.lrq3000.utterlane.audio.TranscriptionGain(
+                            source.microphone?.gain ?: io.github.lrq3000.utterlane.audio.PcmGainMode.OFF)
                         // Captured PCM has an exact total. Imported container duration
                         // is provisional until decoding establishes the real EOF.
                         val total = if (source.sourceName == null) source.samples else
@@ -260,7 +263,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         resultMetadata = TranscriptMetadata(source, speakerLabels = false)
                         exposeStore(created.store)
                         publishTranscriptionState()
-                        val accept: suspend (ShortArray) -> Unit = { pcm -> metrics.captured(pcm.size); created.accept(pcm) }
+                        val accept: suspend (ShortArray) -> Unit = { pcm -> metrics.captured(pcm.size); gain.deliver(pcm, created::accept) }
                         if (source.sourceName != null) AudioDecoder(app).decode(source.part(0).absolutePath, accept)
                         else audioLease.reader().use { reader ->
                             while (reader.offset < source.samples) {
@@ -273,6 +276,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         metrics.captureEnded()
                         fileProgress.inputEnded(metrics.state.value.capturedSamples)
                         publishTranscriptionState()
+                        gain.drain(created::accept)
                         created.finish { speakers ->
                             fileProgress.finalizing(speakers)
                             publishTranscriptionState()
@@ -613,8 +617,10 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     private fun showError(error: Exception) {
         if (error is CancellationException) throw error
         Log.e("TranscribeDialog", "Local transcription operation failed", error)
-        mutable.update { it.copy(message = error.message ?: app.getString(R.string.transcribe_error_failed)) }
-        ActionFeedback.show(app, error.message ?: app.getString(R.string.transcribe_error_failed))
+        val message = StorageFailure.userMessage(app, error)
+            ?: error.message ?: app.getString(R.string.transcribe_error_failed)
+        mutable.update { it.copy(message = message) }
+        ActionFeedback.show(app, message)
     }
     fun saveInstanceState(out: android.os.Bundle) {
         out.putString("owned_audio", ownedAudioId)

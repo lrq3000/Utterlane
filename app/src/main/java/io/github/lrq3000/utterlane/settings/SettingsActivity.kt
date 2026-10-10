@@ -187,7 +187,6 @@ class SettingsActivity : LocalizedActivity() {
                     },
                     onStopService = { stopFloatingService() },
                     onStartAudioMonitor = { requestNotificationPermissionIfNeeded() },
-                    onRestartService = { restartFloatingService() },
                     onPickFolder = { callback -> openFolderPicker(callback) },
                     onPickModelFolder = { callback ->
                         onModelFolderSelected = callback
@@ -299,12 +298,6 @@ class SettingsActivity : LocalizedActivity() {
         startService(intent)
     }
 
-    private fun restartFloatingService() {
-        // Stop without ACTION_STOP so preference isn't cleared, then start
-        stopService(Intent(this, FloatingMicService::class.java))
-        startFloatingService()
-    }
-
     private fun hasMicPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
             this, Manifest.permission.RECORD_AUDIO
@@ -343,7 +336,6 @@ fun SettingsScreen(
     onOpenAppSettings: () -> Unit,
     onStartService: () -> Unit,
     onStopService: () -> Unit,
-    onRestartService: () -> Unit,
     onStartAudioMonitor: () -> Unit,
     onPickFolder: ((String) -> Unit) -> Unit,
     onPickModelFolder: ((Uri) -> Unit) -> Unit,
@@ -380,7 +372,6 @@ fun SettingsScreen(
 
     val audioMonitorEnabled by settingsRepository.audioMonitorEnabled.collectAsStateWithLifecycle(initialValue = false)
     val monitoredFolders by settingsRepository.monitoredFolders.collectAsStateWithLifecycle(initialValue = emptySet())
-    val floatingButtonSize by settingsRepository.floatingButtonSize.collectAsStateWithLifecycle(initialValue = SettingsRepository.BUTTON_SIZE_MEDIUM)
     val transcribeManager = UtterlaneApp.instance.transcribeManager
 
     val hasMicPermission = remember { mutableStateOf(false) }
@@ -469,13 +460,7 @@ fun SettingsScreen(
                             try { recognizerManager.release() }
                             catch (e: Exception) { Toast.makeText(context, e.message, Toast.LENGTH_LONG).show() }
                         }
-                        // Stop floating service when model is unloaded
-                        if (serviceEnabled) {
-                            scope.launch {
-                                settingsRepository.setServiceEnabled(false)
-                            }
-                            onStopService()
-                        }
+                        // Unloading recognition must not interrupt independent capture.
                     }
                 )
                 recognizerFailure?.let { message ->
@@ -643,19 +628,17 @@ fun SettingsScreen(
 
             // Optional Floating Mic Button
             SettingsSection(title = stringResource(R.string.section_floating_mic)) {
-                val modelInstalled = modelManager.isModelReady()
                 SwitchSettingItem(
                     title = stringResource(R.string.floating_enable),
                     subtitle = when {
                         !hasMicPermission.value -> stringResource(R.string.floating_grant_mic_first)
                         !hasOverlayPermission.value -> stringResource(R.string.floating_grant_overlay_first)
-                        !modelInstalled -> stringResource(R.string.floating_install_model_first)
                         serviceEnabled -> stringResource(R.string.floating_shows_red)
                         else -> stringResource(R.string.floating_additional)
                     },
                     icon = Icons.Default.RadioButtonChecked,
                     checked = serviceEnabled,
-                    enabled = hasMicPermission.value && hasOverlayPermission.value && modelInstalled,
+                    enabled = hasMicPermission.value && hasOverlayPermission.value,
                     onCheckedChange = { enabled ->
                         scope.launch {
                             settingsRepository.setServiceEnabled(enabled)
@@ -673,17 +656,11 @@ fun SettingsScreen(
                     onRevokeClick = { onRequestOverlayPermission() }
                 )
 
-                ButtonSizeSettingItem(
-                    selectedSize = floatingButtonSize,
-                    onSizeSelected = { size ->
-                        scope.launch {
-                            settingsRepository.setFloatingButtonSize(size)
-                            // Restart service to apply new size (without clearing preference)
-                            if (serviceEnabled) {
-                                onRestartService()
-                            }
-                        }
-                    }
+                Text(
+                    stringResource(R.string.floating_size_pinch_hint),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -1129,45 +1106,6 @@ fun ThemeSettingItem(
                     expanded = false
                 },
                 leadingIcon = if (code == selectedTheme) {
-                    { Icon(Icons.Default.Check, null) }
-                } else null
-            )
-        }
-    }
-}
-
-@Composable
-fun ButtonSizeSettingItem(
-    selectedSize: String,
-    onSizeSelected: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val sizes = listOf(
-        SettingsRepository.BUTTON_SIZE_SMALL to stringResource(R.string.floating_size_small),
-        SettingsRepository.BUTTON_SIZE_MEDIUM to stringResource(R.string.floating_size_medium),
-        SettingsRepository.BUTTON_SIZE_LARGE to stringResource(R.string.floating_size_large)
-    )
-    val selectedSizeName = sizes.find { it.first == selectedSize }?.second ?: stringResource(R.string.floating_size_medium)
-
-    ListItem(
-        headlineContent = { Text(stringResource(R.string.floating_button_size)) },
-        supportingContent = { Text(selectedSizeName) },
-        leadingContent = { Icon(Icons.Default.PhotoSizeSelectLarge, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-        modifier = Modifier.clickable { expanded = true }
-    )
-
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = { expanded = false }
-    ) {
-        sizes.forEach { (code, name) ->
-            DropdownMenuItem(
-                text = { Text(name) },
-                onClick = {
-                    onSizeSelected(code)
-                    expanded = false
-                },
-                leadingIcon = if (code == selectedSize) {
                     { Icon(Icons.Default.Check, null) }
                 } else null
             )
