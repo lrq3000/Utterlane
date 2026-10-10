@@ -36,52 +36,63 @@ milestones and return hashes for integration; no agent installs into the shared 
 
 ## Milestone A: Configuration and non-destructive gain
 
-- [ ] Add pure `audio/MicrophoneConfiguration.kt` enums/data class and HFP/standard
+- [x] Add pure `audio/MicrophoneConfiguration.kt` enums/data class and HFP/standard
   tuples. Use stable keys, preserve explicit Custom, and default new configuration
   to HFP. Add DataStore tests before implementing atomic updates.
-- [ ] Add `audio/TranscriptionGain.kt` using ShortArray input and bounded fixed windows;
+- [x] Add `audio/TranscriptionGain.kt` using ShortArray input and bounded fixed windows;
   test fixed gain, clipping, near-silence, attack/release and arbitrary block splits.
-- [ ] Persist gain metadata in microphone history with OFF for absent/old/imported
+- [x] Persist gain metadata in microphone history with OFF for absent/old/imported
   data. Apply gain only to recognition accepts and flush its tail before finish.
   Verify raw WAV bytes/samples are unchanged and replay produces identical processed PCM.
-- [ ] Run focused JVM tests, inspect the diff and commit the coherent milestone.
+- [x] Run focused JVM tests, inspect the diff and commit the coherent milestone.
 
 ## Milestone B: Capture effects, HFP and diagnostics
 
-- [ ] Extend capture configuration handoff so source/effects/route are frozen for
+- [x] Extend capture configuration handoff so source/effects/route are frozen for
   recording and native reopen. Attach/release best-effort per-recorder effects.
-- [ ] Add process-local current/last microphone diagnostic snapshots with owner tokens.
+- [x] Add process-local current/last microphone diagnostic snapshots with owner tokens.
   Report requested/observed source, route, mode and effect control truthfully.
-- [ ] Add a classic HFP transport beside Standard; acquire the profile asynchronously,
+- [x] Add a classic HFP transport beside Standard; acquire the profile asynchronously,
   match the selected headset, wait for real audio readiness, and enforce Stop precedence
   and finite setup. Preserve Phone capture and the existing red fallback warning.
-- [ ] Add required legacy/modern Bluetooth permissions and an explicit settings grant
+- [x] Add required legacy/modern Bluetooth permissions and an explicit settings grant
   action. No background permission prompts, scanning or location access.
-- [ ] Test success/rejection/missing permission/late proxy/mismatch/disconnect/cleanup
+- [x] Test success/rejection/missing permission/late proxy/mismatch/disconnect/cleanup
   and effects failures across supported SDK paths, then commit verified behavior.
 
 ## Milestone C: Settings UI
 
-- [ ] Add Disabled/HFP/Custom selector, HFP default summary, collapsible custom source,
+- [x] Add Disabled/HFP/Custom selector, HFP default summary, collapsible custom source,
   route/mode/effect/gain controls and copyable diagnostics. Reuse existing theme and
   accessible full-row controls; show that changes affect the next recording.
-- [ ] Verify preset consistency, custom persistence, permission denial/return and
+- [x] Verify preset consistency, custom persistence, permission denial/return and
   active-session immutability. Build resources and commit.
 
 ## Milestone D: Auxiliary ports
 
-- [ ] Integrate tested floating work, reproducing the existing resize/restart behavior
+- [x] Integrate tested floating work, reproducing the existing resize/restart behavior
   and gesture errors before correction. Confirm model absence does not block capture.
-- [ ] Integrate playback controls and call `pauseForCapture()` only after admission;
+- [x] Integrate playback controls and call `pauseForCapture()` only after admission;
   a rejected duplicate start must not disturb playback. Verify preparing/paused states.
-- [ ] Integrate storage reporting/decoder changes. Use the storage utility for recorder
+- [x] Integrate storage reporting/decoder changes. Use the storage utility for recorder
   write/finalization errors and retain preserved-prefix recovery.
-- [ ] Inspect each integration diff and run relevant focused checks before proceeding.
+- [x] Inspect each integration diff and run relevant focused checks before proceeding.
+
+User clarification completed in `08a3d9e`: remove the size selector and use only
+direct pinch resizing. Preserve legacy saved diameters, test resizing after leaving
+Settings, and introduce no Settings navigation or recording-panel visibility change.
 
 ## Milestone E: Delivery
 
-- [ ] Review combined code for races, ownership, loss of raw PCM and stale diagnostics.
-- [ ] Run full JVM suite, `assembleDebug` and `assembleDebugAndroidTest` with an isolated
+- [x] Review combined code for races, ownership, loss of raw PCM and stale diagnostics.
+- [x] Run full JVM suite, `assembleDebug` and `assembleDebugAndroidTest` with an isolated
   QA application suffix; run relevant emulator tests and settings/control UI flows.
-- [ ] Rebuild the standard-identity debug APK, verify its package/hash, update user/QA
+- [x] Rebuild the standard-identity debug APK, verify its package/hash, update user/QA
   docs and the 28-commit applicability record, and commit all completed work.
+
+Final production verification: **694 JVM tests**, **17 API 34 instrumentation tests**,
+and both APK variants built. The earlier API 28 combined run passed 16 tests before
+the final pinch-only adjustment; current API 28 routing/gesture paths are also covered
+in JVM simulation. Physical Bluetooth/headset validation remains outstanding. See
+`docs/qa/bluetooth-input.md` and `docs/qa/audiorecorder-port-review.md` for evidence,
+reproduction commands, environment incidents and the standard APK hash.

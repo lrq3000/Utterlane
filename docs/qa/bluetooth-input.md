@@ -1,5 +1,106 @@
 # Bluetooth microphone selection and fallback verification
 
+## AudioRecorder ports and pinch-only resizing — 2026-10-10
+
+Branch: `feat/audiorecorder-ports`; implementation through `08a3d9e`, including
+permission hardening `1691c8a` and endpoint-identity fixes `82e3e56`.
+The [28-commit applicability record](audiorecorder-port-review.md) identifies every
+reviewed donor change. The [user guide](../user-guide.md#microphone-processing-presets)
+documents the new presets, permission flow, diagnostics and original-audio handling.
+
+### Final evidence
+
+| Evidence layer | Result | Scope |
+| --- | --- | --- |
+| Full JVM suite | **694 passed**, zero failures/skips | Final production code, including legacy-size migration and service recreation after pinch |
+| HFP Android API simulation | **124 transport + 9 integration cases passed** | SDK 28/31/36 paths with controlled profile/device responses; actual production state/ownership code |
+| API 34 emulator | **17 instrumentation tests passed** | One permission denial/settings-return test, then a combined 16-test capture/input/playback/floating/settings run |
+| Earlier API 28 emulator | **16 passed** on 2026-10-09 | Combined ports before the later pinch-only clarification; the final outside-Settings pinch test was verified on API 34, not rerun natively on API 28 |
+| Build | Debug and Android-test APKs passed | Isolated `.audiorecorderports` QA identity; standard identity rebuilt for delivery |
+| Final review | No findings in the pinch-only change | Read-only review of production changes, persistence, gesture/session integration and real-window test corrections |
+
+The final API 34 run used `emulator-5584` (Android SDK emulator, x86_64/ARM64
+translation). Its 17 cases comprise four panel tests, three real AudioRecord input
+tests, seven native playback/UI tests, one floating capture test and two microphone
+settings tests. The floating test first enables the overlay, **leaves Settings**, and
+records without a recognition model. It enlarges the button **56 → 84 dp**, shrinks it
+**84 → 63 dp**, drags out and back, requests rotation, and explicitly stops. It verifies
+one capture creation, no intermediate stop, continued delivered samples, matching
+saved sample counts, and the resulting recovery dialog.
+
+The size menu was removed at the user's request. Pinching directly on the floating
+microphone is the resizing workflow. Existing persisted presets remain readable.
+No new Settings navigation restriction or recording-panel visibility behavior was
+introduced. The prior settings-size-menu/recording-panel overlap scenario is no longer
+part of this resizing workflow.
+
+Other device assertions cover every Custom option and fixed preset, retained choices
+after reopening Settings, diagnostic address redaction and deliberate clipboard copy,
+permission denial and refresh on return from Android settings, native playback speed,
+paused position, preparation fencing and end-of-audio completion. The diagnostic UI
+test deliberately uses a **synthetic diagnostic session**, not a physical HFP headset.
+
+### Failures investigated during verification
+
+- HFP review found an addressless inferred peer could override contradictory catalogue
+  evidence and dual-mode input preference could remain on BLE rather than verified
+  classic SCO. Four SDK-specific regressions failed before correction; follow-up
+  review confirmed both fixes.
+- The settings permission helper now fences duplicate launches and delayed writes
+  that finish after the activity leaves RESUMED. Unit regressions and the API 34
+  denial/return workflow pass.
+- UI tests originally targeted non-clickable text siblings of switches or attempted
+  to activate already-selected radio options. They now target accessible switch names,
+  scope popup windows and exercise real transitions through every radio option.
+- The original four-second playback fixture ended before slow UI navigation reached
+  Pause. A 30-second fixture retains the explicit final seek/completion assertions.
+- Overlay creation must be awaited without scrolling the app underneath it. Recovery
+  UI is awaited before cleanup, and cleanup closes current Activity instances rather
+  than an obsolete reference left by recreation.
+- Windows exhausted host disk space during an earlier emulator run, causing guest
+  DataStore `SyncFailedException` even though `/data` reported free space. After space
+  was reclaimed, the temporary emulator was restarted with file-backed quickboot RAM
+  disabled. A later cold boot also produced system-wide ANRs, including System UI and
+  the app's background cleanup service, under high system load. After startup settled,
+  the unchanged focused and combined instrumentation runs passed. These incidents
+  were not treated as passing tests or patched by changing application behavior.
+
+### Reproduction
+
+Use an isolated QA installation with no recognition model and the floating service
+initially disabled. Nearby Devices must be revoked **outside** instrumentation before
+running the denial test, because revocation can terminate the app process.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest assembleDebug assembleDebugAndroidTest "-PqaApplicationIdSuffix=.audiorecorderports" "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q --offline
+adb -s emulator-5584 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5584 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+$pkg = 'io.github.lrq3000.utterlane.audiorecorderports'
+$runner = "$pkg.test/androidx.test.runner.AndroidJUnitRunner"
+adb -s emulator-5584 shell pm revoke $pkg android.permission.BLUETOOTH_CONNECT
+adb -s emulator-5584 shell pm clear-permission-flags $pkg android.permission.BLUETOOTH_CONNECT user-set user-fixed
+adb -s emulator-5584 shell am instrument -w -e class 'io.github.lrq3000.utterlane.MicrophoneSettingsAndroidTest#deniedDefaultDoesNotPromptAndExplicitActionCanRecover' $runner
+$classes = 'io.github.lrq3000.utterlane.CapturePanelAndroidTest,io.github.lrq3000.utterlane.AudioInputAndroidTest,io.github.lrq3000.utterlane.AudioPlaybackAndroidTest,io.github.lrq3000.utterlane.FloatingControlsAndroidTest,io.github.lrq3000.utterlane.MicrophoneSettingsAndroidTest#presetsCustomControlsAndDiagnosticsStayIndependent'
+adb -s emulator-5584 shell am instrument -w -e class $classes $runner
+.\gradlew.bat assembleDebug "-PqaApplicationIdSuffix=" "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain -q --offline
+```
+
+Read the instrumentation summary: the shell exit code alone does not establish that
+tests passed. These final runs reported `OK (1 test)` and `OK (16 tests)`.
+
+Standard APK: `app/build/outputs/apk/debug/app-debug.apk`, package verified with
+`aapt2 dump packagename` as `io.github.lrq3000.utterlane`. SHA-256:
+`483431c9adb70ee64a88e1e7a2fb84211a9549bf919fd1eb4266dc800df3c765`.
+Local ignored screenshots include `pinch-outside-settings34.png`,
+`pinch-only-settings34.png`, `microphone-diagnostics34.png` and `playback-speed34.png`
+under `qa-artifacts/`; the inspected Settings screen shows the pinch hint and no size
+selector. Translations for new controls follow the release-batch workflow.
+
+**Hardware limitation:** no physical Bluetooth headset/radio was exercised. Emulated
+PCM delivery and simulated HFP callbacks do not establish acoustic microphone identity,
+headset gain/quality, OEM DSP behavior, negotiation success or handover gap duration.
+The physical-device matrix at the end of this document still applies.
+
 ## Lifecycle follow-up — 2026-10-09
 
 Base: `9dc33a8`; branch: `fix/bluetooth-lifecycle`. This supersedes the initial
@@ -162,9 +263,10 @@ No source or global compiler configuration workaround was applied.
 No physical Bluetooth microphone was connected. The emulator evidence **does not
 verify SCO/LE radio activation, microphone quality, or real disconnect handover**.
 The initial isolated API 34 emulator launch could not allocate its userdata image
-within available disk space. The follow-up above now executes the API 31/36 adapter
-in JVM Android simulation, while physical SCO/LE transport, acoustic input identity,
-handover gaps and OEM-specific audio behavior still require the hardware checks below.
+within available disk space. The later AudioRecorder port verification above did run
+API 34 instrumentation successfully, alongside SDK 28/31/36 JVM simulation. Physical
+SCO/LE transport, acoustic input identity, handover gaps and OEM-specific audio behavior
+still require the hardware checks below.
 
 Before claiming hardware verification, test classic HFP/SCO on older Android and
 classic/LE Audio on Android 12+ where supported:
