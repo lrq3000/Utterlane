@@ -76,6 +76,10 @@ making gain failure a reason to cancel otherwise healthy capture.
   position to usable display bounds, handle rotation and prevent drag/multi-touch/
   cancellation from becoming accidental recording taps. Permit recording with the
   required permissions even when no model is installed; use normal recovery later.
+  Subsequent user clarification: remove the Settings button-size selector; resize
+  exclusively by pinching the floating mic, following the donor's `b17329a` behavior.
+  Keep existing stored diameters readable. Test resizing outside Settings. Do not
+  introduce new Settings access restrictions or recording-panel visibility rules.
 - Playback: pause Utterlane-owned playback at an accepted microphone start, including
   pending preparation, retain position and do not automatically resume it. Add
   0.5x-2x speed independently of visual refresh rate; changing paused speed must not

@@ -54,28 +54,30 @@ class MicrophoneSettingsAndroidTest {
             selectPreset(MicrophonePreset.CUSTOM, R.string.microphone_processing_custom)
             assertEquals("Custom entry must retain the complete Disabled tuple",
                 MicrophoneOptions.STANDARD, settings.microphoneSettings.first().options)
-            // Custom opens immediately, and each dialog exposes every backend option.
-            for (source in MicrophoneSource.entries) {
+            // Start away from each Disabled value: Compose correctly omits the
+            // accessibility click action on the already-selected radio option.
+            // Reverse order exercises an actual transition to every backend value.
+            for (source in MicrophoneSource.entries.reversed()) {
                 choose("microphone_source", source.name)
                 await { settings.microphoneSettings.first().options.source == source }
             }
-            for (route in BluetoothCaptureRoute.entries) {
+            for (route in BluetoothCaptureRoute.entries.reversed()) {
                 choose("microphone_route", route.name)
                 await { settings.microphoneSettings.first().options.route == route }
             }
-            for (mode in BluetoothAudioMode.entries) {
+            for (mode in BluetoothAudioMode.entries.reversed()) {
                 choose("microphone_mode", mode.name)
                 await { settings.microphoneSettings.first().options.mode == mode }
             }
-            for (policy in InputPreprocessingPolicy.entries) {
+            for (policy in InputPreprocessingPolicy.entries.reversed()) {
                 choose("microphone_preprocessing", policy.name)
                 await { settings.microphoneSettings.first().options.preprocessing == policy }
             }
             val gainLabels = listOf(R.string.microphone_processing_gain_off, R.string.microphone_processing_gain_6,
                 R.string.microphone_processing_gain_12, R.string.microphone_processing_gain_18,
                 R.string.microphone_processing_gain_auto)
-            for ((index, gain) in PcmGainMode.entries.withIndex()) {
-                choose("microphone_gain", app.getString(gainLabels[index]))
+            for (gain in PcmGainMode.entries.reversed()) {
+                choose("microphone_gain", app.getString(gainLabels[gain.ordinal]))
                 await { settings.microphoneSettings.first().options.gain == gain }
             }
             assertEquals("Editing next-recording settings must not relabel a live session",
@@ -149,7 +151,9 @@ class MicrophoneSettingsAndroidTest {
             instrumentation.runOnMainSync { closed.finish() }
             await { closed.isDestroyed }
             activity = open()
-            ui.clickText(inputLabel)
+            // The label and its switch are siblings, not a clickable settings row.
+            // Target the switch's accessible name instead of walking label parents.
+            ui.clickDescription(inputLabel)
             await { settings.audioInputPreferences.first().preferBluetooth }
             denyPermissionDialog()
             ui.scrollTo("microphone_hfp_grant")
@@ -176,7 +180,8 @@ class MicrophoneSettingsAndroidTest {
     }
 
     private fun prepare() {
-        assertTrue("Use an isolated .micui QA application", app.packageName.endsWith(".micui"))
+        assertTrue("Use an isolated microphone/combined ports QA application",
+            app.packageName.endsWith(".micui") || app.packageName.endsWith(".audiorecorderports"))
         ui.prepare()
     }
 
@@ -200,10 +205,8 @@ class MicrophoneSettingsAndroidTest {
         val cancel = ui.textNode(app.getString(R.string.action_cancel))
         val windowId = cancel.windowId
         @Suppress("DEPRECATION") cancel.recycle()
-        val root = checkNotNull(instrumentation.uiAutomation.windows.first { it.id == windowId }.root)
-        val node = try { checkNotNull(find(root) { it.text?.toString() == label }) }
-        finally { @Suppress("DEPRECATION") root.recycle() }
-        clickAncestor(node)
+        // Scope refreshed nodes to the popup, not the same value in its backdrop.
+        ui.clickText(label, windowId)
         await { instrumentation.uiAutomation.windows.none { it.id == windowId } }
     }
 

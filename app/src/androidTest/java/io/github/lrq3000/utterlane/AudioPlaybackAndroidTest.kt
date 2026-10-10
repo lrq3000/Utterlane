@@ -47,12 +47,14 @@ class AudioPlaybackAndroidTest {
 
     @Test fun dialogExpandsPlaybackAndSeeksWhilePausedThenCollapsesOnStop() = runBlocking {
         ui.prepare()
-        val entry = fixture()
+        // Accessibility traversal on a software-rendered emulator can exceed four
+        // seconds. Keep the fixture alive until the explicit end-of-audio seek.
+        val entry = fixture(seconds = 30)
         val activity = instrumentation.startActivitySync(RecordingRecovery.intent(app, entry.id))
         try {
             ui.click("audio_play")
             val playing = withTimeout(10000) { app.audioPlayback.state.first { it.playing } }
-            assertTrue(playing.durationMs >= 3900)
+            assertTrue(playing.durationMs >= 29900)
             ui.node("audio_seek").recycle()
             ui.click("audio_pause")
             withTimeout(5000) { app.audioPlayback.state.first { it.active && !it.playing } }
@@ -60,11 +62,11 @@ class AudioPlaybackAndroidTest {
             val sought = withTimeout(5000) { app.audioPlayback.state.first { !it.preparing && kotlin.math.abs(it.positionMs - 2500) < 300 } }
             assertFalse(sought.playing)
             ui.descriptionNode(app.getString(R.string.audio_resume)).recycle()
-            ui.textNode("0:02 / 0:04").recycle()
+            ui.textNode("0:02 / 0:30").recycle()
             ui.screenshot("transcription-audio-paused-seek")
             ui.click("audio_pause") // Same button is now Resume.
             withTimeout(5000) { app.audioPlayback.state.first { it.playing } }
-            instrumentation.runOnMainSync { app.audioPlayback.seek(playing.owner!!, 3900) }
+            instrumentation.runOnMainSync { app.audioPlayback.seek(playing.owner!!, playing.durationMs - 100) }
             withTimeout(3000) { app.audioPlayback.state.first { !it.active } }
             ui.click("audio_play")
             withTimeout(5000) { app.audioPlayback.state.first { it.playing } }

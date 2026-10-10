@@ -372,7 +372,6 @@ fun SettingsScreen(
 
     val audioMonitorEnabled by settingsRepository.audioMonitorEnabled.collectAsStateWithLifecycle(initialValue = false)
     val monitoredFolders by settingsRepository.monitoredFolders.collectAsStateWithLifecycle(initialValue = emptySet())
-    val floatingButtonSizeDp by settingsRepository.floatingButtonSizeDp.collectAsStateWithLifecycle(initialValue = FloatingButtonSize.DEFAULT_DP)
     val transcribeManager = UtterlaneApp.instance.transcribeManager
 
     val hasMicPermission = remember { mutableStateOf(false) }
@@ -657,13 +656,11 @@ fun SettingsScreen(
                     onRevokeClick = { onRequestOverlayPermission() }
                 )
 
-                ButtonSizeSettingItem(
-                    selectedSizeDp = floatingButtonSizeDp,
-                    onSizeSelected = { size ->
-                        scope.launch {
-                            settingsRepository.setFloatingButtonSize(size)
-                        }
-                    }
+                Text(
+                    stringResource(R.string.floating_size_pinch_hint),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -1109,52 +1106,6 @@ fun ThemeSettingItem(
                     expanded = false
                 },
                 leadingIcon = if (code == selectedTheme) {
-                    { Icon(Icons.Default.Check, null) }
-                } else null
-            )
-        }
-    }
-}
-
-@Composable
-fun ButtonSizeSettingItem(
-    selectedSizeDp: Int,
-    onSizeSelected: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val sizes = listOf(
-        SettingsRepository.BUTTON_SIZE_SMALL to stringResource(R.string.floating_size_small),
-        SettingsRepository.BUTTON_SIZE_MEDIUM to stringResource(R.string.floating_size_medium),
-        SettingsRepository.BUTTON_SIZE_LARGE to stringResource(R.string.floating_size_large)
-    )
-    val selectedSize = FloatingButtonSize.preset(selectedSizeDp)
-    val selectedSizeName = sizes.find { it.first == selectedSize }?.second
-        ?: stringResource(R.string.floating_size_custom, selectedSizeDp)
-
-    ListItem(
-        headlineContent = { Text(stringResource(R.string.floating_button_size)) },
-        supportingContent = {
-            Column {
-                Text(selectedSizeName)
-                Text(stringResource(R.string.floating_size_pinch_hint))
-            }
-        },
-        leadingContent = { Icon(Icons.Default.PhotoSizeSelectLarge, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-        modifier = Modifier.clickable { expanded = true }
-    )
-
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = { expanded = false }
-    ) {
-        sizes.forEach { (code, name) ->
-            DropdownMenuItem(
-                text = { Text(name) },
-                onClick = {
-                    onSizeSelected(code)
-                    expanded = false
-                },
-                leadingIcon = if (code == selectedSize) {
                     { Icon(Icons.Default.Check, null) }
                 } else null
             )
