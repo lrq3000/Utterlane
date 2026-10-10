@@ -26,9 +26,9 @@ class AndroidAudioInputDevices(context: Context) : AudioInputDevices {
         result[AudioInput.PHONE_KEY] = AudioInput(AudioInput.PHONE_KEY, "", false, phone?.id)
         for (device in inputs) {
             if (!isSelectable(device.type)) continue
-            // On modern Android only communication endpoints can activate a
-            // Bluetooth route. Publishing unmatched raw sources as extra choices
-            // creates entries the recorder cannot select with setCommunicationDevice.
+            // Use canonical Bluetooth headset endpoints on modern Android to
+            // avoid duplicate input/output choices. The capture session resolves
+            // the matching source for the explicitly selected transport.
             if (Build.VERSION.SDK_INT >= 31 && isBluetooth(device.type)) continue
             val key = key(device)
             result[key] = AudioInput(key, device.productName.toString(), isBluetooth(device.type), device.id)
@@ -93,8 +93,7 @@ class AndroidAudioInputDevices(context: Context) : AudioInputDevices {
         // stable address, selection lasts only for this process/port, not a guessed
         // identity restored across reboot. Addresses never enter logs or captions.
         if (address.isBlank() || !uniqueAddress) return "port:$processIdentity:${device.id}"
-        val digest = MessageDigest.getInstance("SHA-256").digest("${device.type}:$address".toByteArray())
-        return "device:" + digest.joinToString("") { "%02x".format(it) }
+        return addressKey(device.type, address)
     }
 
     override fun observe(onChanged: (Set<Int>) -> Unit) {
@@ -112,6 +111,16 @@ class AndroidAudioInputDevices(context: Context) : AudioInputDevices {
     override fun close() { callback?.let(manager::unregisterAudioDeviceCallback); callback = null }
 
     companion object {
+        /** Detect an ID reused before queued inventory callbacks can reconcile it. */
+        internal fun matchesKnownKey(key: String, device: AudioDeviceInfo): Boolean =
+            !key.startsWith("device:") || (Build.VERSION.SDK_INT >= 28 && device.address.isNotBlank() &&
+                key == addressKey(device.type, device.address))
+
+        private fun addressKey(type: Int, address: String): String {
+            val digest = MessageDigest.getInstance("SHA-256").digest("$type:$address".toByteArray())
+            return "device:" + digest.joinToString("") { "%02x".format(it) }
+        }
+
         fun isBluetooth(type: Int): Boolean = type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
             (Build.VERSION.SDK_INT >= 31 && type == AudioDeviceInfo.TYPE_BLE_HEADSET)
 

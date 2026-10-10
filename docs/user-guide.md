@@ -165,7 +165,7 @@ claim that recording continues. Stop and Cancel always take precedence over reco
 - **HFP preset (default):** `VOICE_RECOGNITION` audio source,
   `HFP_VOICE_RECOGNITION` Bluetooth route, requested `NORMAL` audio mode,
   `AGC_ONLY` Android preprocessing, and `AUTO_LEVEL` transcription gain.
-- **Disabled:** Android's default source and processing, Standard Bluetooth routing
+- **Disabled:** Android's default source and processing, Standard SCO routing
   in communication mode, and no transcription software gain. Microphone recording
   remains available.
 - **Custom:** adjust source, Bluetooth route/mode, preprocessing and gain separately.
@@ -180,13 +180,33 @@ On Android 12+, HFP requires **Nearby devices** access. An explicit Bluetooth ac
 can request it; simply opening Settings with the default preset does not. If denied,
 Phone and file transcription remain usable. Use **Grant Nearby devices for HFP** or
 **Open app permission settings** to grant access later. HFP also needs a compatible
-connected headset. Setup has an eight-second deadline, with Phone capturing while
-it proceeds; failure uses the persistent Phone-fallback warning described above.
+connected headset. HFP link setup has an eight-second deadline, with Phone capturing
+while it proceeds. Confirming the new input then accounts for the actual client-buffer
+duration. Failure uses the persistent Phone-fallback warning described above.
+
+Custom offers three explicit Bluetooth routes:
+
+- **STANDARD_SCO:** request classic SCO, including on Android 12 and later.
+- **HFP_VOICE_RECOGNITION:** request the headset's voice-recognition transport.
+- **COMMUNICATION_DEVICE:** explicitly use Android 12+ communication-device routing,
+  including compatible LE Audio inputs. It is unavailable on older Android.
+
+Each route honors the requested `NORMAL` or `IN_COMMUNICATION` mode. Utterlane does
+not silently select a different Bluetooth API or force another mode. If Android
+does not apply the requested combination, the persistent warning explains Phone
+fallback. The saved processing choices remain available for a subsequent attempt.
 
 Processing choices apply to the **next recording**. The active session retains its
 starting configuration, including after native microphone recovery. Android effect
-support varies by device. Standard routing on Android 12+ uses `IN_COMMUNICATION`
-even if Custom requests `NORMAL`.
+support varies by device. Explicit audio sources must match Android's declaration;
+`UNPROCESSED` also requires advertised platform support. An incompatible source or
+PCM configuration stops capture with an explanation instead of silently substituting
+another configuration. `DEFAULT` deliberately lets Android choose its default source.
+
+Actual input and mode are checked around PCM reads. Captured audio is retained through
+transitions; a new input or Phone fallback is confirmed only after stable reads have
+passed through the client buffer. Continuous matching audio during this verification
+is not treated as a recording stall, including with larger capture-buffer settings.
 
 Software gain affects the transcription/diarization stream, while history retains
 the original PCM delivered by Android. Playback and export use that preserved audio.

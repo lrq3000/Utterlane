@@ -33,6 +33,8 @@ object AudioInputText {
         val state = snapshot.input
         val source = state.fallbackFrom ?: return null
         val reason = context.getString(when {
+            state.fallbackReason == InputFallbackReason.UNSUPPORTED_ROUTE -> R.string.audio_input_route_unsupported
+            state.fallbackReason == InputFallbackReason.MODE_NOT_APPLIED -> R.string.audio_input_mode_not_applied
             state.fallbackReason == InputFallbackReason.ROUTE_CHANGED -> R.string.audio_input_route_changed
             source.bluetooth && state.fallbackReason == InputFallbackReason.DISCONNECTED -> R.string.audio_input_bt_disconnected
             source.bluetooth -> R.string.audio_input_bt_unavailable

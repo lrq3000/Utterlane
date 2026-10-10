@@ -121,10 +121,14 @@ internal class AudioRoutingPlatform : Closeable {
 
     fun queuedRoutingCallback(): () -> Unit = routingChanged ?: error("No recorder listener")
 
-    fun route(key: String = AudioInput.PHONE_KEY): AndroidCaptureRoute = runBlocking {
+    // Existing platform-contract tests explicitly exercise the modern API on 31+
+    // and SCO below it. Production never substitutes one selected API for another.
+    fun route(key: String = AudioInput.PHONE_KEY, options: MicrophoneOptions = MicrophoneOptions.STANDARD.copy(
+        route = if (Build.VERSION.SDK_INT >= 31) BluetoothCaptureRoute.COMMUNICATION_DEVICE else BluetoothCaptureRoute.STANDARD_SCO),
+        diagnostics: (String) -> Unit = {}): AndroidCaptureRoute = runBlocking {
         val controller = controller()
         check(controller.select(key)) { "Test selected an unavailable input: $key" }
-        AndroidCaptureRoute(context, controller, controller.snapshotForRecording(), { running }, { state = it })
+        AndroidCaptureRoute(context, controller, controller.snapshotForRecording(), { running }, { state = it }, options, diagnostics)
             .also { routes.add(it) }
     }
 

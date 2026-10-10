@@ -35,8 +35,11 @@ class MicrophoneDiagnostics {
         if (owner === token && mutable.value.active) mutable.value = change(mutable.value)
     }
     inner class Session internal constructor(private val token: Any) {
-        fun format(source: Int, sampleRate: Int, channels: Int, sessionId: Int) = update(token) {
-            it.copy(stage = "Microphone capturing", format = "Observed AudioRecord: source=$source, ${sampleRate} Hz, $channels channel(s), session=$sessionId")
+        fun format(source: Int, sampleRate: Int, channels: Int, sessionId: Int, encoding: Int? = null,
+            capturing: Boolean = true) = update(token) {
+            it.copy(stage = if (capturing) "Microphone capturing" else "Validating microphone configuration",
+                format = "Observed AudioRecord: source=$source, ${sampleRate} Hz, $channels channel(s), " +
+                    "encoding=${encoding ?: "unknown"}, session=$sessionId")
         }
         fun route(detail: String) = update(token) { it.copy(route = redact(detail)) }
         fun input(state: CaptureInputState) = update(token) {

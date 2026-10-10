@@ -38,6 +38,11 @@ class AndroidCaptureRoute(
     private val manager = context.getSystemService(AudioManager::class.java)
     private val target = initial.selected
     private val useHfp = target.bluetooth && options.route == BluetoothCaptureRoute.HFP_VOICE_RECOGNITION
+    private val useCommunicationDevice = target.bluetooth && options.route == BluetoothCaptureRoute.COMMUNICATION_DEVICE
+    private val useStandardSco = target.bluetooth && options.route == BluetoothCaptureRoute.STANDARD_SCO
+    private var routeProblem: String? = null
+    private var selectedDevice: AudioDeviceInfo? = null
+    private var standardPreferredInputId: Int? = null
     private class SourceBinding(val input: AudioInput) { var removed = false }
     private val bindingLock = Any()
     private var sourceBinding = target.takeIf { it.inputId != null }?.let(::SourceBinding)
@@ -57,6 +62,16 @@ class AndroidCaptureRoute(
     private val dirty = AtomicBoolean(true)
     private val targetRemoved = AtomicBoolean(false)
     private val generation = AtomicLong()
+    private val routingVersion = AtomicLong()
+    private val sourceVersion = AtomicLong()
+    private data class ReadEvidence(val key: String?, val inputId: Int?, val mode: Int?, val routing: Long, val source: Long)
+    private var readEvidence: ReadEvidence? = null
+    private var lastReadEvidence: ReadEvidence? = null
+    private var inputBufferFrames = 0L
+    private var confirmationFrames = 0L
+    private var awaitingVerifiedFrames = true
+    private var publishedAwaitingFrames: Boolean? = null
+    private var observedMode: Int? = null
     private var routingListener: AudioRouting.OnRoutingChangedListener? = null
     private var deviceListener: AudioDeviceCallback? = null
     private var communicationListener: AudioManager.OnCommunicationDeviceChangedListener? = null
@@ -92,13 +107,19 @@ class AndroidCaptureRoute(
         }
         val owner = generation.incrementAndGet()
         val listener = AudioRouting.OnRoutingChangedListener {
-            if (generation.get() == owner) dirty.set(true)
+            if (generation.get() == owner) { routingVersion.incrementAndGet(); dirty.set(true) }
         }
         routingListener = listener
         record.addOnRoutingChangedListener(listener, Handler(Looper.getMainLooper()))
         lastPreference = null
         actual = null
-        policy.recorderReopened()
+        readEvidence = null
+        lastReadEvidence = null
+        inputBufferFrames = record.bufferSizeInFrames.toLong().coerceAtLeast(0)
+        confirmationFrames = inputBufferFrames
+        awaitingVerifiedFrames = true
+        val rate = io.github.lrq3000.utterlane.asr.AudioRecorder.SAMPLE_RATE
+        policy.recorderReopened((inputBufferFrames * 1000 + rate - 1) / rate)
         refreshInventory()
         if (targetRemoved.get()) policy.fallback(InputFallbackReason.DISCONNECTED)
         policy.observe(null, targetAvailable, frames = false)
@@ -112,12 +133,17 @@ class AndroidCaptureRoute(
         started = true
         if (!target.bluetooth || policy.isFallback) return
         try {
+            if (useCommunicationDevice && Build.VERSION.SDK_INT < 31) {
+                routeProblem = "COMMUNICATION_DEVICE requires Android 12 or newer; no Bluetooth API substitution."
+                policy.fallback(InputFallbackReason.UNSUPPORTED_ROUTE)
+                return
+            }
             if (manager.mode == AudioManager.MODE_IN_CALL) {
                 policy.fallback(InputFallbackReason.UNAVAILABLE)
                 return
             }
             if (useHfp) {
-                val device = target.communicationId?.let(communications::get) ?: target.inputId?.let(inputs::get)
+                val device = selectedDevice
                 hfpExactTarget = Build.VERSION.SDK_INT >= 28 && !device?.address.isNullOrBlank()
                 hfp = HfpMicrophoneRoute(context, device, shouldContinue, { dirty.set(true) }).also { it.start() }
                 if (hfp?.status?.phase == HfpMicrophoneRoute.Phase.FAILED) {
@@ -125,17 +151,16 @@ class AndroidCaptureRoute(
                     return
                 }
             }
-            // NORMAL does not manufacture a claim for a mode owned by another
-            // app. Modern standard routing always needs communication mode;
-            // diagnostics expose any requested/observed difference.
-            val needsCommunication = (!useHfp && Build.VERSION.SDK_INT >= 31) || options.mode == BluetoothAudioMode.IN_COMMUNICATION
-            if (needsCommunication && manager.mode != AudioManager.MODE_IN_COMMUNICATION) {
+            // Route and mode are independent user choices. Android may refuse a
+            // mode (for example while another app owns it); verify rather than
+            // silently request a different mode to make this route succeed.
+            if (manager.mode != options.mode.androidMode) {
                 modeRequested = true
-                manager.mode = AudioManager.MODE_IN_COMMUNICATION
+                manager.mode = options.mode.androidMode
             }
             if (!shouldContinue()) return
             if (useHfp) { dirty.set(true); return }
-            if (Build.VERSION.SDK_INT >= 31) {
+            if (useCommunicationDevice && Build.VERSION.SDK_INT >= 31) {
                 val listener = AudioManager.OnCommunicationDeviceChangedListener { dirty.set(true) }
                 communicationListener = listener
                 manager.addOnCommunicationDeviceChangedListener(Executor { it.run() }, listener)
@@ -175,10 +200,11 @@ class AndroidCaptureRoute(
         if (!shouldContinue()) return
         hfp?.poll()?.let { if (it.phase == HfpMicrophoneRoute.Phase.FAILED) policy.fallback(InputFallbackReason.UNAVAILABLE) }
         if (targetRemoved.get()) policy.fallback(InputFallbackReason.DISCONNECTED)
-        if (dirty.getAndSet(false)) {
-            refreshInventory()
-            refreshActual(record)
-        }
+        if (dirty.getAndSet(false)) refreshInventory()
+        // Routing callbacks can still be queued while another input is active.
+        // Read actual native evidence at both boundaries of every PCM read.
+        refreshActual(record)
+        verifySelectedMode()
         policy.observe(actual, targetAvailable, frames = false, silenced = silenced)
         if (policy.isFallback) releaseCommunication()
         val key = when {
@@ -187,17 +213,25 @@ class AndroidCaptureRoute(
             communicationReady() -> target.key
             else -> AudioInput.PHONE_KEY
         }
-        if (shouldContinue()) prefer(record, key)
+        if (shouldContinue()) {
+            prefer(record, key)
+            if (actual == null) refreshActual(record)
+        }
+        readEvidence = currentReadEvidence()
+        if (readEvidence != lastReadEvidence) confirmationFrames = inputBufferFrames
+        lastReadEvidence = readEvidence
         publish()
-        check(!policy.failed) { context.getString(io.github.lrq3000.utterlane.R.string.audio_input_fallback_failed) }
+        check(!policy.failed) { context.getString(if (target.isPhone)
+            io.github.lrq3000.utterlane.R.string.audio_input_phone_not_applied
+            else io.github.lrq3000.utterlane.R.string.audio_input_fallback_failed) }
     }
 
     fun afterRead(record: AudioRecord, count: Int, silenced: Boolean) {
         // Query after the first read as well: routedDevice is not valid before
         // recording starts, and a routing callback can arrive slightly later.
         try {
-            if (dirty.getAndSet(false)) { refreshInventory(); refreshActual(record) }
-            else if (actual == null) refreshActual(record)
+            if (dirty.getAndSet(false)) refreshInventory()
+            refreshActual(record)
         } catch (e: RuntimeException) {
             Log.w(TAG, "Could not confirm input route; requesting phone fallback", e)
             actual = null
@@ -205,8 +239,11 @@ class AndroidCaptureRoute(
         }
         if (targetRemoved.get()) policy.fallback(InputFallbackReason.DISCONNECTED)
         if (count == AudioRecord.ERROR_DEAD_OBJECT) policy.fallback(InputFallbackReason.UNAVAILABLE)
-        val transportReady = !useHfp || policy.isFallback || hfp?.status?.phase == HfpMicrophoneRoute.Phase.READY
-        policy.observe(actual, targetAvailable, frames = count > 0 && transportReady, silenced = silenced)
+        verifySelectedMode()
+        val transportReady = !target.bluetooth || policy.isFallback || communicationReady()
+        val verified = verifyReadBoundary(count)
+        awaitingVerifiedFrames = !verified
+        policy.observe(actual, targetAvailable, frames = count > 0 && transportReady, silenced = silenced, verified = verified)
         publish()
         // Never throw after a successful read: that PCM still needs to reach the
         // writer. A failed recovery is reported before the next native read.
@@ -231,8 +268,29 @@ class AndroidCaptureRoute(
             target.communicationId != null -> communications.containsKey(target.communicationId)
             else -> target.inputId != null && inputs.containsKey(target.inputId)
         }
+        if (!target.isPhone && !policy.isFallback) {
+            val current = target.communicationId?.let(communications::get) ?: target.inputId?.let(inputs::get)
+            val frozen = selectedDevice
+            if (current == null || (frozen == null && !AndroidAudioInputDevices.matchesKnownKey(target.key, current)) ||
+                (frozen != null && (frozen.type != current.type || contraryAddress(frozen, current)))) {
+                routeProblem = "Selected microphone identity is unavailable or changed before activation; no device substitution."
+                policy.fallback(InputFallbackReason.UNAVAILABLE)
+            } else if (frozen == null) selectedDevice = current
+        }
         inventoryVersion = version
         synchronized(bindingLock) {
+            standardPreferredInputId = null
+            if (useStandardSco && !policy.isFallback) {
+                val bound = validSourceBindingLocked()?.inputId?.let(inputs::get)
+                    ?.takeIf { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO && !contrarySelectedInput(it) }
+                val mapped = inventory.byKey[target.key]?.inputId?.let(inputs::get)
+                    ?.takeIf { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO && !contrarySelectedInput(it) }
+                val address = selectedDevice?.takeIf { Build.VERSION.SDK_INT >= 28 }?.address?.takeIf { it.isNotBlank() }
+                val exact = if (address == null) null else inputs.values.filter {
+                    it.isSource && it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO && it.address.equals(address, true)
+                }.singleOrNull()
+                standardPreferredInputId = (bound ?: mapped ?: exact)?.id
+            }
             hfpPreferredInputId = null
             if (useHfp && inventoryVersion == deviceVersion.get() && hfp?.status?.requestAccepted == true && !policy.isFallback) {
                 // Filter once so addressless matching stays linear even when many
@@ -246,17 +304,41 @@ class AndroidCaptureRoute(
     }
 
     private fun refreshActual(record: AudioRecord) {
+        if (inspectActual(record)) return
+        // One device event may have raced the native query. Reconcile and re-read
+        // before publishing missing evidence; unrelated hotplug must not erase
+        // a healthy input's warm-up progress. Bound retries if inventory churns.
+        refreshInventory()
+        if (!inspectActual(record)) {
+            actual = null
+            dirty.set(true)
+        }
+    }
+
+    private fun inspectActual(record: AudioRecord): Boolean {
         // Native queries stay outside the binding lock. A removal can arrive
         // during this query, so recheck the inventory generation while publishing
         // the binding under the same lock used by device callbacks.
-        val routed = record.routedDevice
+        val routed = record.routedDevice?.takeIf { it.isSource }
+        if (useCommunicationDevice && Build.VERSION.SDK_INT >= 31) currentCommunicationId = manager.communicationDevice?.id
+        // SCO readiness can change on its callback thread after this query.
+        // Sample mode independently so a newly ready link never compares against
+        // a null value that merely meant "not sampled while connecting".
+        observedMode = if (target.bluetooth && !policy.isFallback) runCatching { manager.mode }.getOrNull() else null
         synchronized(bindingLock) {
             if (inventoryVersion != deviceVersion.get()) {
-                actual = null
-                dirty.set(true)
-                return
+                return false
             }
             val bound = validSourceBindingLocked()
+            val contrary = routed != null && contrarySelectedInput(routed)
+            if (contrary && !policy.isFallback) {
+                sourceBinding?.takeIf { it.input.inputId == routed?.id }?.removed = true
+                routeProblem = "Observed input does not match the selected microphone/transport; no device substitution."
+                policy.fallback(InputFallbackReason.ROUTE_CHANGED)
+            }
+            val classicMatch = useStandardSco && !contrary && routed?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO &&
+                (routed.id == standardPreferredInputId ||
+                    (bound != null && routed.id == bound.inputId && inputs[bound.inputId]?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO))
             val hfpMatch = if (useHfp && routed != null && !policy.isFallback)
                 hfp?.matchInput(routed, inputs.values) else null
             if (hfpMatch == HfpMicrophoneRoute.InputMatch.MATCH && hfpTargetDisproved(routed?.id)) {
@@ -271,6 +353,12 @@ class AndroidCaptureRoute(
             actual = when {
                 routed == null -> null
                 routed.type == AudioDeviceInfo.TYPE_BUILTIN_MIC -> AudioInput(AudioInput.PHONE_KEY, "", false, routed.id)
+                contrary -> AudioInput("actual:${routed.id}", routed.productName.toString(),
+                    AndroidAudioInputDevices.isBluetooth(routed.type), routed.id)
+                classicMatch && !policy.isFallback -> AudioInput(target.key, target.name, true, routed.id,
+                    inventory.byInputId[routed.id]?.communicationId)
+                useStandardSco && !policy.isFallback -> AudioInput("actual:${routed.id}", routed.productName.toString(),
+                    AndroidAudioInputDevices.isBluetooth(routed.type), routed.id)
                 hfpMatch == HfpMicrophoneRoute.InputMatch.MATCH && !policy.isFallback -> AudioInput(target.key,
                     hfp?.status?.deviceName ?: target.name, true, routed.id, inventory.byInputId[routed.id]?.communicationId)
                 hfpMatch == HfpMicrophoneRoute.InputMatch.DIFFERENT -> AudioInput("actual:${routed.id}",
@@ -283,13 +371,20 @@ class AndroidCaptureRoute(
                 if (bound?.inputId != it.inputId) sourceBinding = SourceBinding(it)
             }
         }
+        return true
     }
 
     private fun devicePortsChanged(removed: Array<out AudioDeviceInfo>) {
         synchronized(bindingLock) {
             val bound = sourceBinding
-            if (bound != null && removed.any { it.id == bound.input.inputId }) bound.removed = true
-            if (removed.any { it.id == target.connectionId }) targetRemoved.set(true)
+            val removedSource = bound != null && removed.any { it.id == bound.input.inputId || it.id == bound.input.connectionId }
+            val removedTarget = removed.any { it.id == target.connectionId }
+            if (removedSource) bound?.removed = true
+            if (removedTarget) targetRemoved.set(true)
+            // All device events invalidate catalogue publication, but unrelated
+            // additions/removals must not endlessly restart a healthy mic's
+            // client-buffer verification. Only this session's loss advances it.
+            if (removedSource || removedTarget) sourceVersion.incrementAndGet()
             deviceVersion.incrementAndGet()
         }
         dirty.set(true)
@@ -322,9 +417,52 @@ class AndroidCaptureRoute(
     private fun communicationReady(): Boolean {
         if (useHfp) return hfp?.status?.phase == HfpMicrophoneRoute.Phase.READY
         if (!communicationRequested) return false
-        return if (Build.VERSION.SDK_INT >= 31) currentCommunicationId == target.communicationId
+        return if (useCommunicationDevice) currentCommunicationId == target.communicationId
         else scoConnected
     }
+
+    private fun verifySelectedMode() {
+        if (!target.bluetooth || policy.isFallback || !communicationReady()) return
+        val observed = observedMode
+        if (observed != options.mode.androidMode) {
+            routeProblem = "Android did not apply requested mode ${options.mode} (${options.mode.androidMode}); " +
+                "observed mode=${observed ?: "unknown"}."
+            policy.fallback(InputFallbackReason.MODE_NOT_APPLIED)
+        }
+    }
+
+    private fun currentReadEvidence() = ReadEvidence(actual?.key, actual?.inputId,
+        observedMode.takeIf { target.bluetooth && !policy.isFallback },
+        routingVersion.get(), sourceVersion.get())
+
+    private fun verifyReadBoundary(count: Int): Boolean {
+        val before = readEvidence
+        val after = currentReadEvidence()
+        lastReadEvidence = after
+        if (before?.inputId == null || before != after) {
+            confirmationFrames = inputBufferFrames
+            return false
+        }
+        // Native route changes can leave previous-input samples in the client
+        // buffer. Retain all PCM, but do not confirm the new input/fallback until
+        // a complete buffer capacity has passed through stable read boundaries.
+        if (confirmationFrames > 0) {
+            if (count > 0) confirmationFrames = (confirmationFrames - count).coerceAtLeast(0)
+            return false
+        }
+        return true
+    }
+
+    private fun contrarySelectedInput(device: AudioDeviceInfo): Boolean {
+        val selected = selectedDevice ?: return false
+        if (device.type == AudioDeviceInfo.TYPE_BUILTIN_MIC) return false // Declared startup/fallback capture.
+        val expectedType = if (useHfp || useStandardSco) AudioDeviceInfo.TYPE_BLUETOOTH_SCO else selected.type
+        return device.type != expectedType || contraryAddress(selected, device)
+    }
+
+    private fun contraryAddress(first: AudioDeviceInfo, second: AudioDeviceInfo): Boolean =
+        Build.VERSION.SDK_INT >= 28 && first.address.isNotBlank() && second.address.isNotBlank() &&
+            !first.address.equals(second.address, true)
 
     private fun prefer(record: AudioRecord, key: String) {
         val inputId = synchronized(bindingLock) {
@@ -333,19 +471,30 @@ class AndroidCaptureRoute(
             else if (useHfp) {
                 // Never pin the original BLE source when the requested transport
                 // is classic HFP. A proven SCO binding or unique verified SCO port
-                // wins; otherwise let the active HFP link choose its default input.
+                // wins; otherwise retain Phone until a concrete source is verified.
                 validSourceBindingLocked()?.inputId?.takeIf { inputs[it]?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
                     ?: hfpPreferredInputId
-            } else validSourceBindingLocked()?.inputId ?: inventory.byKey[key]?.inputId
+            } else if (useStandardSco) standardPreferredInputId
+            else validSourceBindingLocked()?.inputId ?: inventory.byKey[key]?.inputId
         }
         val preference = key to inputId
         if (lastPreference == preference) return
         val device = inputId?.let(inputs::get)
-        // A null Bluetooth source allows Android's established communication
-        // route to pick its source; null must never mean "Phone microphone".
+        // Every actual preference request names a concrete source. In particular,
+        // a missing Phone port cannot be represented by an automatic/null choice.
         if (key == AudioInput.PHONE_KEY && device == null) error(context.getString(io.github.lrq3000.utterlane.R.string.audio_input_phone_unavailable))
+        // Do not clear the explicit Phone preference and ask Android to choose
+        // an arbitrary source while the selected input port is still unknown.
+        if (device == null) return
+        if (key != AudioInput.PHONE_KEY && (contrarySelectedInput(device) ||
+                (useHfp && hfp?.matchInput(device, inputs.values) == HfpMicrophoneRoute.InputMatch.DIFFERENT))) {
+            routeProblem = "Selected input port no longer matches the requested microphone/transport."
+            policy.fallback(InputFallbackReason.ROUTE_CHANGED)
+            dirty.set(true)
+            return
+        }
         val accepted = try {
-            if (key == target.key && target.bluetooth && (useHfp || Build.VERSION.SDK_INT < 31) && communicationReady() && !scoRoutingSet) {
+            if (key == target.key && target.bluetooth && !useCommunicationDevice && communicationReady() && !scoRoutingSet) {
                 scoRoutingSet = true
                 manager.isBluetoothScoOn = true
             }
@@ -371,14 +520,19 @@ class AndroidCaptureRoute(
         val changed = published != policy.state
         if (changed) { published = policy.state; onState(policy.state) }
         val hfpState = hfp?.status
-        if (changed || publishedHfp != hfpState || forceDiagnostic) {
+        if (changed || publishedHfp != hfpState || publishedAwaitingFrames != awaitingVerifiedFrames || forceDiagnostic) {
             publishedHfp = hfpState
+            publishedAwaitingFrames = awaitingVerifiedFrames
             val mode = runCatching { manager.mode.toString() }.getOrDefault("unknown")
-            onDiagnostic((if (closed) "Capture route teardown attempted.\n" else "") + if (!target.bluetooth) "Bluetooth route not requested for this input" else
+            val routing = if (!target.bluetooth) "Bluetooth route not requested for this input" else
                 "Requested Bluetooth: ${options.route}; requested mode=${options.mode}; observed mode=$mode\n" +
                     (hfpState?.let { "HFP: ${it.phase}; request=${it.requestAccepted}; ${it.detail}" }
                         ?: if (useHfp) "HFP was not requested; input or capture availability prevented setup"
-                        else "Standard Bluetooth request; actual microphone confirmation is independent"))
+                         else "Explicit ${options.route} request; actual microphone confirmation is independent") +
+                    (routeProblem?.let { "\n$it" } ?: "")
+            val confirmation = if (awaitingVerifiedFrames) "Input/transition confirmation pending; captured PCM is retained."
+                else "Input observed across stable read boundaries; captured PCM is retained."
+            onDiagnostic((if (closed) "Capture route teardown attempted.\n" else "") + routing + "\n" + confirmation)
         }
     }
 
@@ -400,7 +554,9 @@ class AndroidCaptureRoute(
         }
         if (communicationRequested) {
             cleanup("Could not release communication route") {
-                if (Build.VERSION.SDK_INT >= 31) manager.clearCommunicationDevice() else manager.stopBluetoothSco()
+                if (useCommunicationDevice) {
+                    if (Build.VERSION.SDK_INT >= 31) manager.clearCommunicationDevice()
+                } else manager.stopBluetoothSco()
                 communicationRequested = false
             }
         }

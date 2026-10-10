@@ -1,7 +1,10 @@
-# AudioRecorder: 28-commit applicability record
+# AudioRecorder: 32-commit applicability record
 
-Source: [lrq3000/AudioRecorder, feat/bluetooth-mic-experiments](https://github.com/lrq3000/AudioRecorder/tree/e1c802060bcf29b8c66a6b3f27339e857289a37d).
-All 28 commits in `fab9cb1..e1c8020` were reviewed before the approved design.
+Source: [lrq3000/AudioRecorder, feat/bluetooth-mic-experiments](https://github.com/lrq3000/AudioRecorder/tree/2c7664afac3fece3a7f3debfdf5eb32676ff6978).
+The original 28 commits in `fab9cb1..e1c8020` were reviewed before the approved design;
+four subsequent commits through `2c7664a` were reviewed at the user's request before
+squash/publication. Their [explicit-selection follow-up](explicit-capture-selection.md)
+supersedes the earlier Standard-route/mode override.
 Utterlane implementation starts from Bluetooth lifecycle hardening `bddcde6`.
 The [design](../superpowers/specs/2026-10-09-audiorecorder-ports-design.md)
 records the agreed adaptations and subsequent pinch-only clarification.
@@ -43,6 +46,10 @@ workflow outside the approved port. This record does not claim unimplemented fea
 | 26 | `ee3e5c6` | Bluetooth experiments and diagnostics | Adapted explicit HFP voice recognition, route/mode options and local diagnostics; retain Phone capture during negotiation and sticky fallback instead of stopping on HFP failure. |
 | 27 | `d838368` | Enhanced HFP preset persistence | Exact default tuple: `VOICE_RECOGNITION / HFP_VOICE_RECOGNITION / NORMAL / AGC_ONLY / AUTO_LEVEL`, atomically persisted; input selection stays independent. |
 | 28 | `e1c8020` | Preset selector and collapsible controls | Disabled/HFP/Custom, collapsible Custom controls, reset and independent diagnostics. Explicit permission actions and actual/requested state remain distinct. |
+| 29 | `3f7dddc` | Simplify Bluetooth settings presentation | Keep Utterlane's approved collapsible Custom controls and broader microphone-processing title; place new transport guidance with Custom routing. Donor-only naming/static-heading changes are not needed for the route correctness fixes. |
+| 30 | `7e2288f` | Honor explicit route/mode choices | Adopted: Standard SCO always requests SCO; COMMUNICATION_DEVICE is an explicit third choice requiring API 31+; NORMAL is not overridden; observed mode mismatch is a visible failure/fallback. |
+| 31 | `872caee` | Reject capture substitutions | Utterlane has no MediaProjection, MediaRecorder fallback, AAC bitrate selection or recording-format switching. Apply the relevant rejection principle to declared client source/PCM and UNPROCESSED support, alongside the next commit's validation. |
+| 32 | `2c7664a` | Verify selected input before accepting audio | Adapted frozen identity/preferred-source checks, both read boundaries, declared-format validation and buffer-epoch evidence. Preserve all returned PCM and delay input confirmation instead of discarding transition buffers. Retain explicit Phone fallback and finite verification/recovery, including large-buffer and callback-race regressions. |
 
 ## Utterlane-specific correctness decisions
 
@@ -52,6 +59,9 @@ workflow outside the approved port. This record does not claim unimplemented fea
   removed endpoints and contradictory device identity cannot revive an old route.
 - HFP activation waits for actual link/recording evidence, has an eight-second limit,
   and never silently substitutes another headset or Standard SCO.
+- Explicit transport/mode choices are never replaced by an Android-version shortcut.
+  Client-buffer verification has a separate bounded progress budget; route failure
+  remains visibly distinguished from declared Phone continuation.
 - Gain, effects and diagnostic data stay local; optional DSP failure does not make
   capture depend on a working enhancement. Device addresses are redacted.
 - Floating pinch changes geometry in place. Sizes are bounded and saved in dp;

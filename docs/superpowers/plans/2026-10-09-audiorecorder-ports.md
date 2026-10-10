@@ -102,3 +102,19 @@ builds and **31 distinct API 34 cases across the documented batch/focused runs**
 All 25 feature commits are retained (20 equal patches, 5 adaptations), with no new
 Settings access restriction. See `docs/qa/audiorecorder-ports-main-first.md` for the
 strict hunk checklist, preservation review and rebuilt standard APK checksum.
+
+## Follow-up: new donor choice-enforcement fixes
+
+- [x] Review all four commits in `e1c8020..2c7664a` before the pending squash/push.
+- [x] Reproduce and correct API/mode substitutions, cached input evidence, source
+  identity reuse, classic/LE confusion and incompatible client declarations.
+- [x] Preserve all returned PCM and explicit Phone fallback; bound buffer verification
+  separately from capture liveness and retain source-generation protections.
+- [x] Resolve review findings with large-buffer, callback-readiness and unrelated-event
+  regressions, and obtain follow-up approval.
+- [x] Pass the complete 914-test JVM suite, both QA APK builds and 32 distinct API 34
+  cases in successful split invocations. See `docs/qa/explicit-capture-selection.md`.
+- [x] Rebuild the updated standard APK and record its verified identity/checksum.
+
+Authorized delivery after the verified feature commit: refresh the self-contained
+squash on current main and publish both feature and main branches.

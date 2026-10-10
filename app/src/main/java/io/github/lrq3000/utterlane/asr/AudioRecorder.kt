@@ -94,19 +94,19 @@ class AudioRecorder : AudioCapture {
                 routeRecoveryRequested = { route?.takeReopenRequest() == true }
             )
         } catch (e: IllegalArgumentException) {
-            captureFailure = e.javaClass.simpleName
+            captureFailure = e.message ?: e.javaClass.simpleName
             Log.e(TAG, "Failed to create AudioRecord", e)
             throw e
         } catch (e: IllegalStateException) {
-            captureFailure = e.javaClass.simpleName
+            captureFailure = e.message ?: e.javaClass.simpleName
             Log.e(TAG, "AudioRecord illegal state", e)
             throw e
         } catch (e: SecurityException) {
-            captureFailure = e.javaClass.simpleName
+            captureFailure = e.message ?: e.javaClass.simpleName
             Log.e(TAG, "AudioRecord permission denied", e)
             throw e
         } catch (e: RuntimeException) {
-            captureFailure = e.javaClass.simpleName
+            captureFailure = e.message ?: e.javaClass.simpleName
             Log.e(TAG, "Audio capture failed", e)
             throw e
         } finally {
@@ -137,6 +137,9 @@ class AudioRecorder : AudioCapture {
         }
 
         val record = checkNotNull(audioRecord)
+        diagnostic?.format(record.audioSource, record.sampleRate, record.channelCount, record.audioSessionId,
+            record.audioFormat, capturing = false)
+        MicrophoneCaptureConfiguration.problem(UtterlaneApp.instance, record, microphoneOptions)?.let { error(it) }
         effects = MicrophoneEffects(record.audioSessionId, microphoneOptions.preprocessing)
         diagnostic?.effects(checkNotNull(effects).refresh())
         val invalidateConfiguration = silencing.opened {
@@ -158,7 +161,7 @@ class AudioRecorder : AudioCapture {
         }
         if (!continueCapture()) return false
         record.startRecording()
-        diagnostic?.format(record.audioSource, record.sampleRate, record.channelCount, record.audioSessionId)
+        diagnostic?.format(record.audioSource, record.sampleRate, record.channelCount, record.audioSessionId, record.audioFormat)
         diagnostic?.effects(checkNotNull(effects).refresh())
         route?.started()
         silencing.poll()

@@ -171,6 +171,7 @@ internal fun MicrophoneProcessingSettings(
                         BluetoothCaptureRoute.entries, "microphone_route") { value ->
                         update { actions.selectRoute(value) }
                     }
+                    HelpText(stringResource(R.string.microphone_processing_route_help))
                     MicrophoneSelector(stringResource(R.string.microphone_processing_mode), options.mode,
                         BluetoothAudioMode.entries, "microphone_mode") { value ->
                         update { actions.updateOptions { it.copy(mode = value) } }
@@ -185,10 +186,6 @@ internal fun MicrophoneProcessingSettings(
                         update { actions.updateOptions { it.copy(gain = value) } }
                     }
                 }
-            }
-            // Keep the effective-mode caveat visible even with Custom collapsed.
-            if (Build.VERSION.SDK_INT >= 31 && current.options.route == BluetoothCaptureRoute.STANDARD_SCO) {
-                HelpText(stringResource(R.string.microphone_processing_standard_mode))
             }
             if (Build.VERSION.SDK_INT >= 31 && current.options.route == BluetoothCaptureRoute.HFP_VOICE_RECOGNITION) {
                 HelpText(stringResource(when {

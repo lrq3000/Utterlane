@@ -23,7 +23,14 @@
     <string name="microphone_processing_gain_12">+12 dB</string>
     <string name="microphone_processing_gain_18">+18 dB</string>
     <string name="microphone_processing_gain_auto">Auto level</string>
-    <string name="microphone_processing_standard_mode">On Android 12 and later, Standard routing uses IN_COMMUNICATION even when NORMAL is selected. Diagnostics distinguish the requested and effective mode.</string>
+    <string name="microphone_processing_route_help">STANDARD_SCO requests classic SCO. HFP_VOICE_RECOGNITION requests headset voice recognition. COMMUNICATION_DEVICE explicitly uses Android 12+ communication-device routing. Each route requests your selected audio mode; unsupported or unapplied choices show a Phone-fallback warning.</string>
+    <string name="audio_input_route_unsupported">The selected Bluetooth routing API is unavailable on this Android version.</string>
+    <string name="audio_input_mode_not_applied">Android did not apply the selected Bluetooth audio mode.</string>
+    <string name="audio_input_phone_not_applied">Android did not confirm the selected phone microphone. Recording stopped; any captured audio is retained for recovery.</string>
+    <string name="microphone_pcm_not_applied">Android reported %1$d Hz, %2$d channels and PCM encoding %3$d. Recording requires 16000 Hz mono PCM16; no format substitution was made.</string>
+    <string name="microphone_source_not_applied">Requested microphone source %1$s, but Android reported source %2$d. Select another source explicitly to retry.</string>
+    <string name="microphone_unprocessed_unavailable">Android does not confirm UNPROCESSED source support on this device. Select another microphone source explicitly to retry.</string>
+    <string name="microphone_buffer_unavailable">Android did not report a usable microphone buffer. Capture could not be verified.</string>
     <string name="microphone_hfp_permission_needed">HFP needs Nearby devices access on Android 12 and later. Without it, Phone recording and file transcription remain usable. Your selected input and automatic Bluetooth preference are kept.</string>
     <string name="microphone_hfp_permission_denied">Nearby devices access was not granted. HFP is unavailable; Phone recording and file transcription remain usable. Your input and automatic preference are kept. Try granting access, or open App settings → Permissions → Nearby devices.</string>
     <string name="microphone_hfp_permission_granted">Nearby devices access granted. HFP still requires a compatible connected headset; diagnostics show the actual route.</string>

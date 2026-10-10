@@ -13,11 +13,13 @@ import io.github.lrq3000.utterlane.audio.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Real phone capture/routing tests; these do not simulate a physical Bluetooth radio. */
 @RunWith(AndroidJUnit4::class)
@@ -27,6 +29,34 @@ class AudioInputAndroidTest {
 
     private fun grantMicrophone() {
         instrumentation.uiAutomation.grantRuntimePermission(app.packageName, Manifest.permission.RECORD_AUDIO)
+    }
+
+    @Test fun unadvertisedUnprocessedIsRejectedWithoutEmittingSubstitutedPcm() = runBlocking<Unit> {
+        val manager = app.getSystemService(AudioManager::class.java)
+        assumeTrue("This rejection check requires a device without advertised UNPROCESSED support",
+            manager.getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED) != "true")
+        grantMicrophone()
+        val saved = app.settingsRepository.audioInputPreferences.first()
+        app.audioInputs.select(AudioInput.PHONE_KEY)
+        val recorder = AudioRecorder().apply {
+            configureMicrophone(MicrophoneOptions.HFP.copy(source = MicrophoneSource.UNPROCESSED))
+        }
+        val error = AtomicReference<Throwable>()
+        val samples = AtomicInteger()
+        val worker = Thread {
+            val deadline = android.os.SystemClock.uptimeMillis() + 2000
+            try { recorder.startRecording({ samples.addAndGet(it.size) }, { android.os.SystemClock.uptimeMillis() < deadline }) }
+            catch (failure: Throwable) { error.set(failure) }
+        }
+        try {
+            worker.start(); worker.join(5000)
+            assertFalse(worker.isAlive)
+            assertNotNull("Unsupported UNPROCESSED must not silently use processed capture", error.get())
+            assertEquals(0, samples.get())
+        } finally {
+            recorder.stop(); worker.join(3000)
+            app.settingsRepository.updateAudioInput { saved }
+        }
     }
 
     @Test fun phoneCaptureReportsActualInputAndStopReleasesTheWorker() = runBlocking {

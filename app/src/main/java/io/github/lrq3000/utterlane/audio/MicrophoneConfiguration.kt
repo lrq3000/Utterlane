@@ -1,6 +1,7 @@
 package io.github.lrq3000.utterlane.audio
 
 import android.media.MediaRecorder
+import android.media.AudioManager
 
 /** Stable enum names are persisted; Android source numbers are used only at the platform boundary. */
 enum class MicrophoneSource(val androidSource: Int) {
@@ -8,8 +9,10 @@ enum class MicrophoneSource(val androidSource: Int) {
     VOICE_COMMUNICATION(MediaRecorder.AudioSource.VOICE_COMMUNICATION),
     VOICE_RECOGNITION(MediaRecorder.AudioSource.VOICE_RECOGNITION), UNPROCESSED(MediaRecorder.AudioSource.UNPROCESSED)
 }
-enum class BluetoothCaptureRoute { STANDARD_SCO, HFP_VOICE_RECOGNITION }
-enum class BluetoothAudioMode { IN_COMMUNICATION, NORMAL }
+enum class BluetoothCaptureRoute { STANDARD_SCO, HFP_VOICE_RECOGNITION, COMMUNICATION_DEVICE }
+enum class BluetoothAudioMode(val androidMode: Int) {
+    IN_COMMUNICATION(AudioManager.MODE_IN_COMMUNICATION), NORMAL(AudioManager.MODE_NORMAL)
+}
 enum class InputPreprocessingPolicy(val ns: Boolean?, val aec: Boolean?, val agc: Boolean?) {
     SYSTEM_DEFAULT(null, null, null), DISABLE_NS(false, null, null),
     DISABLE_NS_AEC(false, false, null), DISABLE_NS_AEC_AGC(false, false, false), AGC_ONLY(false, false, true)

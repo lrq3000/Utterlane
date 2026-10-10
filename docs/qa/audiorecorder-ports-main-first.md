@@ -2,6 +2,10 @@
 
 Date: 2026-10-10. Branch: `feat/audiorecorder-ports`.
 
+Subsequent update before squash/publication:
+[Explicit capture choices](explicit-capture-selection.md). Its newer donor fixes,
+verification and artifact supersede this report's earlier final-state counts/hash.
+
 ## Baselines and method
 
 - Original feature tip: `3a6c37acac5beff63fbeb8b10ae10b7f204f42e2`.
