@@ -90,9 +90,15 @@ Settings, and introduce no Settings navigation or recording-panel visibility cha
 - [x] Rebuild the standard-identity debug APK, verify its package/hash, update user/QA
   docs and the 28-commit applicability record, and commit all completed work.
 
-Final production verification: **694 JVM tests**, **17 API 34 instrumentation tests**,
+Pre-rebase production verification: **694 JVM tests**, **17 API 34 instrumentation tests**,
 and both APK variants built. The earlier API 28 combined run passed 16 tests before
 the final pinch-only adjustment; current API 28 routing/gesture paths are also covered
 in JVM simulation. Physical Bluetooth/headset validation remains outstanding. See
 `docs/qa/bluetooth-input.md` and `docs/qa/audiorecorder-port-review.md` for evidence,
 reproduction commands, environment incidents and the standard APK hash.
+
+Main-first replay onto `f6975ce` subsequently passed **841 JVM tests**, both QA APK
+builds and **31 distinct API 34 cases across the documented batch/focused runs**.
+All 25 feature commits are retained (20 equal patches, 5 adaptations), with no new
+Settings access restriction. See `docs/qa/audiorecorder-ports-main-first.md` for the
+strict hunk checklist, preservation review and rebuilt standard APK checksum.

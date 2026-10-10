@@ -1,5 +1,9 @@
 # Bluetooth microphone selection and fallback verification
 
+Latest combined-tree evidence and APK checksum:
+[AudioRecorder ports main-first rebase](audiorecorder-ports-main-first.md).
+The port results below describe the earlier pre-rebase tree.
+
 ## AudioRecorder ports and pinch-only resizing — 2026-10-10
 
 Branch: `feat/audiorecorder-ports`; implementation through `08a3d9e`, including

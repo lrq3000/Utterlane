@@ -22,6 +22,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowToast
 import java.io.IOException
 
 @RunWith(RobolectricTestRunner::class)
@@ -34,6 +35,8 @@ class DialogStorageFailureTest {
 
     @Before fun setUp() {
         val context = RuntimeEnvironment.getApplication()
+        every { app.applicationContext } returns context
+        ShadowToast.reset()
         history = RecordingHistory(temporary.newFolder("audio"))
         every { app.recordingHistory } returns history
         every { app.transcriptHistory } returns TranscriptHistory(temporary.newFolder("text"))
@@ -51,7 +54,7 @@ class DialogStorageFailureTest {
     @Test fun importExplainsNestedStorageFullInsteadOfOpaqueWrapper() {
         every { anyConstructed<DialogAudioActions>().import(any(), any()) } throws full()
         val dialog = open(DialogInput(path = "/provider/audio"))
-        await { !dialog.state.value.importing }
+        await { !dialog.state.value.importing && ShadowToast.getTextOfLatestToast() == FULL_MESSAGE }
         assertEquals(FULL_MESSAGE, dialog.state.value.message)
     }
 
@@ -61,7 +64,7 @@ class DialogStorageFailureTest {
         val dialog = open(DialogInput(audioId = entry.id))
         await { !dialog.state.value.importing }
         dialog.exportAudio(android.net.Uri.parse("content://destination/audio"), false)
-        await { !dialog.state.value.saving }
+        await { !dialog.state.value.saving && ShadowToast.getTextOfLatestToast() == FULL_MESSAGE }
         assertEquals(FULL_MESSAGE, dialog.state.value.message)
         assertArrayEquals(byteArrayOf(1, 2, 3), entry.part(0).readBytes())
         assertEquals(entry.id, dialog.state.value.audio?.id)

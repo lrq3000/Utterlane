@@ -6,6 +6,9 @@ Utterlane implementation starts from Bluetooth lifecycle hardening `bddcde6`.
 The [design](../superpowers/specs/2026-10-09-audiorecorder-ports-design.md)
 records the agreed adaptations and subsequent pinch-only clarification.
 
+The subsequent [main-first rebase](audiorecorder-ports-main-first.md) accounts for
+conflict hunks and preservation of main's Home, progress and recovery contracts.
+
 “Adapted” means the relevant behavior was implemented in Utterlane's existing owners,
 not that a donor commit was cherry-picked wholesale. “Deferred” identifies a separate
 workflow outside the approved port. This record does not claim unimplemented features.
