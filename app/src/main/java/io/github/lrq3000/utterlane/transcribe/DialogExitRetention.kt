@@ -22,7 +22,8 @@ internal class DialogExitRetention(private val app: UtterlaneApp) {
     private data class Policies(val audio: HistoryExitPolicy, val text: HistoryExitPolicy)
     private suspend fun policies() = Policies(
         HistoryExitPolicy(app.settingsRepository.audioHistoryEnabled.first(), app.settingsRepository.audioHistoryRetention.first()),
-        HistoryExitPolicy(app.settingsRepository.transcriptHistoryEnabled.first(), app.settingsRepository.transcriptHistoryRetention.first()))
+        HistoryExitPolicy(app.settingsRepository.transcriptHistoryEnabled.first() ||
+            app.settingsRepository.archival.first().automaticDestination != null, app.settingsRepository.transcriptHistoryRetention.first()))
 
     private fun saved(store: TranscriptStore): TranscriptEntry? {
         val source = TranscriptSource.read(store.file)
@@ -42,7 +43,7 @@ internal class DialogExitRetention(private val app: UtterlaneApp) {
             // Only explicit Pin may create a replacement; navigation cannot revive it.
             else source?.transcriptId == null && policy.text.keeps(RetentionMark(text.file.lastModified()), stored = false, now)
         return DialogExitRequest(
-            audio?.takeUnless { policy.audio.keeps(it.retention, stored = !it.temporary, now) }?.id,
+            audio?.takeIf { policy.audio.requiresConfirmation(it, now) }?.id,
             if (keepText) null else source?.transcriptId ?: text?.let { TranscriptHistory.idForAttempt(it.file.name) })
     }
 
@@ -52,7 +53,7 @@ internal class DialogExitRetention(private val app: UtterlaneApp) {
      * Text is published before releasing any source input. Partial save failures
      * may preserve extra work, but can never destroy the only surviving copy. */
     suspend fun finish(audioId: String?, store: TranscriptStore?, metadata: TranscriptMetadata,
-        consent: DialogExitRequest?): DialogExitRequest? {
+        consent: DialogExitRequest?, archivePlan: io.github.lrq3000.utterlane.archive.ArchivePlan? = null): DialogExitRequest? {
         val policy = policies()
         return app.transcriptHistory.withPublicationLock {
             val fresh = loss(audioId, store, policy)
@@ -64,7 +65,7 @@ internal class DialogExitRetention(private val app: UtterlaneApp) {
                 val entry = app.transcriptHistory.save(text.file, source.modelName, source.audioId ?: audioId,
                     modelId = source.modelId, created = metadata.created, durationMs = metadata.durationMs,
                     speakerLabels = metadata.speakerLabels, recovered = metadata.recovered || source.recovered,
-                    reference = text.file.lastModified())
+                    reference = text.file.lastModified(), archivePlan = source.archivePlan ?: archivePlan)
                 text.attachSource(source.copy(transcriptId = entry.id, recovered = entry.recovered))
             }
             if (audioId != null && !app.recordingHistory.retainOnExit(audioId, policy.audio,

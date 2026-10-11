@@ -37,7 +37,7 @@ class LinkedHistory(private val recordings: RecordingHistory, private val transc
         recordings.initialize()
         val entry = try { recordings.get(id) } catch (_: IllegalStateException) { return null }
         if (entry.status in setOf("active", "importing", "discarded") || entry.parts <= 0) return null
-        return entry.takeIf { (0 until it.parts).all { part -> it.part(part).isFile } }
+        return entry.takeIf { recordings.available(it) }
     }
 
     fun delete(plan: HistoryDeletionPlan, target: HistoryDeletionTarget) {

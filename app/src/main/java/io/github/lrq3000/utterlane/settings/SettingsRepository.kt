@@ -16,6 +16,9 @@ import kotlinx.coroutines.flow.combine
 import io.github.lrq3000.utterlane.asr.ModelCatalog
 import io.github.lrq3000.utterlane.asr.ModelIdleTimeout
 import io.github.lrq3000.utterlane.history.HistoryRetention
+import io.github.lrq3000.utterlane.history.ImportRetentionCategory
+import io.github.lrq3000.utterlane.history.ImportRetentionChoice
+import io.github.lrq3000.utterlane.history.ImportRetentionPreferences
 import io.github.lrq3000.utterlane.audio.InputPreferences
 import io.github.lrq3000.utterlane.audio.AudioInput
 import io.github.lrq3000.utterlane.audio.MicrophoneSettings
@@ -51,6 +54,12 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         private val AUDIO_HISTORY_RETENTION_KEY = stringPreferencesKey("audio_history_retention")
         private val TRANSCRIPT_HISTORY_ENABLED_KEY = booleanPreferencesKey("transcript_history_enabled")
         private val TRANSCRIPT_HISTORY_RETENTION_KEY = stringPreferencesKey("transcript_history_retention")
+        private val IMPORT_DURATION_CHOICE_KEY = stringPreferencesKey("import_retention_duration")
+        private val IMPORT_SIZE_CHOICE_KEY = stringPreferencesKey("import_retention_size")
+        private val AUDIO_FOLDER_KEY = stringPreferencesKey("archive_audio_folder")
+        private val MARKDOWN_FOLDER_KEY = stringPreferencesKey("archive_markdown_folder")
+        private val AUTO_MARKDOWN_KEY = booleanPreferencesKey("archive_auto_markdown")
+        private val QUALITY_KEY = stringPreferencesKey("archive_audio_quality")
         private val SELECTED_MODEL_KEY = stringPreferencesKey("selected_model")
         private val DIARIZATION_KEY = booleanPreferencesKey("speaker_diarization")
         private val SPEAKER_COUNT_KEY = intPreferencesKey("speaker_count")
@@ -167,9 +176,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     // Legacy No history meant automatic saving off, not immediate expiry of a
     // manually saved item. Read the old key as a fallback without rewriting it.
-    val audioHistoryEnabled: Flow<Boolean> = dataStore.data.map {
-        it[AUDIO_HISTORY_ENABLED_KEY] ?: (HistoryRetention.fromKey(it[HISTORY_RETENTION_KEY]) != HistoryRetention.NONE)
-    }
+    private fun audioHistoryEnabled(preferences: Preferences): Boolean =
+        preferences[AUDIO_HISTORY_ENABLED_KEY] ?: (HistoryRetention.fromKey(preferences[HISTORY_RETENTION_KEY]) != HistoryRetention.NONE)
+    val audioHistoryEnabled: Flow<Boolean> = dataStore.data.map(::audioHistoryEnabled)
     val audioHistoryRetention: Flow<HistoryRetention> = dataStore.data.map {
         it[AUDIO_HISTORY_RETENTION_KEY]?.let(HistoryRetention::fromKey)
             ?: HistoryRetention.fromKey(it[HISTORY_RETENTION_KEY]).takeUnless { value -> value == HistoryRetention.NONE }
@@ -183,6 +192,39 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun setAudioHistoryRetention(value: HistoryRetention) { dataStore.edit { it[AUDIO_HISTORY_RETENTION_KEY] = value.key } }
     suspend fun setTranscriptHistoryEnabled(value: Boolean) { dataStore.edit { it[TRANSCRIPT_HISTORY_ENABLED_KEY] = value } }
     suspend fun setTranscriptHistoryRetention(value: HistoryRetention) { dataStore.edit { it[TRANSCRIPT_HISTORY_RETENTION_KEY] = value.key } }
+
+    /** One atomic snapshot, taken before inspecting/copying an external source. */
+    val importRetentionPreferences: Flow<ImportRetentionPreferences> = dataStore.data.map { preferences ->
+        fun choice(key: Preferences.Key<String>): ImportRetentionChoice? =
+            (preferences.asMap()[key] as? String)?.let { value -> ImportRetentionChoice.entries.find { it.name == value } }
+        ImportRetentionPreferences(audioHistoryEnabled(preferences), choice(IMPORT_DURATION_CHOICE_KEY), choice(IMPORT_SIZE_CHOICE_KEY))
+    }
+    suspend fun rememberImportRetention(category: ImportRetentionCategory, choice: ImportRetentionChoice) {
+        dataStore.edit { it[when (category) {
+            ImportRetentionCategory.DURATION -> IMPORT_DURATION_CHOICE_KEY
+            ImportRetentionCategory.SIZE -> IMPORT_SIZE_CHOICE_KEY
+        }] = choice.name }
+    }
+    suspend fun resetImportRetentionChoices() {
+        dataStore.edit { it.remove(IMPORT_DURATION_CHOICE_KEY); it.remove(IMPORT_SIZE_CHOICE_KEY) }
+    }
+
+    val archival: Flow<io.github.lrq3000.utterlane.archive.ArchivalSettings> = dataStore.data.map {
+        io.github.lrq3000.utterlane.archive.ArchivalSettings(it[AUDIO_FOLDER_KEY], it[MARKDOWN_FOLDER_KEY], it[AUTO_MARKDOWN_KEY] ?: false, readQuality(it))
+    }
+    private fun readQuality(p: Preferences): io.github.lrq3000.utterlane.archive.AudioQuality = runCatching {
+        val values = java.util.Properties().apply { p[QUALITY_KEY]?.reader()?.use(::load) }
+        io.github.lrq3000.utterlane.archive.AudioQuality.read(values).also { require(it.validTuple()) }
+    }.getOrDefault(io.github.lrq3000.utterlane.archive.AudioQuality())
+    suspend fun setAudioQuality(value: io.github.lrq3000.utterlane.archive.AudioQuality) {
+        require(value.validTuple())
+        val properties = java.util.Properties().apply { value.writeTo(this) }
+        val text = java.io.StringWriter().also { properties.store(it, null) }.toString()
+        dataStore.edit { it[QUALITY_KEY] = text }
+    }
+    suspend fun setAudioFolder(uri: String?) { dataStore.edit { if (uri == null) it.remove(AUDIO_FOLDER_KEY) else it[AUDIO_FOLDER_KEY] = uri } }
+    suspend fun setMarkdownFolder(uri: String) { dataStore.edit { it[MARKDOWN_FOLDER_KEY] = uri } }
+    suspend fun setAutomaticMarkdown(enabled: Boolean) { dataStore.edit { it[AUTO_MARKDOWN_KEY] = enabled } }
 
     /** Compatibility for older integrations; new UI uses independent preferences. */
     val historyRetention: Flow<HistoryRetention> = combine(audioHistoryEnabled, audioHistoryRetention) { enabled, duration ->

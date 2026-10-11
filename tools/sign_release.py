@@ -39,7 +39,7 @@ class ReleaseSigner:
         bundle = self.source / "bundle/release/app-release.aab"
         for artifact in (apk, bundle):
             NativeArchive(artifact).verify()
-        tools = pathlib.Path(os.environ["ANDROID_HOME"]) / "build-tools/35.0.0"
+        tools = pathlib.Path(os.environ["ANDROID_HOME"]) / "build-tools/36.0.0"
         badging = subprocess.check_output([str(tools / "aapt"), "dump", "badging", str(apk)], text=True)
         if f"versionName='{version}'" not in badging or "name='io.github.lrq3000.utterlane'" not in badging:
             raise ValueError("Release tag and APK identity/version do not agree")

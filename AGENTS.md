@@ -48,9 +48,9 @@ An Android voice typing app that works **completely offline**. Speak into your p
 
 ## Build
 
-**Requirements:** OpenJDK 21, Android SDK platform 36, Python 3.11.8+, Gradle 8.12.1 (via wrapper)
+**Requirements:** OpenJDK 21, Android SDK platform 37 (`platforms;android-37.0`), Build Tools 36.0.0, Python 3.11.8+, Gradle 9.4.1 (via checksum-pinned wrapper)
 
-**Build stack:** Kotlin 2.0.21, AGP 8.10.1, Compose compiler plugin (Kotlin 2.0+)
+**Build stack:** AGP 9.2.1 built-in Kotlin, explicit KGP 2.4.21 classpath, matching Compose compiler plugin 2.4.21. App targetSdk remains 36 and minSdk remains 26. The standalone `tools/sherpa-android` build uses the same AGP/KGP/wrapper and SDK platform.
 
 Current F-Droid/free Google Play preparation and signing steps are in
 `docs/distribution/README.md`. Use that guide for the new Utterlane listing;

@@ -29,12 +29,14 @@ class HomeDetailOwnershipAndroidTest {
         ui.prepare()
         val onboarding = OnboardingRepository(app)
         val previous = onboarding.progress.first()
+        val historyEnabled = app.settingsRepository.audioHistoryEnabled.first()
         val original = File.createTempFile("home-detail-", ".wav", app.cacheDir).apply {
             writeBytes(byteArrayOf(1, 2, 3, 4))
         }
         var home: Activity? = null
         var audioId: String? = null
         try {
+            app.settingsRepository.setAudioHistoryEnabled(false)
             onboarding.complete()
             home = instrumentation.startActivitySync(HomeActivity.intent(app))
             ui.node("home_screen").recycle()
@@ -80,6 +82,7 @@ class HomeDetailOwnershipAndroidTest {
             audioId?.let(app.recordingHistory::delete)
             original.delete()
             onboarding.update { previous }
+            app.settingsRepository.setAudioHistoryEnabled(historyEnabled)
         }
     }
 }

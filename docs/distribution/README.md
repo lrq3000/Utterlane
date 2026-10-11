@@ -26,9 +26,10 @@ tested, and the [release notes](release-notes-2.0.0.md) for the announcement.
 
 ## Build and inspect
 
-Install OpenJDK 21, Python 3.11.8+, Git, SDK platforms 35 and 36, build tools 35.0.0,
+Install OpenJDK 21, Python 3.11.8+, Git, SDK platform 37 (`platforms;android-37.0`), build tools 36.0.0,
 NDK 28.2.13676358 and SDK CMake 3.22.1 (with Ninja). Set `JAVA_HOME` and
-`ANDROID_HOME` to absolute paths. Gradle 8.12.1 is supplied by the wrapper.
+`ANDROID_HOME` to absolute paths. Gradle 9.4.1 is supplied by the checksum-pinned
+wrapper, with AGP 9.2.1 built-in Kotlin and Kotlin/Compose compiler 2.4.21.
 
 ```sh
 python tools/prepare_native.py
@@ -36,8 +37,8 @@ python tools/build_sherpa.py
 python -m unittest discover -s tools/tests
 ./gradlew --console=plain --quiet testDebugUnitTest assembleDebug assembleRelease bundleRelease
 python tools/release_artifacts.py app/build/outputs/apk/release/app-release-unsigned.apk app/build/outputs/bundle/release/app-release.aab
-"$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 app/build/outputs/apk/release/app-release-unsigned.apk
-"$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/release/app-release-unsigned.apk
+"$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 app/build/outputs/apk/release/app-release-unsigned.apk
+"$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging app/build/outputs/apk/release/app-release-unsigned.apk
 ```
 
 On Windows use `gradlew.bat`, `.exe` SDK tools and PowerShell environment syntax.
@@ -123,6 +124,16 @@ are supplied, release artifacts remain unsigned for F-Droid/local inspection;
 if only some are supplied, Gradle fails with an explanatory error.
 
 ## F-Droid submission
+
+**Toolchain migration constraint:** The historical 2.0.0 metadata template still
+installs SDK platforms 35/36 and Build Tools 35.0.0, and its sherpa build invokes
+external `gradle`. It is not ready for this toolchain: a maintainer-approved recipe
+update must install `platforms;android-37.0` and `build-tools;36.0.0`, and the build
+environment must supply Gradle 9.4.1 for both the app and sherpa helper. The template
+and generator also retain their 2.0.0 / 11 release guard. No fdroiddata checkout is
+included; the recipe's build commands are preserved under the project's metadata
+policy. A supported Linux `fdroid build` remains required after those constraints
+are resolved; local Gradle verification does not establish F-Droid compatibility.
 
 1. Publish the reviewed source and `v2.0.0` tag. Resolve its **full 40-character
    commit hash**, e.g. `git rev-parse v2.0.0^{commit}`.

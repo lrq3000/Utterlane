@@ -17,6 +17,47 @@ import java.time.Duration
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [28, 31, 36])
 class ExplicitCaptureRouteTest {
+    @Test fun stereoRouteConfirmationDrainsFramesRatherThanInterleavedSamples() {
+        AudioRoutingPlatform().use { p ->
+            every { p.record.sampleRate } returns 48000
+            every { p.record.channelCount } returns 2
+            every { p.record.bufferSizeInFrames } returns 1600
+            val headset = p.addHeadset()
+            val route = p.route(headset.choice.key, MicrophoneOptions.STANDARD)
+            route.attach(p.record); route.started()
+            p.scoState(AudioManager.SCO_AUDIO_STATE_CONNECTED)
+            p.observeRoute(headset.source, headset.sink)
+            repeat(4) {
+                // AudioRecord.read(ShortArray) returns individual channel samples.
+                p.capture(route, frames = 800)
+                assertTrue("A complete stereo client buffer must drain before confirmation", p.state.connecting)
+            }
+            p.capture(route, frames = 800)
+            assertFalse(p.state.connecting)
+        }
+    }
+
+    @Test fun eightKhzFallbackGetsItsFullBufferTimeBudget() {
+        AudioRoutingPlatform().use { p ->
+            every { p.record.sampleRate } returns 8000
+            every { p.record.channelCount } returns 1
+            every { p.record.bufferSizeInFrames } returns 64000 // Eight seconds, not four.
+            every { p.manager.startBluetoothSco() } throws SecurityException("SCO unavailable")
+            val headset = p.addHeadset()
+            val route = p.route(headset.choice.key, MicrophoneOptions.STANDARD)
+            route.attach(p.record); route.started()
+            repeat(8) {
+                ShadowSystemClock.advanceBy(Duration.ofSeconds(1))
+                p.capture(route, frames = 8000)
+                assertFalse(route.takeReopenRequest())
+                assertFalse(p.state.receivingFallback)
+            }
+            ShadowSystemClock.advanceBy(Duration.ofSeconds(1))
+            p.capture(route, frames = 8000)
+            assertTrue(p.state.receivingFallback)
+        }
+    }
+
     @Test fun unrelatedEventDuringNativeInspectionDoesNotEraseWarmupProgress() {
         AudioRoutingPlatform().use { p ->
             every { p.record.bufferSizeInFrames } returns 64000

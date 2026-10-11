@@ -69,6 +69,12 @@ class TranscriptStore(val file: File) {
     }
 
     @Synchronized fun preview(): String = tail
+    /** Used only by the rolling reclamation boundary, after committed segments. */
+    @Synchronized fun sync() {
+        java.io.RandomAccessFile(file, "rw").use { it.fd.sync() }
+        TranscriptSource.metadata(file).takeIf { it.isFile }?.let { metadata -> java.io.RandomAccessFile(metadata, "rw").use { it.fd.sync() } }
+        file.parentFile?.let(io.github.lrq3000.utterlane.archive.AudioMetadata::syncDirectory)
+    }
 
     @Synchronized fun readForTransfer(limit: Int = TRANSFER_LIMIT): String? =
         if (file.length() <= limit) file.readText(Charsets.UTF_8) else null

@@ -9,16 +9,39 @@ import java.util.Properties
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import io.github.lrq3000.utterlane.archive.*
 
 data class TranscriptEntry(val id: String, val directory: File, val created: Long, val model: String,
     val audioId: String?, val retention: RetentionMark, val modelId: String? = null,
-    val durationMs: Long = 0, val speakerLabels: Boolean = false, val recovered: Boolean = false) {
+    val durationMs: Long = 0, val speakerLabels: Boolean = false, val recovered: Boolean = false, val archivePlan: ArchivePlan? = null) {
     val file get() = File(directory, "transcript.txt")
     val cursor get() = HistoryCursor(created, id)
 }
 
 /** Text history owns independent copies; deleting source audio cannot cascade into it. */
-class TranscriptHistory(private val root: File, private val clock: () -> Long = System::currentTimeMillis) {
+class TranscriptHistory(private val root: File, private val artifacts: ArchivalJobStore? = null,
+    private val clock: () -> Long = System::currentTimeMillis) {
+    @Synchronized fun planArchive(id: String, plan: ArchivePlan, retryPaused: Boolean = false): ArchiveSubmission? {
+        val entry = entries[id]?.takeUnless { id in deleted } ?: return null
+        val updated = entry.copy(archivePlan = plan)
+        persist(updated); put(updated)
+        return queueArchive(updated, retryPaused)
+    }
+    private fun queueArchive(entry: TranscriptEntry, retryPaused: Boolean = false): ArchiveSubmission? {
+        val plan = entry.archivePlan ?: return null
+        return try {
+            artifacts?.enqueue(ArchivalRequest(ArtifactOwner(ArtifactKind.TRANSCRIPT, entry.id), ArchivalOperation.SAVE_MARKDOWN,
+                entry.file, plan.folder, ManagedMarkdown.filename(entry.created, entry.model), "text/markdown",
+                created = entry.created, model = entry.model), plan.epoch, retryPaused)
+        } catch (_: ArchivalCancelledException) { null /* Preserve text; do not resurrect stopped archival. */ }
+        catch (e: Exception) { artifacts?.reportFailure(e); null }
+    }
+    @Synchronized fun publishArchive(job: ArchivalJob): Boolean {
+        val entry = entries[job.request.owner.id]?.takeUnless { it.id in deleted } ?: return false
+        require(job.request.owner.kind == ArtifactKind.TRANSCRIPT && job.request.source == entry.file)
+        return checkNotNull(artifacts).publish(job.id, job.generation) { changes.value++ }
+    }
+    @Synchronized fun hasLeases(id: String): Boolean = (leases[id] ?: 0) > 0
     companion object {
         fun idForAttempt(attempt: String): String = UUID.nameUUIDFromBytes(attempt.toByteArray(Charsets.UTF_8)).toString()
     }
@@ -42,12 +65,15 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
             val metadata = File(directory, "transcript.properties")
             if (!metadata.isFile) { directory.deleteRecursively(); return@forEach }
             val p = HistoryMetadata.read(metadata)
-            if (p.getProperty("discarded", "false").toBoolean()) { directory.deleteRecursively(); return@forEach }
+            if (p.getProperty("discarded", "false").toBoolean() || artifacts?.isDeleted(ArtifactOwner(ArtifactKind.TRANSCRIPT, directory.name)) == true) {
+                artifacts?.deleteOwner(ArtifactOwner(ArtifactKind.TRANSCRIPT, directory.name))
+                directory.deleteRecursively(); return@forEach
+            }
             val created = p.getProperty("created").toLong()
             if (File(directory, "transcript.txt").isFile) put(TranscriptEntry(directory.name, directory, created,
                 p.getProperty("model", ""), p.getProperty("audioId"), HistoryMetadata.readMark(p, created), p.getProperty("modelId"),
                 p.getProperty("durationMs", "0").toLong(), p.getProperty("speakerLabels", "false").toBoolean(),
-                p.getProperty("recovered", "false").toBoolean()))
+                p.getProperty("recovered", "false").toBoolean(), ArchivePlan.read(p)).also { queueArchive(it) })
         }
         initialized = true
     }
@@ -56,17 +82,19 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
     @Synchronized fun save(source: File, model: String, audioId: String? = null, pinned: Boolean = false,
         attempt: String = source.name, modelId: String? = null, created: Long? = null,
         durationMs: Long = 0, speakerLabels: Boolean = false, recovered: Boolean = false,
-        reference: Long? = null): TranscriptEntry {
+        reference: Long? = null, archivePlan: ArchivePlan? = null): TranscriptEntry {
         // Share the source-disposition lock with deletion. A producer either
         // publishes before the marker (and is then deleted by its confirmed ID),
         // or observes the marker and cannot recreate that result afterward.
         return TranscriptSource.withActiveSource(source) {
             initialize()
             val id = idForAttempt(attempt)
+            check(artifacts?.isDeleted(ArtifactOwner(ArtifactKind.TRANSCRIPT, id)) != true) { "Transcript was deleted" }
             entries[id]?.let { existing ->
                 check(id !in deleted) { "Transcript was deleted" }
                 if (recovered || TranscriptSource.read(source).recovered) markRecovered(id)
                 if (pinned && !existing.retention.pinned) setPinned(id, true, HistoryRetention.FOREVER, "")
+                archivePlan?.let { planArchive(id, it) }
                 return@withActiveSource get(id)
             }
             check(source.isFile && source.length() > 0) { "There is no transcript to save" }
@@ -76,11 +104,14 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
             // handoff supplies its original age; an explicit new save starts now.
             val now = clock()
             val entry = TranscriptEntry(id, directory, created ?: now, model, audioId, RetentionMark(reference ?: now, pinned), modelId,
-                durationMs, speakerLabels, recovered || TranscriptSource.read(source).recovered)
+                durationMs, speakerLabels, recovered || TranscriptSource.read(source).recovered, archivePlan)
             try {
                 source.inputStream().use { input -> entry.file.outputStream().use { input.copyTo(it, 64 * 1024) } }
                 persist(entry)
                 put(entry)
+                // The saved row contains the intent before enqueuing. Restart
+                // repairs the queue if the process dies between these two writes.
+                queueArchive(entry)
                 entry
             } catch (e: Exception) { directory.deleteRecursively(); throw e }
         }
@@ -192,6 +223,7 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
         while (true) delete(expiry.firstDue(duration, clock()) ?: break)
     }
     @Synchronized fun delete(id: String) {
+        artifacts?.deleteOwner(ArtifactOwner(ArtifactKind.TRANSCRIPT, id))
         val entry = entries[id] ?: return
         persist(entry, discarded = true)
         unlink(entry)
@@ -212,7 +244,10 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
                     entries[id]?.let(::indexExpiry)
                 }
                 val count = (leases[id] ?: 1) - 1
-                if (count == 0) { leases.remove(id); if (id in deleted) remove(id) } else leases[id] = count
+                if (count == 0) {
+                    leases.remove(id); if (id in deleted) remove(id)
+                    artifacts?.readerReleased(ArtifactOwner(ArtifactKind.TRANSCRIPT, id))
+                } else leases[id] = count
             }
         } }
     }
@@ -250,6 +285,7 @@ class TranscriptHistory(private val root: File, private val clock: () -> Long = 
             setProperty("durationMs", entry.durationMs.toString()); setProperty("speakerLabels", entry.speakerLabels.toString())
             setProperty("discarded", discarded.toString())
             setProperty("recovered", entry.recovered.toString())
+            entry.archivePlan?.writeTo(this)
             HistoryMetadata.writeMark(this, entry.retention)
         }
         HistoryMetadata.write(File(entry.directory, "transcript.properties"), p)

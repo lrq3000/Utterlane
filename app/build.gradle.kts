@@ -1,16 +1,25 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
 val sherpaOnnxVersion = "1.12.23"
 val aarFile = layout.projectDirectory.file("libs/sherpa-onnx-$sherpaOnnxVersion.aar").asFile
-val crispNotices = layout.buildDirectory.dir("generated/crispNotices")
-val copyCrispNotices = tasks.register<Sync>("copyCrispNotices") {
+
+abstract class CopyCrispNotices : Sync() {
+    // A task-owned output keeps the producer attached to AGP's generated assets.
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+}
+
+val copyCrispNotices = tasks.register<CopyCrispNotices>("copyCrispNotices") {
     val source = rootProject.file(".native-cache/crispasr")
-    from(source) { include("LICENSE", "THIRD_PARTY_NOTICES.txt") }
-    into(crispNotices.map { it.dir("crispasr") })
+    outputDirectory.set(layout.buildDirectory.dir("generated/crispNotices"))
+    from(source) {
+        include("LICENSE", "THIRD_PARTY_NOTICES.txt")
+        into("crispasr")
+    }
+    into(outputDirectory)
     doFirst { check(source.resolve("THIRD_PARTY_NOTICES.txt").isFile) { "Run python tools/prepare_native.py first" } }
 }
 
@@ -27,13 +36,12 @@ tasks.register("checkSherpaOnnxAar") {
 
 tasks.named("preBuild") {
     dependsOn("checkSherpaOnnxAar")
-    dependsOn(copyCrispNotices)
 }
 
 android {
     ndkVersion = "28.2.13676358"
     namespace = "io.github.lrq3000.utterlane"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "io.github.lrq3000.utterlane"
@@ -91,10 +99,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
-    kotlinOptions {
-        jvmTarget = "21"
-    }
-
     buildFeatures {
         compose = true
         viewBinding = true
@@ -114,7 +118,6 @@ android {
     externalNativeBuild {
         cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" }
     }
-    sourceSets.getByName("main").assets.srcDir(crispNotices)
 
     packaging {
         resources {
@@ -126,21 +129,38 @@ android {
     }
 }
 
+androidComponents {
+    onVariants { variant ->
+        // AGP 9 distinguishes generated assets and carries their producer dependency.
+        variant.sources.assets?.addGeneratedSourceDirectory(copyCrispNotices) { it.outputDirectory }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
+    }
+}
+
 dependencies {
     implementation(project(":transcribe-native"))
     // Source-built sherpa JNI/bindings + official Maven Central ONNX Runtime.
     implementation(files(aarFile))
 
     // AndroidX Core
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.documentfile:documentfile:1.0.1")
-    implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("androidx.activity:activity-compose:1.8.2")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
+    // Align direct dependencies with SimpleStorage's AndroidX requirements.
+    implementation("androidx.core:core-ktx:1.18.0")
+    implementation("androidx.documentfile:documentfile:1.1.0")
+    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("androidx.paging:paging-runtime-ktx:3.3.6")
     implementation("androidx.paging:paging-compose:3.3.6")
+
+    // Storage Access Framework helpers (also brings fragment-ktx 1.8.9).
+    implementation("com.anggrayudi:storage:3.1.0")
 
     // Jetpack DataStore
     implementation("androidx.datastore:datastore-preferences:1.0.0")
@@ -154,7 +174,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     // Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     // OkHttp for model download
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

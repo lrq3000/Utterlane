@@ -36,9 +36,9 @@ jobs:
           log-accepted-android-sdk-licenses: false
 
       - name: Install Android build dependencies
-        # App/sherpa bindings use API 36; main's transcribe-native module uses 35.
+        # All Android modules, including standalone sherpa bindings, use API 37.
         run: >-
-          sdkmanager "platforms;android-35" "platforms;android-36" "build-tools;35.0.0"
+          sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
           "ndk;28.2.13676358" "cmake;3.22.1"
 
       - name: Cache sherpa-onnx AAR
@@ -64,7 +64,7 @@ jobs:
           python3 -m unittest discover -s tools/tests
           ./gradlew testDebugUnitTest assembleDebug assembleRelease bundleRelease --console=plain --quiet
           python3 tools/release_artifacts.py app/build/outputs/apk/release/app-release-unsigned.apk app/build/outputs/bundle/release/app-release.aab
-          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 app/build/outputs/apk/release/app-release-unsigned.apk
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 app/build/outputs/apk/release/app-release-unsigned.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v7.0.1
@@ -121,7 +121,7 @@ jobs:
           log-accepted-android-sdk-licenses: false
 
       - name: Install signing tools
-        run: sdkmanager "build-tools;35.0.0"
+        run: sdkmanager "build-tools;36.0.0"
 
       - name: Sign release artifacts
         env:

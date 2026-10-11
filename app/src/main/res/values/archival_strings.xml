@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="archive_title">Managed archival</string>
+    <string name="archive_force_stop">Force stop all archival jobs</string>
+    <string name="archive_notification">%1$d jobs · waiting for %2$d active operations</string>
+    <string name="archive_timeout">Archival paused at the Android background time limit. Private input is preserved. Open Utterlane to retry.</string>
+    <string name="archive_audio_folder">Audio storage folder</string>
+    <string name="archive_private">App-private storage</string>
+    <string name="archive_choose_folder">Choose folder</string>
+    <string name="archive_markdown_folder">Markdown folder</string>
+    <string name="archive_no_folder">No folder selected</string>
+    <string name="archive_auto_markdown">Automatically save managed Markdown</string>
+    <string name="archive_markdown_explanation">Complete transcripts are saved to the selected folder and linked to Text history, even when internal automatic saving is off. Existing text retention and pinning apply. Deleting a transcript also deletes its managed Markdown files.</string>
+    <string name="archive_save_markdown">Save Markdown</string>
+    <string name="archive_queued">Markdown queued for saving</string>
+    <string name="archive_already_saved">Markdown is already saved in this folder</string>
+    <string name="archive_retry">Retry archival and pending cleanup</string>
+    <string name="archive_status">%1$d queued · %2$d running · %3$d paused · %4$d pending cleanup</string>
+    <string name="archive_grant_failed">The selected folder needs persistent read and write access.</string>
+    <string name="archive_audio_explanation">New recordings and kept imports use this destination. Existing items retain their own locations. These files follow audio history retention and deletion. If the folder is unavailable, useful private input is preserved for retry.</string>
+</resources>

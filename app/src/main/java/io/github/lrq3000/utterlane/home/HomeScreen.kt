@@ -44,6 +44,7 @@ import io.github.lrq3000.utterlane.history.RecordingRecovery
 import io.github.lrq3000.utterlane.transcribe.TranscriptReader
 import io.github.lrq3000.utterlane.transcribe.TranscriptTransferActions
 import io.github.lrq3000.utterlane.transcribe.TranscriptionDialog
+import io.github.lrq3000.utterlane.transcribe.ImportRetentionQuestion
 import io.github.lrq3000.utterlane.transcribe.TranscriptionProgressFooter
 import io.github.lrq3000.utterlane.ui.AudioInputText
 import io.github.lrq3000.utterlane.ui.RecognitionStatusText
@@ -82,7 +83,8 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
                         Modifier.height(previewHeight).fillMaxWidth(), followTail = state.capture.active || state.result.running)
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     TranscriptTransferActions(state.result.store, enabled = !state.result.closing && !state.result.deleting,
-                        modifier = Modifier.padding(vertical = 8.dp)) {
+                         modifier = Modifier.padding(vertical = 8.dp)) {
+                        io.github.lrq3000.utterlane.archive.ManagedMarkdownAction(model, state.result.transcriptBytes > 0 && !state.busy)
                         Box {
                             IconButton(onClick = { menu = true }, enabled = model != null && !state.busy,
                                 modifier = Modifier.testTag("home_more")) {
@@ -125,6 +127,7 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
                 }
             }
             HomeCaptureControl(state, onRecord)
+            io.github.lrq3000.utterlane.archive.ArchivalStatusControls()
             PrivacyNote()
             HomeFeedback(state, onModels = { context.startActivity(RecordingRecovery.modelIntent(context)) }, onRetry = controller::retry)
             if (model != null && !state.busy && state.result.audio != null) {
@@ -144,6 +147,7 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
         TranscriptionDialog(model, onClose = { details = false },
             onEmpty = { details = false; controller.dismiss() })
     }
+    state.pendingImport?.let { ImportRetentionQuestion(it) }
 }
 
 /** Text establishes the row height; the local-file action uses that exact square. */

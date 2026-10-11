@@ -27,6 +27,29 @@ class DialogAudioActionsTest {
     @get:Rule val temporary = TemporaryFolder()
     @After fun tearDown() = unmockkAll()
 
+    @Test fun retentionInspectionUsesTheSameUsableTrackAsTheDecoder() {
+        val app = mockk<UtterlaneApp>()
+        val resolver = mockk<ContentResolver>(relaxed = true)
+        every { app.contentResolver } returns resolver
+        val source = Uri.parse("content://source/document/multitrack")
+        every { resolver.getType(source) } returns "audio/mp4"
+        mockkConstructor(android.media.MediaExtractor::class)
+        every { anyConstructed<android.media.MediaExtractor>().setDataSource(app, source, null) } just Runs
+        every { anyConstructed<android.media.MediaExtractor>().trackCount } returns 2
+        every { anyConstructed<android.media.MediaExtractor>().getTrackFormat(0) } returns
+            android.media.MediaFormat.createAudioFormat("audio/raw", 0, 1)
+        every { anyConstructed<android.media.MediaExtractor>().getTrackFormat(1) } returns
+            android.media.MediaFormat.createAudioFormat("audio/mp4a-latm", 48000, 2).apply {
+                setLong(android.media.MediaFormat.KEY_DURATION, 601_000_000)
+            }
+        every { anyConstructed<android.media.MediaExtractor>().release() } just Runs
+        val metadata = DialogAudioActions(app).inspect(source, null).metadata
+        assertEquals("audio/mp4a-latm", metadata.trackMimeType)
+        assertEquals(true, metadata.isCompressed)
+        assertEquals(601_000L, metadata.durationMs)
+        verify(exactly = 0) { resolver.openInputStream(any()) }
+    }
+
     @Test fun providerImportDoesNotRequireAKnownSizeAndPreservesOriginalBytes() {
         val app = mockk<UtterlaneApp>()
         val resolver = mockk<ContentResolver>()
@@ -40,9 +63,14 @@ class DialogAudioActionsTest {
         }
         every { resolver.getType(source) } returns "audio/ogg"
         every { resolver.openInputStream(source) } answers { bytes.inputStream() }
-        val imported = DialogAudioActions(app).import(source, null)
-        assertArrayEquals(bytes, imported.part(0).readBytes())
-        assertEquals("ready", imported.status)
+        val actions = DialogAudioActions(app)
+        val inspected = actions.inspect(source, null)
+        assertNull(inspected.metadata.sourceBytes)
+        val imported = actions.import(inspected, io.github.lrq3000.utterlane.history.ImportRetentionChoice.KEEP)
+        imported.lease.use {
+            assertArrayEquals(bytes, imported.entry.part(0).readBytes())
+            assertEquals("ready", imported.entry.status)
+        }
     }
 
     @Test fun failedExportCleanupCannotHideTheOriginalStorageError() {
@@ -68,7 +96,9 @@ class DialogAudioActionsTest {
             override fun write(value: Int) { throw failure }
         }
 
-        val thrown = assertThrows(Exception::class.java) { DialogAudioActions(app).export(entry.id, directory, true) }
+        val thrown = history.selectForExport(entry.id).use { selection ->
+            assertThrows(Exception::class.java) { DialogAudioActions(app).export(selection, directory, true) }
+        }
         assertSame(failure, thrown)
         assertTrue(thrown.suppressed.contains(cleanupFailure))
         assertArrayEquals(byteArrayOf(1, 2, 3), entry.part(0).readBytes())

@@ -73,6 +73,8 @@ class UtterlaneApp : Application() {
         private set
     lateinit var historyCleanup: io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator
         private set
+    lateinit var archival: io.github.lrq3000.utterlane.archive.ArchivalCoordinator
+        private set
 
     val serviceAlertNotification: ServiceAlertNotification by lazy {
         ServiceAlertNotification(this)
@@ -86,7 +88,7 @@ class UtterlaneApp : Application() {
         // lifecycle and could recursively start a second model.
         val processName = if (Build.VERSION.SDK_INT >= 28) getProcessName() else
             getSystemService(android.app.ActivityManager::class.java).runningAppProcesses?.firstOrNull { it.pid == android.os.Process.myPid() }?.processName
-        if (processName == "$packageName:recognition") return
+        if (processName != null && processName != packageName) return
         settingsRepository = SettingsRepository(this)
         audioInputs = io.github.lrq3000.utterlane.audio.AudioInputController(
             io.github.lrq3000.utterlane.audio.AndroidAudioInputDevices(this), settingsRepository, applicationScope
@@ -105,8 +107,20 @@ class UtterlaneApp : Application() {
         }
         modelWakeObserver = DeviceWakeObserver(this) { recognizerManager.recheckIdleTimeout() }
         transcribeManager = TranscribeManager(this)
-        recordingHistory = RecordingHistory(File(filesDir, "microphone-history"))
-        transcriptHistory = io.github.lrq3000.utterlane.history.TranscriptHistory(File(noBackupFilesDir, "transcript-history"))
+        val archiveJobs = io.github.lrq3000.utterlane.archive.ArchivalJobStore(File(noBackupFilesDir, "managed-artifacts"))
+        recordingHistory = RecordingHistory(File(filesDir, "microphone-history"), archiveJobs,
+            io.github.lrq3000.utterlane.archive.AndroidAudioAssetIO(this))
+        transcriptHistory = io.github.lrq3000.utterlane.history.TranscriptHistory(File(noBackupFilesDir, "transcript-history"), archiveJobs)
+        archival = io.github.lrq3000.utterlane.archive.ArchivalCoordinator(this, archiveJobs)
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityResumed(activity: android.app.Activity) = archival.visible(activity, true)
+            override fun onActivityPaused(activity: android.app.Activity) = archival.visible(activity, false)
+            override fun onActivityDestroyed(activity: android.app.Activity) = archival.visible(activity, false)
+            override fun onActivityCreated(activity: android.app.Activity, state: android.os.Bundle?) {}
+            override fun onActivityStarted(activity: android.app.Activity) {}
+            override fun onActivityStopped(activity: android.app.Activity) {}
+            override fun onActivitySaveInstanceState(activity: android.app.Activity, state: android.os.Bundle) {}
+        })
         historyCleanup = io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator(this)
         createNotificationChannel()
 

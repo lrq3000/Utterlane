@@ -506,4 +506,12 @@
     <string name="home_processed_percent">Audio processed: %1$d%%</string>
     <string name="home_read_percent">Audio read: %1$d%%</string>
     <string name="home_microphone_settings">Microphone permission settings</string>
+    <string name="import_retention_title">Keep imported audio?</string>
+    <string name="import_retention_duration">This audio is longer than 10 minutes.</string>
+    <string name="import_retention_size">This audio is larger than 50 MiB.</string>
+    <string name="import_retention_explanation">Keep audio saves a copy using your Audio history retention setting. Transcript only removes the working audio after successful processing when you leave; unfinished work remains recoverable. Your original file is unchanged.</string>
+    <string name="import_retention_remember">Remember my choice and do not ask again</string>
+    <string name="import_keep_audio">Keep audio</string>
+    <string name="import_transcript_only">Transcript only</string>
+    <string name="import_reset_choices">Reset remembered audio import choices</string>
 </resources>

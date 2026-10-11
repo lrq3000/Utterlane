@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- A real DocumentsProvider for deterministic provider/worker QA. It is
+             absent from release builds and has no picker root intent filter. -->
+        <provider android:name=".archive.ArchiveTestDocumentsProvider"
+            android:authorities="${applicationId}.archive-test"
+            android:process=":archive_test_provider" android:exported="true"
+            android:grantUriPermissions="true" android:permission="android.permission.MANAGE_DOCUMENTS" />
+    </application>
+</manifest>

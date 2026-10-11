@@ -34,7 +34,7 @@ class RecordingPipeline(
         closeConsumer: () -> Unit = {}
     ): Outcome = coroutineScope {
         val owner = currentCoroutineContext()
-        val queue = BoundedAudioQueue(options)
+        val queue = BoundedAudioQueue(options, recording.rolling?.format ?: io.github.lrq3000.utterlane.archive.PcmFormat())
         val published = MutableStateFlow(Publication())
         val dispatched = CompletableDeferred<Unit>()
         // One emergency slot preserves the block that discovers a full writer
@@ -81,7 +81,10 @@ class RecordingPipeline(
             } catch (e: Exception) {
                 storageError = e
                 source.stop()
-            } finally { published.value = Publication(recording.writtenSamples, done = true) }
+            } finally {
+                try { recording.closeCapture() } catch (e: Exception) { storageError = storageError ?: e; source.stop() }
+                published.value = Publication(recording.writtenSamples, done = true)
+            }
         }
         suspend fun processingFailed(error: Exception) {
             if (processingError == null) {

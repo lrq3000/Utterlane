@@ -84,6 +84,8 @@ internal class AudioRoutingPlatform : Closeable {
             every { manager.removeOnCommunicationDeviceChangedListener(any()) } answers { communicationChanged = null }
         }
         every { record.routedDevice } answers { actualInput }
+        every { record.sampleRate } returns 16000
+        every { record.channelCount } returns 1
         every { record.setPreferredDevice(any()) } answers { preferred = firstArg(); acceptPreference }
         every { record.addOnRoutingChangedListener(any<AudioRouting.OnRoutingChangedListener>(), any()) } answers {
             val listener = firstArg<AudioRouting.OnRoutingChangedListener>()

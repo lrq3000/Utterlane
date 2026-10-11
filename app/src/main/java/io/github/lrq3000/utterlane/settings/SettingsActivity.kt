@@ -559,6 +559,8 @@ fun SettingsScreen(
 
             SettingsSection(title = stringResource(R.string.histories_section)) {
                 io.github.lrq3000.utterlane.history.HistorySettings()
+                io.github.lrq3000.utterlane.archive.ArchivalSettingsSection()
+                io.github.lrq3000.utterlane.archive.AudioQualitySection()
             }
 
             // Keyboard Integration Section
