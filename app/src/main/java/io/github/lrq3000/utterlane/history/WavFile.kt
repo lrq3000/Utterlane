@@ -7,13 +7,13 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /** PCM16 WAV with bounded block IO. The capture writer and backlog reader use distinct handles. */
-class WavFile(val file: File) : Closeable {
+class WavFile(val file: File, private val sampleRate: Int = 16000, private val channels: Int = 1) : Closeable {
     private val output = RandomAccessFile(file, "rw")
     private var bytes = ByteBuffer.allocate(6400).order(ByteOrder.LITTLE_ENDIAN)
     var samples: Long = 0
         private set
 
-    init { output.setLength(44); writeHeader(output, 0) }
+    init { output.setLength(44); writeHeader(output, 0, sampleRate, channels) }
 
     fun append(data: ShortArray) {
         check(samples + data.size <= Int.MAX_VALUE / 2) { "WAV part is full" }
@@ -27,8 +27,9 @@ class WavFile(val file: File) : Closeable {
 
     fun read(offset: Long, count: Int): ShortArray = read(file, offset, minOf(count.toLong(), samples - offset).coerceAtLeast(0).toInt())
 
+    fun sync() = output.fd.sync()
     override fun close() {
-        try { writeHeader(output, samples * 2) } finally { output.close() }
+        try { writeHeader(output, samples * 2, sampleRate, channels); sync() } finally { output.close() }
     }
 
     /** One independent read handle per session/part; never shares the writer's seek position. */
@@ -55,18 +56,19 @@ class WavFile(val file: File) : Closeable {
             }
         }
 
-        fun repair(file: File) {
+        fun repair(file: File, sampleRate: Int = 16000, channels: Int = 1) {
             RandomAccessFile(file, "rw").use {
                 require(it.length() >= 44) { "Incomplete WAV header" }
-                it.setLength(44 + ((it.length() - 44) / 2) * 2)
-                writeHeader(it, it.length() - 44)
+                it.setLength(44 + ((it.length() - 44) / (2 * channels)) * (2 * channels))
+                writeHeader(it, it.length() - 44, sampleRate, channels)
+                it.fd.sync()
             }
         }
 
-        private fun writeHeader(output: RandomAccessFile, bytes: Long) {
+        private fun writeHeader(output: RandomAccessFile, bytes: Long, sampleRate: Int = 16000, channels: Int = 1) {
             val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
             header.put("RIFF".toByteArray()).putInt((36 + bytes).toInt()).put("WAVEfmt ".toByteArray())
-            header.putInt(16).putShort(1).putShort(1).putInt(16000).putInt(32000).putShort(2).putShort(16)
+            header.putInt(16).putShort(1).putShort(channels.toShort()).putInt(sampleRate).putInt(sampleRate * channels * 2).putShort((channels * 2).toShort()).putShort(16)
             header.put("data".toByteArray()).putInt(bytes.toInt())
             output.seek(0)
             output.write(header.array())

@@ -15,7 +15,7 @@ class TranscriptDiscardedException : IllegalStateException("Transcript was delet
  * It contains identifiers and recovery state; exports and clipboard text never include it. */
 data class TranscriptSource(val audioId: String? = null, val transcriptId: String? = null,
     val modelName: String = "", val modelId: String? = null, val discarded: Boolean = false,
-    val recovered: Boolean = false) {
+    val recovered: Boolean = false, val archivePlan: io.github.lrq3000.utterlane.archive.ArchivePlan? = null) {
     fun write(file: File) {
         synchronized(lockFor(file)) {
             // Late producer metadata must not clear a durable deletion marker.
@@ -31,6 +31,7 @@ data class TranscriptSource(val audioId: String? = null, val transcriptId: Strin
                 // Origin is monotonic: an older producer snapshot may add an ID,
                 // but cannot erase a recovery acknowledgement from another owner.
                 setProperty("recovered", (recovered || previous.recovered).toString())
+                (archivePlan ?: previous.archivePlan)?.writeTo(this)
             }
             HistoryMetadata.write(metadata(file), properties)
         }
@@ -61,7 +62,7 @@ data class TranscriptSource(val audioId: String? = null, val transcriptId: Strin
             val p = HistoryMetadata.read(metadata)
             return TranscriptSource(p.getProperty("audioId"), p.getProperty("transcriptId"),
                 p.getProperty("modelName", ""), p.getProperty("modelId"), p.getProperty("discarded", "false").toBoolean(),
-                p.getProperty("recovered", "false").toBoolean())
+                p.getProperty("recovered", "false").toBoolean(), io.github.lrq3000.utterlane.archive.ArchivePlan.read(p))
         }
         fun retentionReference(file: File): Long {
             if (!file.name.endsWith(".source")) return file.lastModified()

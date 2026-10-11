@@ -385,7 +385,7 @@ Under **Audio and transcript histories**, configure the two histories independen
 - **Delete unpinned entries after:** a separate duration for each history, ranging
   from Immediate to Forever. Turning automatic saving off does not prevent manual saves.
 
-Audio uses approximately **115 MB per hour** for microphone PCM; saved text is
+With compression off, audio uses approximately **115 MB per hour** for microphone PCM; saved text is
 independent and remains usable after its source audio expires. Deleting a text
 entry does not delete audio, and deleting audio does not delete saved text.
 
@@ -395,6 +395,65 @@ approach the bottom, and earlier pages load again when you scroll back up. There
 are no page buttons. Opening a record and returning, or recreating the screen,
 retains the browsing position. The list keeps a small window of previews in memory
 instead of reading every transcript while you explore a large history.
+
+### Saved audio quality and background archival
+
+Open the initially collapsed **Saved audio quality** section in Settings.
+**Compress saved audio** is off by default. The default is PCM16 WAV at 16 kHz mono:
+
+> Native recognition format — 16 kHz mono PCM. Microphone samples can feed transcription and WAV storage directly, without resampling, channel conversion, or audio encoding. Consumes more storage if audio history is enabled.
+
+Compression defaults to **M4A / AAC-LC, 16 kHz, mono, 96 kbps**. Available choices
+include 8, 16, 22.05, 32, 44.1 and 48 kHz; mono/stereo; and 48, 96, 128, 192, 256
+and 288 kbps. Invalid/device-unsupported combinations cannot be applied. For
+example, 192 kbps is not valid for AAC-LC at 16 kHz mono. **3GP / AMR** uses mono
+8 or 16 kHz and its codec-defined bitrate. **WAV (uncompressed)** selects PCM
+storage. Apply changes for the next operation; an ongoing operation keeps its
+starting settings and destination.
+
+Compression uses CPU and can contend with transcription and speaker labeling.
+At 192 kbps it is nominally only 25% smaller than native 256 kbps PCM; lower rates
+save more space. **May worsen re-transcriptions accuracy.** Requested non-native
+microphone formats configure AudioRecord itself; recognition independently receives
+normalized 16 kHz mono samples. Unsupported capture/encoder formats fall back to
+PCM with a warning. Before AAC encoding, the archival worker measures the selected
+codec's priming offset with a small synthetic encode/decode probe. Recording and
+transcription continue independently. If calibration cannot establish a stable
+offset, PCM is preserved rather than saving shifted audio.
+
+When retained microphone audio is being compressed, the background archival
+worker encodes **while recording is still active**. Original PCM feeds the current
+transcription. Short PCM parts are reclaimed only after committed recognition
+progress (including context) and a durable encoded checkpoint both cover them.
+A slow/unavailable model or encoder can therefore still cause disk usage to grow;
+input is not dropped to enforce a fixed disk budget. With automatic audio saving
+off, temporary successful capture is not needlessly encoded. An explicit later
+Keep can submit saved PCM for compression.
+
+If original transcription fails or is interrupted, its unprocessed PCM remains
+available for a retry even if encoding has finished. Normal retention and explicit
+deletion still apply to that recovery material.
+
+Stopping capture and finishing recognition do not wait for archival finalization.
+The archival notification and in-app controls show pending work. **Force stop all
+archival jobs** stops only archival work; recording/transcription continue. Encoding
+failure or cancellation preserves the encoded prefix and remaining PCM. Playback,
+re-transcription and export use this mixed representation. A recovery prefix is
+remuxed locally on first access, without re-encoding; this can take time for long
+recordings. Mixed recovery exports contain an ordered compressed prefix and WAV
+tail parts. Cancelled encoding attempts are not automatically restarted.
+
+Compressed imported tracks are copied **byte-for-byte**, regardless of their file
+extension or this setting. Only tracks identified as uncompressed are transcoded,
+independently of transcription of their original private copy. The sender's original
+file is never modified or deleted.
+
+The **Audio folder** setting selects a managed document-provider folder; leaving it
+unset keeps audio private. Private recovery material remains until publication and
+original readers complete, then redundant private PCM/journal copies are removed.
+Folder failure preserves private input. **Automatic Markdown** has its own folder
+and switch, and **Save Markdown** saves the complete transcript. Managed external
+files follow their linked history entries' pin, retention and deletion choices.
 
 ### Pins and manual saves
 
@@ -478,7 +537,7 @@ opened, rather than claiming another app delivered the content.
 
 Press **Play** to reveal Pause/Resume, Stop playback, a seek bar, and elapsed/total
 time. Seeking while paused keeps playback paused; Stop or reaching the end resets
-and collapses the player. Hourly audio parts appear as one timeline. Playback is
+and collapses the player. Audio parts, including mixed recovery parts, appear as one timeline. Playback is
 local and independent of recognition, pauses on focus/headphone/background changes,
 and uses the visual-refresh preference for position updates. A transcript whose
 source expired remains readable; audio-dependent actions explain its absence.
@@ -495,8 +554,9 @@ bounded buffer, including the block that detected overload, before finalization.
 Storage-full errors explain that you can free space or choose another save destination;
 other write failures retain their actual cause rather than being mislabeled as full.
 
-Saved history is private to the app and excluded from Android cloud backup and
-device transfer. Exports and clipboard transfers give data to their receiving
+Saved history is private by default and excluded from Android cloud backup and
+device transfer. A selected managed folder uses that document provider's storage
+and synchronization behavior. Exports and clipboard transfers give data to their receiving
 apps, which have their own privacy behavior. See the
 [privacy policy](../PRIVACY_POLICY.md) for retention details.
 

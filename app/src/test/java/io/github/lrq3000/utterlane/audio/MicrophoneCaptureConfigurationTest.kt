@@ -80,4 +80,17 @@ class MicrophoneCaptureConfigurationTest {
         every { record.bufferSizeInFrames } returns 0
         assertNotNull(MicrophoneCaptureConfiguration.problem(context, record, MicrophoneOptions.HFP))
     }
+
+    @Test fun archivalStereoAcceptsOnlyItsActualFormatAndExplicitSource() {
+        val expected = io.github.lrq3000.utterlane.archive.PcmFormat(48000, 2)
+        every { record.sampleRate } returns 48000
+        every { record.channelCount } returns 2
+        assertNull(MicrophoneCaptureConfiguration.problem(context, record, MicrophoneOptions.HFP, expected))
+        every { record.audioSource } returns MicrophoneSource.MIC.androidSource
+        assertTrue(MicrophoneCaptureConfiguration.problem(context, record, MicrophoneOptions.HFP, expected)!!.contains("VOICE_RECOGNITION"))
+        every { record.audioSource } returns MicrophoneSource.VOICE_RECOGNITION.androidSource
+        every { record.sampleRate } returns 16000
+        every { record.channelCount } returns 1
+        assertNotNull("Native PCM cannot be labeled as 48 kHz stereo", MicrophoneCaptureConfiguration.problem(context, record, MicrophoneOptions.HFP, expected))
+    }
 }

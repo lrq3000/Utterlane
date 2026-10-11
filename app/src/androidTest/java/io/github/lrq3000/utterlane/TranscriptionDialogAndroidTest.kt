@@ -45,7 +45,9 @@ class TranscriptionDialogAndroidTest {
         val target = File.createTempFile("audio-export-", ".wav", app.cacheDir)
         try {
             val destination = androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", target)
-            DialogAudioActions(app).export(recording.entry.id, destination, directory = false)
+            app.recordingHistory.selectForExport(recording.entry.id).use {
+                DialogAudioActions(app).export(it, destination, directory = false)
+            }
             assertArrayEquals(recording.entry.part(0).readBytes(), target.readBytes())
             app.recordingHistory.dismiss(recording.entry.id)
             assertTrue(target.isFile)
@@ -80,7 +82,9 @@ class TranscriptionDialogAndroidTest {
         }
     }
 
-    @Test fun importedAudioCloseDeletesOnlyThePrivateCopy() = runBlocking {
+    @Test fun historyDisabledImportedAudioCloseDeletesOnlyThePrivateCopy() = runBlocking {
+        val historyEnabled = app.settingsRepository.audioHistoryEnabled.first()
+        app.settingsRepository.setAudioHistoryEnabled(false)
         val original = File.createTempFile("original-", ".wav", app.cacheDir)
         WavFile(original).use { it.append(ShortArray(1600) { 1000 }) }
         val owners = ViewModelStore()
@@ -97,7 +101,10 @@ class TranscriptionDialogAndroidTest {
             withTimeout(5000) { closed.await() }
             assertFalse(loaded.audio!!.directory.exists())
             assertTrue(original.isFile)
-        } finally { instrumentation.runOnMainSync { owners.clear() }; original.delete() }
+        } finally {
+            instrumentation.runOnMainSync { owners.clear() }; original.delete()
+            app.settingsRepository.setAudioHistoryEnabled(historyEnabled)
+        }
     }
 
     @Test fun failedRetryKeepsTheSameAudioUntilExplicitDismissal() = runBlocking {

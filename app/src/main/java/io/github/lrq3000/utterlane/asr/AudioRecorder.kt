@@ -17,7 +17,6 @@ class AudioRecorder : AudioCapture {
     companion object {
         private const val TAG = "AudioRecorder"
         const val SAMPLE_RATE = 16000
-        private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
     }
 
@@ -36,28 +35,78 @@ class AudioRecorder : AudioCapture {
     private var effects: MicrophoneEffects? = null
     private var diagnostic: MicrophoneDiagnostics.Session? = null
     private var effectInputId: Int? = null
+    private var captureFormat = io.github.lrq3000.utterlane.archive.PcmFormat()
+    private var preparedConfiguration: CaptureConfiguration? = null
+    private val channelConfig get() = if (captureFormat.channels == 2) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
+    /** Test real AudioRecord initialization, retaining that same recorder for the
+     * actual session. A rejected tuple falls back before any source clock starts. */
+    @SuppressLint("MissingPermission")
+    override fun configureFormat(requested: io.github.lrq3000.utterlane.archive.PcmFormat): io.github.lrq3000.utterlane.archive.PcmFormat =
+        configureFormat(requested, RuntimeOptions())
+    override fun configureFormat(requested: io.github.lrq3000.utterlane.archive.PcmFormat, options: RuntimeOptions): io.github.lrq3000.utterlane.archive.PcmFormat {
+        check(!isRecording.get() && readLoop == null)
+        closeRecorder()
+        snapshotMicrophone()
+        captureFormat = requested
+        if (requested.native) {
+            preparedConfiguration = configuration(options)
+            return captureFormat
+        }
+        try {
+            val minimum = AudioRecord.getMinBufferSize(requested.sampleRate, channelConfig, AUDIO_FORMAT)
+            check(minimum > 0)
+            val selected = CaptureConfiguration(requested, options, minimum)
+            val record = createRecorder(selected)
+            if (record.state != AudioRecord.STATE_INITIALIZED || record.sampleRate != requested.sampleRate || record.channelCount != requested.channels) {
+                record.release(); error("Requested microphone format is unsupported")
+            }
+            audioRecord = record
+            preparedConfiguration = selected
+        } catch (e: SecurityException) { throw e
+        } catch (_: IllegalArgumentException) { captureFormat = io.github.lrq3000.utterlane.archive.PcmFormat()
+        } catch (_: IllegalStateException) { captureFormat = io.github.lrq3000.utterlane.archive.PcmFormat() }
+        if (captureFormat != requested) preparedConfiguration = configuration(options)
+        return captureFormat
+    }
+    private fun configuration(options: RuntimeOptions) = CaptureConfiguration(captureFormat, options,
+        AudioRecord.getMinBufferSize(captureFormat.sampleRate, channelConfig, AUDIO_FORMAT))
+    @SuppressLint("MissingPermission")
+    private fun createRecorder(configuration: CaptureConfiguration) = configuration.create { format, bytes ->
+        AudioRecord(microphoneOptions.source.androidSource, format.sampleRate,
+            if (format.channels == 2) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO, AUDIO_FORMAT, bytes)
+    }
     override fun setObserver(observer: CaptureObserver) { this.observer = observer }
     override fun configureMicrophone(options: MicrophoneOptions) {
-        check(!isRecording.get()) { "Microphone configuration is frozen during capture" }
+        check(!isRecording.get() && readLoop == null) { "Microphone configuration is frozen during capture" }
+        // A format probe may already own an unstarted recorder. Changing source
+        // invalidates that recorder, never relabels it as the new configuration.
+        closeRecorder()
+        preparedConfiguration = null
         configuredMicrophone = options
+    }
+
+    private fun snapshotMicrophone() {
+        microphoneOptions = configuredMicrophone ?: runBlocking {
+            UtterlaneApp.instance.settingsRepository.microphoneSettings.first().options
+        }.also { configuredMicrophone = it }
     }
 
     override fun startRecording(onSamples: (ShortArray) -> Unit, shouldContinue: () -> Boolean) =
         startRecording(RuntimeOptions(), onSamples, shouldContinue)
 
     override fun startRecording(options: RuntimeOptions, onSamples: (ShortArray) -> Unit, shouldContinue: () -> Boolean) {
-        val buffers = CaptureBufferPolicy(options)
+        val selected = preparedConfiguration ?: configuration(options).also { preparedConfiguration = it }
+        val buffers = selected.buffers
         if (stopRequested.get()) return
         if (!isRecording.compareAndSet(false, true)) return
         continueCapture = { isRecording.get() && !stopRequested.get() && shouldContinue() }
         var captureFailure: String? = null
 
         try {
-            val loop = CaptureReadLoop(options = options)
+            val loop = CaptureReadLoop(options = selected.options, blockSamples = buffers.blockSamples)
             readLoop = loop
-            val bufferSize = buffers.recorderBufferBytes(AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT))
             val app = UtterlaneApp.instance
-            microphoneOptions = configuredMicrophone ?: runBlocking { app.settingsRepository.microphoneSettings.first().options }
+            snapshotMicrophone()
             diagnostic = app.microphoneDiagnostics.begin(microphoneOptions)
             val selection = try { runBlocking { app.audioInputs.snapshotForRecording() } }
             catch (e: Exception) {
@@ -72,7 +121,7 @@ class AudioRecorder : AudioCapture {
                     effects?.refresh()?.let { diagnostic?.effects(it) }
                 }
             }, options = microphoneOptions, onDiagnostic = { diagnostic?.route(it) })
-            if (!openRecorder(bufferSize)) return
+            if (!openRecorder(selected)) return
             observer?.onStarted()
             // Nonblocking is supported since API 23 (minSdk is 26). Only this
             // capture worker opens/releases the recorder, including wake recovery.
@@ -87,7 +136,7 @@ class AudioRecorder : AudioCapture {
                         count
                     }
                 },
-                reopen = { Log.i(TAG, "Reopening microphone after capture interruption"); closeRecorder(); openRecorder(bufferSize) },
+                reopen = { Log.i(TAG, "Reopening microphone after capture interruption"); closeRecorder(); openRecorder(selected) },
                 onSamples = onSamples,
                 shouldContinue = continueCapture,
                 canRecover = { route?.isFallback == true || (power.isInteractive && !power.isDeviceIdleMode) },
@@ -119,15 +168,9 @@ class AudioRecorder : AudioCapture {
     }
 
     @SuppressLint("MissingPermission")
-    private fun openRecorder(bufferSize: Int): Boolean {
+    private fun openRecorder(configuration: CaptureConfiguration): Boolean {
         if (!continueCapture()) return false
-        audioRecord = AudioRecord(
-            microphoneOptions.source.androidSource,
-            SAMPLE_RATE,
-            CHANNEL_CONFIG,
-            AUDIO_FORMAT,
-            bufferSize
-        )
+        if (audioRecord == null) audioRecord = createRecorder(configuration)
 
         if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
             Log.e(TAG, "AudioRecord failed to initialize")
@@ -139,7 +182,7 @@ class AudioRecorder : AudioCapture {
         val record = checkNotNull(audioRecord)
         diagnostic?.format(record.audioSource, record.sampleRate, record.channelCount, record.audioSessionId,
             record.audioFormat, capturing = false)
-        MicrophoneCaptureConfiguration.problem(UtterlaneApp.instance, record, microphoneOptions)?.let { error(it) }
+        MicrophoneCaptureConfiguration.problem(UtterlaneApp.instance, record, microphoneOptions, configuration.format)?.let { error(it) }
         effects = MicrophoneEffects(record.audioSessionId, microphoneOptions.preprocessing)
         diagnostic?.effects(checkNotNull(effects).refresh())
         val invalidateConfiguration = silencing.opened {
@@ -175,7 +218,8 @@ class AudioRecorder : AudioCapture {
         audioRecord = null
         try {
             route?.detach(record)
-            try { record.stop() } catch (e: IllegalStateException) { Log.e(TAG, "Error stopping AudioRecord", e) }
+            try { if (record.recordingState == AudioRecord.RECORDSTATE_RECORDING) record.stop() }
+            catch (e: IllegalStateException) { Log.e(TAG, "Error stopping AudioRecord", e) }
             if (android.os.Build.VERSION.SDK_INT >= 29) platformCallback?.let { record.unregisterAudioRecordingCallback(it) }
         } finally {
             platformCallback = null
@@ -184,6 +228,10 @@ class AudioRecorder : AudioCapture {
     }
 
     override fun resumeAfterSleep() { readLoop?.resumeAfterSleep() }
+    override fun releaseAfterCapture() {
+        check(readLoop == null) { "Capture must exit before releasing its prepared recorder" }
+        closeRecorder()
+    }
 
     override fun stop() {
         stopRequested.set(true)

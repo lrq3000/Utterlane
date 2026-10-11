@@ -81,7 +81,7 @@ internal class HomeFileHandoff(
             // Acceptance IO can outlive an importing->running transition. Read
             // current model state now and release preparation in this one update.
             home.update { it.copy(model = model, result = results.value, preparing = false,
-                message = null, permissionDenied = false) }
+                pendingImport = null, message = null, permissionDenied = false) }
         }
     }
 }

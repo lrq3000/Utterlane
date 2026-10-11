@@ -73,12 +73,18 @@ fun HistorySettings() {
     val audioRetention by settings.audioHistoryRetention.collectAsStateWithLifecycle(initialValue = HistoryRetention.HOUR)
     val textEnabled by settings.transcriptHistoryEnabled.collectAsStateWithLifecycle(initialValue = true)
     val textRetention by settings.transcriptHistoryRetention.collectAsStateWithLifecycle(initialValue = HistoryRetention.DAY)
+    val importPreferences by settings.importRetentionPreferences.collectAsStateWithLifecycle(initialValue = ImportRetentionPreferences())
     val context = LocalContext.current
     HistoryPolicySetting(stringResource(R.string.history_auto_audio), audioEnabled, audioRetention,
         enabled = { scope.launch { settings.setAudioHistoryEnabled(it) } }, duration = { scope.launch { settings.setAudioHistoryRetention(it) } })
     HistoryPolicySetting(stringResource(R.string.history_auto_text), textEnabled, textRetention,
         enabled = { scope.launch { settings.setTranscriptHistoryEnabled(it) } }, duration = { scope.launch { settings.setTranscriptHistoryRetention(it) } })
     Text(stringResource(R.string.history_policy_description), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall)
+    TextButton(enabled = importPreferences.durationChoice != null || importPreferences.sizeChoice != null,
+        onClick = { scope.launch { settings.resetImportRetentionChoices() } },
+        modifier = Modifier.semantics { testTagsAsResourceId = true }.testTag("settings_reset_import_choices")) {
+        Text(stringResource(R.string.import_reset_choices))
+    }
     // These legacy links intentionally launch HistoryActivity, unlike the fixed
     // primary navigation with identical labels. Keep their native QA identity exact.
     val historyLink = Modifier.semantics { testTagsAsResourceId = true }

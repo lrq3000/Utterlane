@@ -76,12 +76,15 @@ class AudioPlaybackController(private val app: UtterlaneApp) {
             try {
                 val source = withContext(Dispatchers.IO) {
                     acquired = app.recordingHistory.acquire(id)
-                    app.recordingHistory.get(id)
+                    app.recordingHistory.get(id).also { app.recordingHistory.prepareAudio(it) }
                 }
                 if (token != generation) return@launch
                 lease = acquired; acquired = null
                 entry = source
-                timeline = AudioTimeline(source.durationMs.coerceAtLeast(1), if (source.sourceName == null) 3600000L else source.durationMs.coerceAtLeast(1))
+                timeline = source.rollingAudio?.let { layout -> AudioTimeline(source.durationMs.coerceAtLeast(1),
+                    layout.partFrames * 1000 / layout.format.sampleRate,
+                    if (layout.encodedName != null) layout.prefixFrames * 1000 / layout.format.sampleRate else 0) }
+                    ?: AudioTimeline(source.durationMs.coerceAtLeast(1), if (source.sourceName == null) 3600000L else source.durationMs.coerceAtLeast(1))
                 mutable.value = mutable.value.copy(durationMs = source.durationMs)
                 ContextCompat.registerReceiver(app, noisy, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_NOT_EXPORTED)
                 receiverRegistered = true
@@ -147,14 +150,14 @@ class AudioPlaybackController(private val app: UtterlaneApp) {
         player = candidate
         try {
             candidate.setAudioAttributes(attributes)
-            candidate.setDataSource(checkNotNull(entry).part(part).absolutePath)
             candidate.setOnPreparedListener {
                 if (player !== candidate) return@setOnPreparedListener
                 prepared = true
                 // Import metadata can be an estimate (for example VBR audio).
                 // Once prepared, a positive native duration is authoritative.
-                val duration = if (entry?.sourceName != null) candidate.duration.toLong().takeIf { it > 0 } ?: entry!!.durationMs else timeline!!.durationMs
-                if (duration > 0 && entry?.sourceName != null) timeline = AudioTimeline(duration)
+                val estimatedImport = entry?.sourceName != null && entry?.rollingAudio == null
+                val duration = if (estimatedImport) candidate.duration.toLong().takeIf { it > 0 } ?: entry!!.durationMs else timeline!!.durationMs
+                if (duration > 0 && estimatedImport) timeline = AudioTimeline(duration)
                 mutable.value = mutable.value.copy(durationMs = duration.coerceAtLeast(0), preparing = false)
                 val target = timeline!!.locate(requestedPosition)
                 if (target.offsetMs > 0) submitSeek(target.offsetMs)
@@ -182,7 +185,32 @@ class AudioPlaybackController(private val app: UtterlaneApp) {
                 if (player === candidate) failed(IllegalStateException("Audio playback error $what/$extra"))
                 true
             }
-            candidate.prepareAsync()
+            val playbackEntry = checkNotNull(entry)
+            val source = playbackEntry.asset(part)
+            // Opening a provider FD can block: do it off Main. The player's
+            // lifetime token prevents obsolete setup from restarting playback.
+            preparation?.cancel()
+            preparation = app.applicationScope.launch {
+                var descriptor: android.content.res.AssetFileDescriptor? = null
+                try {
+                    withContext(Dispatchers.IO) {
+                        app.recordingHistory.preparePart(playbackEntry, part)
+                        source.readUri?.let { uri ->
+                        descriptor = checkNotNull(app.contentResolver.openAssetFileDescriptor(android.net.Uri.parse(uri), "r")) {
+                            "Saved audio is unavailable; check folder access"
+                        }
+                    } }
+                    if (player === candidate) {
+                        val fd = descriptor
+                        if (fd == null) candidate.setDataSource(source.local.absolutePath)
+                        else if (fd.declaredLength < 0) candidate.setDataSource(fd.fileDescriptor)
+                        else candidate.setDataSource(fd.fileDescriptor, fd.startOffset, fd.declaredLength)
+                        candidate.prepareAsync()
+                    }
+                } catch (e: CancellationException) { throw e
+                } catch (e: Exception) { if (player === candidate) failed(e) }
+                finally { withContext(NonCancellable + Dispatchers.IO) { descriptor?.close() } }
+            }
         } catch (e: Exception) { failed(e) }
     }
 

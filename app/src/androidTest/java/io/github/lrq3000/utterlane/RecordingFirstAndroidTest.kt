@@ -22,7 +22,7 @@ class RecordingFirstAndroidTest {
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp
         assertFalse(app.modelManager.isModelReady())
         instrumentation.uiAutomation.grantRuntimePermission(app.packageName, "android.permission.RECORD_AUDIO")
-        val activity = instrumentation.startActivitySync(io.github.lrq3000.utterlane.history.HistoryActivity.intent(app)
+        val activity = launchNativeActivity(io.github.lrq3000.utterlane.history.HistoryActivity.intent(app)
             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
         val previous = app.settingsRepository.audioHistoryEnabled.first()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)

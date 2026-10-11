@@ -7,10 +7,17 @@
 
 ### Requirements
 
-- OpenJDK 21, Android SDK platforms 35 and 36, build tools `35.0.0`, Android NDK
+- OpenJDK 21, Android SDK platform 37 (`platforms;android-37.0`), build tools `36.0.0`, Android NDK
   `28.2.13676358`, CMake `3.22.1` (including Ninja).
 - Python 3.11.8+ and Git for pinned native-source preparation.
-- AGP `8.10.1`, Kotlin `2.0.21`, and Gradle `8.12.1` via the wrapper.
+- AGP `9.2.1`, Kotlin/Compose compiler `2.4.21`, and Gradle `9.4.1` via the
+  SHA-256-pinned wrapper. AGP supplies built-in Kotlin integration; the explicit
+  KGP classpath selects the newer matching compiler without a Kotlin Android plugin.
+
+All Android modules (including the standalone sherpa AAR helper) compile against
+API 37. The app still targets API 36 and supports API 26+. SimpleStorage `3.1.0`
+requires compile SDK 37; its AndroidX/coroutines dependencies are aligned in the
+app build. This does not change the pinned native engines or model revisions.
 
 Set `JAVA_HOME` and `ANDROID_HOME` to **absolute paths** for your installation.
 The first build needs network access to retrieve dependencies and source code.

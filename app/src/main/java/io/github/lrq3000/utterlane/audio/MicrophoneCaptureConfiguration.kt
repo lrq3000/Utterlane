@@ -5,15 +5,15 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
 import io.github.lrq3000.utterlane.R
-import io.github.lrq3000.utterlane.asr.AudioRecorder
 
-/** Check platform declarations before admitting PCM to the fixed-format writer. */
+/** Check platform declarations before admitting PCM to this session's writer. */
 internal object MicrophoneCaptureConfiguration {
-    fun problem(context: Context, record: AudioRecord, options: MicrophoneOptions): String? {
-        if (record.sampleRate != AudioRecorder.SAMPLE_RATE || record.channelCount != 1 ||
+    fun problem(context: Context, record: AudioRecord, options: MicrophoneOptions,
+        expected: io.github.lrq3000.utterlane.archive.PcmFormat = io.github.lrq3000.utterlane.archive.PcmFormat()): String? {
+        if (record.sampleRate != expected.sampleRate || record.channelCount != expected.channels ||
             record.audioFormat != AudioFormat.ENCODING_PCM_16BIT) {
             return context.getString(R.string.microphone_pcm_not_applied,
-                record.sampleRate, record.channelCount, record.audioFormat)
+                record.sampleRate, record.channelCount, record.audioFormat, expected.sampleRate, expected.channels)
         }
         // DEFAULT deliberately delegates source choice to Android. Every named
         // source must remain the explicitly selected source, including on reopen.

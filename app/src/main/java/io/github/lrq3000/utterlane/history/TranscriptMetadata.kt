@@ -34,7 +34,7 @@ data class TranscriptMetadata(val created: Long? = null, val durationMs: Long = 
     }
 
     fun save(history: TranscriptHistory, source: File, model: String, audioId: String? = null,
-        pinned: Boolean = false, modelId: String? = null): TranscriptEntry =
+        pinned: Boolean = false, modelId: String? = null, archivePlan: io.github.lrq3000.utterlane.archive.ArchivePlan? = null): TranscriptEntry =
         history.save(source, model, audioId, pinned, modelId = modelId,
-            created = created, durationMs = durationMs, speakerLabels = speakerLabels, recovered = recovered)
+            created = created, durationMs = durationMs, speakerLabels = speakerLabels, recovered = recovered, archivePlan = archivePlan)
 }

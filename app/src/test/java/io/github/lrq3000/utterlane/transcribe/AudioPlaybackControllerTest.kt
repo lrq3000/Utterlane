@@ -87,7 +87,10 @@ class AudioPlaybackControllerTest {
     private fun awaitingNativePrepare(entry: HistoryEntry = fixture(), owner: String = "owner") {
         val count = players.size
         controller.play(owner, entry.id)
-        await { players.size > count }
+        // URI/header preparation now has its own IO boundary. A constructed
+        // MediaPlayer is not yet a native-preparing player; invoking its callback
+        // before setDataSource would fabricate an impossible platform event.
+        await { players.size > count && native.state == ShadowMediaPlayer.State.PREPARING }
         assertTrue(controller.state.value.preparing)
         assertFalse(controller.state.value.playing)
     }
@@ -114,7 +117,7 @@ class AudioPlaybackControllerTest {
         val entry = fixture()
         controller.play("owner", entry.id)
         controller.pauseForCapture()
-        await { players.isNotEmpty() }
+        await { players.isNotEmpty() && native.state == ShadowMediaPlayer.State.PREPARING }
         native.invokePreparedListener()
         assertTrue(controller.state.value.active)
         assertFalse("A late prepare must not start audio during capture", controller.state.value.playing)
@@ -220,6 +223,7 @@ class AudioPlaybackControllerTest {
         speed(1.25f)
         native.invokeCompletionListener()
         assertEquals(2, players.size)
+        await { native.state == ShadowMediaPlayer.State.PREPARING }
         native.invokePreparedListener()
         assertEquals(1.25f, players.last().playbackParams.speed)
         controller.stop("owner")
@@ -262,6 +266,7 @@ class AudioPlaybackControllerTest {
         speed(1.5f)
         native.invokeCompletionListener()
         assertNull(controller.state.value.appliedSpeed)
+        await { native.state == ShadowMediaPlayer.State.PREPARING }
         native.invokePreparedListener()
         assertEquals(1.5f, players.last().playbackParams.speed)
         assertFalse(controller.state.value.speedUnavailable)

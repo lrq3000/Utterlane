@@ -9,7 +9,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class CaptureReadLoop(
     private val clock: () -> Long = { SystemClock.uptimeMillis() },
     private val waitForFrames: () -> Unit = { Thread.sleep(10) },
-    options: RuntimeOptions = RuntimeOptions()
+    options: RuntimeOptions = RuntimeOptions(),
+    private val blockSamples: Int? = null
 ) {
     private val snapshot = options.requireValid()
     private val buffers = CaptureBufferPolicy(snapshot)
@@ -19,7 +20,7 @@ internal class CaptureReadLoop(
     fun run(read: (ShortArray) -> Int, reopen: () -> Unit, onSamples: (ShortArray) -> Unit,
         shouldContinue: () -> Boolean, canRecover: () -> Boolean = { true },
         routeRecoveryRequested: () -> Boolean = { false }) {
-        val buffer = ShortArray(buffers.blockSamples)
+        val buffer = ShortArray(blockSamples ?: buffers.blockSamples)
         var recoveryDeadline: Long? = null
         var restarted = false
         fun recoverRoute(): Boolean {

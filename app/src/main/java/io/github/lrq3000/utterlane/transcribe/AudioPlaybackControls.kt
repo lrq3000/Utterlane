@@ -71,6 +71,10 @@ fun AudioPlaybackControls(model: TranscriptionDialogModel, actions: @Composable 
         // Keep speed with the timeline, rather than squeezing out transcript
         // actions. On phones the timeline/speed row gets the full dialog width.
         val separateTimeline = expanded && maxWidth < 480.dp
+        // Reserve full touch targets plus a readable timeline. Managed Markdown
+        // adds a result action; narrow layouts place that action row below rather
+        // than clipping its last button or squeezing the seek/time information.
+        val separateActions = maxWidth < if (expanded) 400.dp else 352.dp
         Column {
             Row(Modifier.fillMaxWidth().heightIn(min = 64.dp), verticalAlignment = Alignment.CenterVertically) {
                 DialogAction(if (expanded && playback.playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
@@ -82,12 +86,16 @@ fun AudioPlaybackControls(model: TranscriptionDialogModel, actions: @Composable 
                     })
                 if (expanded) DialogAction(Icons.Outlined.Stop, stringResource(R.string.audio_stop), "audio_stop",
                     !source.deleting, onClick = { scrubbing = null; player.stop(owner) })
-                if (separateTimeline) Spacer(Modifier.weight(1f))
-                else Box(Modifier.weight(1f)) { timeline() }
-                VerticalDivider(Modifier.height(32.dp).padding(horizontal = 4.dp))
-                actions()
+                if (!separateTimeline) Box(Modifier.weight(1f)) { timeline() }
+                else Spacer(Modifier.weight(1f))
+                if (!separateActions) {
+                    VerticalDivider(Modifier.height(32.dp).padding(horizontal = 4.dp))
+                    actions()
+                }
             }
             if (separateTimeline) timeline()
+            if (separateActions) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically, content = actions)
             if (expanded && playback.preparing) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (expanded && playback.speedUnavailable) {
                 val requested = playbackSpeedLabel(playback.requestedSpeed)

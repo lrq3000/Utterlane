@@ -62,7 +62,9 @@ class MicrophoneSession(
             var diagnosticObserver: Job? = null
             var captureDiagnostics: io.github.lrq3000.utterlane.diagnostics.CaptureDiagnosticSession? = null
             var ticker: Job? = null
+            var rollingMaintenance: Job? = null
             var visualOptionsObserver: Job? = null
+            var archival: io.github.lrq3000.utterlane.archive.ArchivalCoordinator.Producer? = null
             try {
                 power = TranscriptionPower(context) { recorder.resumeAfterSleep() }
                 val app = UtterlaneApp.instance
@@ -71,6 +73,7 @@ class MicrophoneSession(
                 try { withContext(Dispatchers.Main) { app.audioPlayback.pauseForCapture() } }
                 catch (e: CancellationException) { throw e }
                 catch (e: Exception) { Log.w("MicrophoneSession", "Could not pause app playback; continuing microphone capture", e) }
+                archival = app.archival.producer(userInitiated = true)
                 activityObserver = launch {
                     app.recognizerManager.activity.collect {
                         // Ignore a previous operation's resting status at subscription time.
@@ -91,17 +94,56 @@ class MicrophoneSession(
                 metrics.preparing(true)
                 val retention = app.settingsRepository.audioHistoryRetention.first()
                 val automaticHistory = app.settingsRepository.audioHistoryEnabled.first()
-                val saveTranscripts = app.settingsRepository.transcriptHistoryEnabled.first()
+                val saveTranscripts = app.settingsRepository.transcriptHistoryEnabled.first() || archival?.textPlan != null
                 val textRetention = app.settingsRepository.transcriptHistoryRetention.first()
+                val requestedQuality = if (automaticHistory && retention != io.github.lrq3000.utterlane.history.HistoryRetention.NONE)
+                    archival.settings.quality else io.github.lrq3000.utterlane.archive.AudioQuality()
+                phase = SessionFailure.Kind.AUDIO
+                val actualFormat = recorder.configureFormat(requestedQuality.capture, captureOptions)
+                var actualQuality = requestedQuality.copy(sampleRate = actualFormat.sampleRate, channels = actualFormat.channels)
+                if (actualQuality.encoding && (actualFormat != requestedQuality.capture ||
+                        io.github.lrq3000.utterlane.archive.AudioEncoderCapabilities.encoder(actualQuality) == null)) {
+                    actualQuality = actualQuality.copy(format = io.github.lrq3000.utterlane.archive.SavedAudioFormat.WAV)
+                    withContext(Dispatchers.Main) { onWarning("Requested compression/capture format is unavailable. Saving actual ${actualFormat.sampleRate} Hz, ${actualFormat.channels}-channel PCM audio.") }
+                }
                 phase = SessionFailure.Kind.AUDIO
                 // This minimal private-storage setup precedes capture; model
                 // verification/loading/warm-up do not. The file is also the
                 // processing backlog when completed-recording history is off.
                 val saved = app.recordingHistory.begin(retention, automaticHistory,
-                    keepUntilDismissed = keepResultAudio, microphone = microphoneOptions)
+                    keepUntilDismissed = keepResultAudio, quality = actualQuality, microphone = microphoneOptions)
                 recording = saved
                 recordingId = saved.entry.id
+                archival?.audio(saved.entry.id)
+                if (actualQuality.encoding && !archival.encode(saved.entry.id))
+                    saved.rolling?.preservePcm("Compression could not start; original PCM capture is being preserved")
                 lease = app.recordingHistory.acquire(saved.entry.id)
+                saved.rolling?.let { spool ->
+                    rollingMaintenance = launch(Dispatchers.IO) {
+                        var normalizedReclaimed = 0L
+                        var lastWarning: String? = null
+                        try {
+                            while (isActive) {
+                                delay(1000)
+                                if (spool.reclaim() > 0 && !spool.format.native) {
+                                    // The normalized ASR copy has the same absolute
+                                    // clock. It is optional only beyond the common
+                                    // committed/source replacement boundary.
+                                    val count = spool.state.reclaimedFrames / spool.partFrames
+                                    while (normalizedReclaimed < count) { java.io.File(saved.entry.directory, "audio-${normalizedReclaimed++}.wav").delete() }
+                                }
+                                spool.state.warning?.takeIf { it != lastWarning }?.let { warning ->
+                                    lastWarning = warning; withContext(Dispatchers.Main) { onWarning(warning) }
+                                }
+                            }
+                        } catch (e: CancellationException) { throw e
+                        } catch (e: Exception) {
+                            try { spool.preservePcm("Compression reclamation paused: ${e.message}") }
+                            catch (metadata: Exception) { e.addSuppressed(metadata) }
+                            withContext(Dispatchers.Main) { onWarning("Compression paused; original audio is being preserved.") }
+                        }
+                    }
+                }
                 recorder.setObserver(object : CaptureObserver {
                     override fun onStarted() {
                         metrics.started()
@@ -114,13 +156,21 @@ class MicrophoneSession(
                 val result = RecordingPipeline(recorder, app.recordingHistory, saved, captureOptions).run(
                     prepare = {
                         phase = SessionFailure.Kind.MODEL
-                        session = app.recognizerManager.createSession(captureOptions, onProcessed = metrics::processed) { delta ->
+                        session = app.recognizerManager.createSession(captureOptions, onProcessed = { samples, millis ->
+                            metrics.processed(samples, millis)
+                            if (saved.rolling != null) session?.store?.sync()
+                            // Keep the entire bounded recognition window, not just
+                            // a reader's submitted offset, behind durable progress.
+                            saved.rolling?.commitAsr(samples, (16000 * (captureOptions.asrWindowSeconds +
+                                captureOptions.asrLeftContextSeconds + captureOptions.asrRightContextSeconds)).toLong())
+                        }) { delta ->
                             speakerLabels = session!!.hasSpeakerLabels
                             if (!cancelled) withContext(Dispatchers.Main) { onText(delta, session!!.store) }
                         }
                         phase = SessionFailure.Kind.INFERENCE
                         session!!.store.attachSource(TranscriptSource(saved.entry.id,
-                            modelName = app.modelManager.selected.value.name, modelId = app.modelManager.selected.value.id))
+                            modelName = app.modelManager.selected.value.name, modelId = app.modelManager.selected.value.id,
+                            archivePlan = archival?.textPlan))
                         metrics.preparing(false)
                         metrics.model(app.modelManager.selected.value.name)
                     },
@@ -135,8 +185,8 @@ class MicrophoneSession(
                                 val text = TranscriptMetadata(saved.entry,
                                     durationMs = saved.writtenSamples * 1000 / 16000,
                                     speakerLabels = complete.hasSpeakerLabels).save(app.transcriptHistory,
-                                    complete.store.file, metrics.state.value.modelName, saved.entry.id,
-                                    modelId = app.modelManager.selected.value.id)
+                                    complete.store.file, complete.store.source.modelName, saved.entry.id,
+                                    modelId = complete.store.source.modelId, archivePlan = archival?.textPlan)
                                 savedTranscriptId = text.id
                                 complete.store.attachSource(complete.store.source.copy(transcriptId = text.id))
                             } catch (_: TranscriptDiscardedException) {
@@ -146,7 +196,11 @@ class MicrophoneSession(
                             }
                         }
                     },
-                    onSamples = { metrics.samples(it, true) },
+                    onSamples = run {
+                        val converter = if (actualFormat.native) null else io.github.lrq3000.utterlane.transcribe.StreamingResampler(actualFormat.sampleRate, actualFormat.channels)
+                        val callback: (ShortArray) -> Unit = { pcm -> metrics.samples(converter?.accept(FloatArray(pcm.size) { pcm[it] / 32768f }) ?: pcm, true) }
+                        callback
+                    },
                     onCaptureEnded = {
                         metrics.captureEnded()
                         withContext(Dispatchers.Main) { if (!cancelled) onCaptureEnded() }
@@ -177,12 +231,16 @@ class MicrophoneSession(
                     ?: e.message ?: context.getString(R.string.transcribe_error_failed))
             } finally {
                 ticker?.cancel()
+                rollingMaintenance?.cancel()
                 visualOptionsObserver?.cancel()
                 activityObserver?.cancel()
                 diagnosticObserver?.cancel()
                 try {
                     recorder.stop()
                     withContext(NonCancellable + Dispatchers.IO) {
+                        rollingMaintenance?.join()
+                        try { recorder.releaseAfterCapture() }
+                        catch (e: Exception) { Log.e("MicrophoneSession", "Microphone setup cleanup failed", e) }
                         try { session?.close() } catch (e: Exception) { Log.e("MicrophoneSession", "Recognition cleanup failed", e) }
                         speakerLabels = session?.hasSpeakerLabels == true
                         try { recording?.let { UtterlaneApp.instance.recordingHistory.setSpeakerLabels(it.entry.id, speakerLabels) } }
@@ -229,6 +287,7 @@ class MicrophoneSession(
                         }
                     }
                 } finally {
+                    archival?.close()
                     try { withContext(NonCancellable + Dispatchers.Main) { onSessionClosed() } }
                     finally { power?.close() }
                 }

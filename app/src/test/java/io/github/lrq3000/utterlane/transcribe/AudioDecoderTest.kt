@@ -140,6 +140,35 @@ class AudioDecoderTest {
         assertEquals(1, released)
     }
 
+    @Test fun ownedPrimingUsesUnannouncedActualFloatStereoOutputExactlyOnce() = runBlocking {
+        announceFormat = false
+        input.setInteger(MediaFormat.KEY_ENCODER_DELAY, 1)
+        input.setInteger(MediaFormat.KEY_ENCODER_PADDING, 1)
+        output = format(channels = 2).apply { setInteger(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_FLOAT) }
+        buffers = listOf(ByteBuffer.allocate(24).order(ByteOrder.nativeOrder()).apply {
+            putFloat(0.9f); putFloat(0.9f) // Measured priming, one stereo frame.
+            putFloat(-0.5f); putFloat(0.0f)
+            putFloat(0.0f); putFloat(0.5f)
+            flip()
+        })
+        val samples = mutableListOf<Short>()
+        decoder().decode("source", { samples.addAll(it.toList()) }, timelineTrim = true)
+        assertEquals(listOf<Short>(-8192, 8192), samples)
+        assertEquals(0, input.getInteger(MediaFormat.KEY_ENCODER_DELAY))
+        assertEquals(0, input.getInteger(MediaFormat.KEY_ENCODER_PADDING))
+        assertEquals(1, released)
+    }
+
+    @Test fun archiveTargetPreservesStereoWhenActualOutputOmitsFormatEvent() = runBlocking {
+        announceFormat = false
+        output = format(rate = 48000, channels = 2)
+        buffers = listOf(pcm(100, -300, 500), pcm(-700))
+        val samples = mutableListOf<Short>()
+        decoder().decodeTo("source", io.github.lrq3000.utterlane.archive.PcmFormat(48000, 2)) { samples.addAll(it.toList()) }
+        assertEquals(listOf<Short>(100, -300, 500, -700), samples)
+        assertEquals(2, released)
+    }
+
     @Test fun tailSamplesSurviveResamplingAndBuffersAreReleasedBeforeSuspending() = runBlocking {
         output = format(rate = 8000)
         val samples = mutableListOf<Short>()

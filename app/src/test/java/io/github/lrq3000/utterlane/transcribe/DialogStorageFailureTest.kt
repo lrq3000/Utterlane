@@ -31,6 +31,7 @@ class DialogStorageFailureTest {
     @get:Rule val temporary = TemporaryFolder()
     private val app = mockk<UtterlaneApp>(relaxed = true)
     private lateinit var history: RecordingHistory
+    private lateinit var applicationScope: kotlinx.coroutines.CoroutineScope
     private var model: TranscriptionDialogModel? = null
 
     @Before fun setUp() {
@@ -40,14 +41,22 @@ class DialogStorageFailureTest {
         history = RecordingHistory(temporary.newFolder("audio"))
         every { app.recordingHistory } returns history
         every { app.transcriptHistory } returns TranscriptHistory(temporary.newFolder("text"))
-        every { app.settingsRepository.visualRefreshRate } returns flowOf(30)
+        every { app.settingsRepository } returns io.github.lrq3000.utterlane.settings.SettingsRepository(
+            io.github.lrq3000.utterlane.settings.MemoryStore())
+        applicationScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main)
+        every { app.applicationScope } returns applicationScope
+        coEvery { app.archival.producer(any(), any()) } returns mockk(relaxed = true)
         every { app.getString(any()) } answers { context.getString(firstArg()) }
         every { app.cacheDir } returns temporary.newFolder("cache")
         mockkConstructor(DialogAudioActions::class)
+        every { anyConstructed<DialogAudioActions>().inspect(any(), any()) } returns
+            DialogAudioActions.InspectedSource(android.net.Uri.parse("content://source/audio"),
+                io.github.lrq3000.utterlane.history.AudioImportMetadata("audio.wav", "audio/wav", 1000, 32044))
     }
 
     @After fun tearDown() {
         model?.viewModelScope?.cancel()
+        applicationScope.cancel()
         unmockkAll()
     }
 
@@ -64,7 +73,7 @@ class DialogStorageFailureTest {
         val dialog = open(DialogInput(audioId = entry.id))
         await { !dialog.state.value.importing }
         dialog.exportAudio(android.net.Uri.parse("content://destination/audio"), false)
-        await { !dialog.state.value.saving && ShadowToast.getTextOfLatestToast() == FULL_MESSAGE }
+        await { !dialog.state.value.audioExporting && ShadowToast.getTextOfLatestToast() == FULL_MESSAGE }
         assertEquals(FULL_MESSAGE, dialog.state.value.message)
         assertArrayEquals(byteArrayOf(1, 2, 3), entry.part(0).readBytes())
         assertEquals(entry.id, dialog.state.value.audio?.id)

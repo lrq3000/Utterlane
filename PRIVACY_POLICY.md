@@ -1,6 +1,6 @@
 # Privacy Policy for Utterlane
 
-**Last updated:** October 7, 2026
+**Last updated:** October 10, 2026
 
 ## Overview
 
@@ -60,7 +60,7 @@ any additional permission beyond the microphone access used for recording.
 | Storage/Media (`READ_EXTERNAL_STORAGE` through Android 12L; `READ_MEDIA_AUDIO` on Android 13+) | Access audio files for optional folder monitoring and transcription; files explicitly shared or selected can instead use the access granted by Android |
 | Notifications (`POST_NOTIFICATIONS`) | Show recording/monitoring status, transcription results, and service alerts |
 | Wake lock (`WAKE_LOCK`) | Keep active recording and transcription running and support the screen-awake behavior during these operations |
-| Foreground services (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`, `FOREGROUND_SERVICE_SPECIAL_USE`) | Run the optional floating microphone and audio-folder monitoring services with visible notifications |
+| Foreground services (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`, `FOREGROUND_SERVICE_SPECIAL_USE`, `FOREGROUND_SERVICE_DATA_SYNC`, `FOREGROUND_SERVICE_MEDIA_PROCESSING`) | Run microphone/monitoring services and user-requested local compression or managed-folder transfers with status and stop controls. Audio encoding uses mediaProcessing on Android 15+, specialUse on Android 14, and local-file-processing/dataSync on older versions |
 | Boot completed (`RECEIVE_BOOT_COMPLETED`) | Restore enabled services after restart, or notify you to open the app when Android restricts automatic restart |
 
 The accessibility service and voice keyboard are additionally protected by
@@ -95,9 +95,14 @@ Utterlane processes and stores application data locally. Android may back up eli
 - User preferences stored locally
 - Word correction rules stored locally
 - Microphone audio is buffered in private files excluded from Android cloud backup and device transfer. Processing reads this same audio incrementally, so a slow or unavailable model does not require keeping the whole recording in RAM. No shared-storage permission is needed for this buffering
+- Optional saved-audio compression is off by default. When enabled for retained capture, a separate local worker encodes progressively. Original PCM is reclaimed only after committed transcription progress/context and durable recoverable encoded output cover it. A slow model/encoder can retain a larger private PCM backlog. The encoded journal, format metadata and unprocessed PCM tail remain local recovery material after interruption. Successful publication removes redundant private PCM/journal data once original processing succeeds and its readers finish; failed/interrupted processing keeps its unprocessed PCM for retry, subject to retention and deletion
+- Force-stopping archival does not stop the microphone or transcription and does not erase the sole retained encoded prefix. Cancelled encoding stays cancelled; ordinary history retention and explicit deletion still apply to its recoverable mixed audio. Codec-free prefix repair on playback/re-transcription/export creates an owned local container without sending audio elsewhere
+- AAC timing calibration uses a bounded, synthetic audio probe generated and processed locally in the archival worker. It contains no microphone input, is not added to recordings or transcripts, and is not uploaded
 - Audio and transcript histories have separate automatic-save switches and retention periods, including Immediate and Forever. Existing audio opt-out choices are migrated to automatic saving off
 - Manual history saving pins an item indefinitely, even when automatic saving is disabled. Pins are visible and reversible. Unpinning starts a fresh retention countdown; under Immediate retention, the item is protected from background pruning until a new genuine user-facing launch. Explicit deletion still removes pinned items
 - Shared/opened audio is copied once into private working storage to support reliable retries, saving and playback. The sender's original file is never deleted. Successful live temporary recordings are deleted unless retained by the current workspace; a shared/recovery dialog keeps working audio through retries. Ordinary dialog exit retains eligible audio and text under your independent history settings and asks before discarding at-risk content. Pin in that warning preserves both available audio and the displayed transcript
+- Compressed imports remain byte-for-byte copies. Retained uncompressed imports may be converted locally when compression is enabled; original transcription reads its leased private source independently. Successful conversion replaces the retained representation after publication/reader release. The originating application's source remains untouched
+- You may explicitly choose separate managed audio and Markdown folders through Android's document picker. New operations snapshot those choices. Managed files are linked to their history owners for pinning, retention and deletion; a revoked/unavailable folder keeps cleanup pending and preserves useful private input. A provider you select may synchronize its folder to a cloud service under its own policies. Utterlane's codec and recognition processing remain on-device; selecting a provider is a separate storage/sharing choice
 - Explicit Cancel/Discard deletes temporary working data. Crash/interruption leftovers remain recoverable. Saved history awaiting recovery expires normally unless pinned; temporary crash recovery is separate until handed to history. A private recovered-origin flag keeps entries distinguishable after acknowledgement or retry; it does not exempt saved entries from retention. Viewing an entry defers automatic expiry until an exit decision, but never blocks explicit deletion
 - Saved transcripts live in Android's private no-backup directory. Temporary delivered/dismissed text is removed when owners release it; leftover temporary text has seven-day best-effort cleanup. Saved transcript history is not governed by that cache lifetime
 - User-requested audio and text export snapshots remain temporarily available for the receiving app and expire after one day. These copies are separate from recording-history retention

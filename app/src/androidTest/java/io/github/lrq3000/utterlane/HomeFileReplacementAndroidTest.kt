@@ -28,6 +28,7 @@ class HomeFileReplacementAndroidTest {
         ui.prepare()
         val onboarding = OnboardingRepository(app)
         val previous = onboarding.progress.first()
+        val historyEnabled = app.settingsRepository.audioHistoryEnabled.first()
         val validCopy = File.createTempFile("home-prior-", ".wav", app.cacheDir).apply {
             // Nonempty but deliberately undecodable: this is usable owned input
             // for retry regardless of whether the QA device has ASR weights.
@@ -38,6 +39,7 @@ class HomeFileReplacementAndroidTest {
         var home: Activity? = null
         var audioId: String? = null
         try {
+            app.settingsRepository.setAudioHistoryEnabled(false)
             onboarding.complete()
             home = instrumentation.startActivitySync(HomeActivity.intent(app))
             ui.node("home_screen").recycle()
@@ -87,6 +89,7 @@ class HomeFileReplacementAndroidTest {
             audioId?.let(app.recordingHistory::delete)
             validCopy.delete(); empty.delete()
             onboarding.update { previous }
+            app.settingsRepository.setAudioHistoryEnabled(historyEnabled)
         }
     }
 }

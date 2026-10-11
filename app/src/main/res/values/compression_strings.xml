@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="compression_quality">Saved audio quality</string>
+    <string name="compression_toggle">Compress saved audio</string>
+    <string name="compression_native_help">Native recognition format — 16 kHz mono PCM. Microphone samples can feed transcription and WAV storage directly, without resampling, channel conversion, or audio encoding. Consumes more storage if audio history is enabled.</string>
+    <string name="compression_help">Compression uses CPU and can contend with transcription and speaker labeling. At 192 kbps it is nominally only 25% smaller than native 256 kbps PCM. Lower rates save more space. May worsen re-transcriptions accuracy.</string>
+    <string name="compression_format">Format</string>
+    <string name="compression_rate">Sample rate</string>
+    <string name="compression_bitrate">Bitrate</string>
+    <string name="compression_channels">Channels</string>
+    <string name="compression_mono">Mono</string>
+    <string name="compression_stereo">Stereo</string>
+    <string name="compression_wav">WAV (uncompressed)</string>
+    <string name="compression_apply">Apply quality</string>
+    <string name="compression_unsupported">This combination is not supported by the device encoder. Microphone support is checked when recording starts; any fallback is reported.</string>
+    <string name="compression_snapshot_help">Applies to new operations. Compressed imports are copied unchanged. Recording and transcription continue if compression is stopped; any retained encoded prefix and PCM tail remain recoverable.</string>
+</resources>

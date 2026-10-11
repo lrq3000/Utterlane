@@ -24,6 +24,7 @@ internal data class HomeState(
     val metrics: CaptureSnapshot = CaptureSnapshot(),
     val result: TranscriptionDialogState = TranscriptionDialogState(),
     val model: TranscriptionDialogModel? = null,
+    val pendingImport: TranscriptionDialogModel? = null,
     val preparing: Boolean = false,
     val permissionDenied: Boolean = false,
     val message: String? = null
@@ -129,10 +130,12 @@ class HomeController(private val app: UtterlaneApp) {
                 // until this candidate has actually copied nonempty private input.
                 val candidate = ResultOwner(DialogInput(uri = uri, automatic = true), null)
                 fileCandidate = candidate
+                mutable.update { it.copy(pendingImport = candidate.model) }
                 candidate.observer = HomeFileHandoff(scope, app.recordingHistory, app.transcriptHistory).observe(candidate.model.state,
                     isCurrent = { fileCandidate === candidate && !candidate.retiring },
                     onAccepted = { acceptFile(candidate) },
-                    onRejected = { rejectFile(candidate, it ?: app.getString(R.string.transcribe_error_failed)) })
+                    onRejected = { rejectFile(candidate, if (candidate.model.state.value.importCancelled) null
+                        else it ?: app.getString(R.string.transcribe_error_failed)) })
             }
             pendingRetry -> {
                 pendingRetry = false
@@ -348,12 +351,12 @@ class HomeController(private val app: UtterlaneApp) {
         }
     }
 
-    private fun rejectFile(candidate: ResultOwner, message: String) {
+    private fun rejectFile(candidate: ResultOwner, message: String?) {
         synchronized(ownerGate) {
             if (fileCandidate !== candidate || candidate.retiring) return
             candidate.retiring = true
             candidate.observer?.cancel()
-            mutable.update { it.copy(message = message) }
+            mutable.update { it.copy(message = message, pendingImport = null) }
         }
         // Keep the bounded pending slot/preparation hold until cancellation and
         // cleanup finish. A second attempt cannot accumulate retiring candidates.

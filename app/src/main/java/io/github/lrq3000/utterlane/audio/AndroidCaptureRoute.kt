@@ -68,6 +68,7 @@ class AndroidCaptureRoute(
     private var readEvidence: ReadEvidence? = null
     private var lastReadEvidence: ReadEvidence? = null
     private var inputBufferFrames = 0L
+    private var inputChannels = 1
     private var confirmationFrames = 0L
     private var awaitingVerifiedFrames = true
     private var publishedAwaitingFrames: Boolean? = null
@@ -118,7 +119,12 @@ class AndroidCaptureRoute(
         inputBufferFrames = record.bufferSizeInFrames.toLong().coerceAtLeast(0)
         confirmationFrames = inputBufferFrames
         awaitingVerifiedFrames = true
-        val rate = io.github.lrq3000.utterlane.asr.AudioRecorder.SAMPLE_RATE
+        // Client-buffer capacity is in frames; reads return interleaved shorts.
+        // Both the verification clock and drain count follow actual capture, not
+        // the independently normalized 16-kHz mono transcription stream.
+        val rate = record.sampleRate
+        inputChannels = record.channelCount
+        check(rate > 0 && inputChannels > 0) { "Invalid microphone PCM declaration" }
         policy.recorderReopened((inputBufferFrames * 1000 + rate - 1) / rate)
         refreshInventory()
         if (targetRemoved.get()) policy.fallback(InputFallbackReason.DISCONNECTED)
@@ -447,7 +453,7 @@ class AndroidCaptureRoute(
         // buffer. Retain all PCM, but do not confirm the new input/fallback until
         // a complete buffer capacity has passed through stable read boundaries.
         if (confirmationFrames > 0) {
-            if (count > 0) confirmationFrames = (confirmationFrames - count).coerceAtLeast(0)
+            if (count > 0) confirmationFrames = (confirmationFrames - count / inputChannels).coerceAtLeast(0)
             return false
         }
         return true

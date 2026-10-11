@@ -4,6 +4,7 @@ import io.github.lrq3000.utterlane.asr.TranscriptStore
 import io.github.lrq3000.utterlane.history.*
 import io.github.lrq3000.utterlane.transcribe.TranscriptionDialogState
 import io.github.lrq3000.utterlane.transcribe.FileProgressSnapshot
+import io.github.lrq3000.utterlane.transcribe.ImportRetentionRequest
 import java.io.Closeable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -27,6 +28,20 @@ class HomeFileHandoffTest {
         assertTrue(f.home.value.busy)
         assertEquals(0, f.accepted)
         assertTrue(f.job.isActive)
+    }
+
+    @Test fun waitingRetentionQuestionDoesNotRejectOrPromoteCandidateAndCancelKeepsPreviousOwner() = Fixture().use { f ->
+        f.model.value = TranscriptionDialogState(importing = true, importQuestion = ImportRetentionRequest(
+            ImportRetentionCategory.SIZE, AudioImportMetadata(sourceBytes = 52428801)))
+        assertTrue(f.job.isActive)
+        assertTrue(f.home.value.preparing)
+        assertEquals("prior working text", f.home.value.result.preview)
+        assertEquals("prior checkpoint", f.checkpoint)
+        assertEquals(0, f.accepted)
+        f.model.value = TranscriptionDialogState(importCancelled = true)
+        assertEquals(0, f.accepted)
+        assertTrue(f.job.isCompleted)
+        assertEquals("prior working text", f.home.value.result.preview)
     }
 
     @Test fun missingOrRevokedSelectionReportsErrorWithoutAcceptingOrChangingPriorData() = Fixture().use { f ->

@@ -23,12 +23,14 @@ data class TranscriptionDialogState(
     val audio: HistoryEntry? = null, val store: TranscriptStore? = null, val transcriptId: String? = null,
     val preview: String = "", val transcriptBytes: Long = 0, val transcriptPinned: Boolean = false, val running: Boolean = false,
     val importing: Boolean = false, val saving: Boolean = false, val closing: Boolean = false,
+    val importQuestion: ImportRetentionRequest? = null, val importCancelled: Boolean = false,
     val message: String? = null, val model: String = "",
     val fileProgress: FileProgressSnapshot? = null,
     val capture: CaptureSnapshot = CaptureSnapshot(), val visualRate: Int = VisualRefreshRate.DEFAULT,
     val deletion: DialogDeletionRequest? = null, val checkingDeletion: Boolean = false,
     val deleting: Boolean = false, val finished: Boolean = false,
-    val exitRequest: DialogExitRequest? = null, val checkingExit: Boolean = false, val exited: Boolean = false
+    val exitRequest: DialogExitRequest? = null, val checkingExit: Boolean = false, val exited: Boolean = false,
+    val audioExporting: Boolean = false
 )
 
 data class DialogDeletionRequest(val plan: HistoryDeletionPlan,
@@ -45,12 +47,17 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     private val mutable = MutableStateFlow(TranscriptionDialogState(importing = true))
     val state: StateFlow<TranscriptionDialogState> = mutable
     private val audioActions = DialogAudioActions(app)
+    private val importRetention = ImportRetentionGate(
+        question = { request -> mutable.update { it.copy(importQuestion = request) } },
+        remember = app.settingsRepository::rememberImportRetention)
     private val linkedHistory = LinkedHistory(app.recordingHistory, app.transcriptHistory)
     private val historyOwners = DialogHistoryOwners(app.recordingHistory, app.transcriptHistory)
     private val exitRetention = DialogExitRetention(app)
     val document = TranscriptPager(viewModelScope)
     private var operation: Job? = null
     private var saving: Job? = null
+    private val audioExportSession = AudioExportSession()
+    private var exportPreparation: Job? = null
     @Volatile private var ownedAudioId = input.audioId
     private val temporaryResults = linkedSetOf<File>()
     @Volatile private var currentStore: TranscriptStore? = null
@@ -72,7 +79,9 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         viewModelScope.launch(Dispatchers.IO) { app.recordingHistory.revision.collect { refreshAudio() } }
         viewModelScope.launch(Dispatchers.IO) { app.transcriptHistory.revision.collect { refreshTranscript() } }
         operation = viewModelScope.launch {
+            var archival: io.github.lrq3000.utterlane.archive.ArchivalCoordinator.Producer? = null
             try {
+                if (input.uri != null || input.path != null) archival = app.archival.producer()
                 withContext(Dispatchers.IO) {
                     val entry = input.transcriptId?.let(app.transcriptHistory::find)
                         ?: if (input.transcriptId == null && input.transcriptPath == null && !input.automatic)
@@ -113,15 +122,29 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                 }
                 if (ownedAudioId == null && (input.uri != null || input.path != null)) {
                     mutable.update { it.copy(importing = true) }
+                    val preferences = app.settingsRepository.importRetentionPreferences.first()
+                    val source = runInterruptible(Dispatchers.IO) { audioActions.inspect(input.uri, input.path) }
+                    val choice = importRetention.resolve(source.metadata, preferences)
+                    if (choice == null) {
+                        mutable.update { it.copy(importCancelled = true) }
+                        return@launch
+                    }
                     runInterruptible(Dispatchers.IO) {
                         // Publish ownership before dispatch back to Main, including
                         // when cancellation races completion of the source copy.
-                        ownedAudioId = audioActions.import(input.uri, input.path).id
+                        // The import lease bridges publication to the dialog owner;
+                        // a late onCleared closes it rather than leaking an owner.
+                        val owned = audioActions.import(source, choice)
+                        try {
+                            ownedAudioId = owned.entry.id
+                            historyOwners.audio(owned.entry.id)
+                            archival?.audio(owned.entry.id)
+                        } finally { owned.lease.close() }
                     }
                 }
                 withContext(Dispatchers.IO) { refreshAudio() }
                 mutable.update { it.copy(importing = false) }
-                if (input.automatic && ownedAudioId != null) transcribe()
+                if (input.automatic && ownedAudioId != null) transcribe(archival = archival)
                 else mutable.value.audio?.takeIf {
                     // Recovery protection also owns successful temporary results;
                     // only a real failure/interruption warrants recovery wording.
@@ -135,7 +158,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                 }
             } catch (e: CancellationException) { throw e
             } catch (e: Exception) { showError(e)
-            } finally { mutable.update { it.copy(importing = false) } }
+            } finally { archival?.close(); mutable.update { it.copy(importing = false) } }
         }
     }
 
@@ -200,12 +223,18 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         operation = viewModelScope.launch { transcribe(useCurrentModel) }
     }
 
-    private suspend fun transcribe(useCurrentModel: Boolean = false) {
+    fun chooseImportRetention(choice: ImportRetentionChoice, remember: Boolean) = importRetention.answer(choice, remember)
+    fun cancelImport() = importRetention.cancel()
+
+    private suspend fun transcribe(useCurrentModel: Boolean = false,
+        archival: io.github.lrq3000.utterlane.archive.ArchivalCoordinator.Producer? = null) {
         val audioId = ownedAudioId ?: return
+        val archiveProducer = archival ?: app.archival.producer()
         metrics = CaptureMetrics().also { it.setVisualRefreshRate(state.value.visualRate) }
         fileProgress = FileTranscriptionProgress()
         mutable.update { it.copy(running = true, fileProgress = fileProgress.snapshot(metrics.state.value), message = null) }
         var session: TranscriptionSession? = null
+        var processing: RecordingHistory.ProcessingAttempt? = null
         var presenter: Job? = null
         var activity: Job? = null
         var diagnostics: Job? = null
@@ -213,7 +242,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         try {
             TranscriptionPower(app).use {
                 withContext(Dispatchers.IO) {
-                    app.recordingHistory.acquire(audioId).use { audioLease ->
+                    app.recordingHistory.acquire(audioId, protectFromPruning = true).use { audioLease ->
+                        processing = app.recordingHistory.beginProcessing(audioId)
                         app.modelManager.initializeSelection()
                         val selected = lastRequestedModelId
                         if (!useCurrentModel && selected != null && app.modelManager.selected.value.id != selected) {
@@ -222,7 +252,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                             app.recognizerManager.selectModel(definition)
                         }
                         lastRequestedModelId = app.modelManager.selected.value.id
-                        val source = app.recordingHistory.get(audioId)
+                        val source = app.recordingHistory.processingAudio(app.recordingHistory.get(audioId))
                         val gain = io.github.lrq3000.utterlane.audio.TranscriptionGain(
                             source.microphone?.gain ?: io.github.lrq3000.utterlane.audio.PcmGainMode.OFF)
                         // Captured PCM has an exact total. Imported container duration
@@ -231,7 +261,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                             source.durationMs.takeIf { it in 1..(Long.MAX_VALUE / 16) }?.times(16)
                         fileProgress = FileTranscriptionProgress(total, estimatedTotal = source.sourceName != null)
                         val options = app.settingsRepository.runtimeOptions.first()
-                        val retainText = app.settingsRepository.transcriptHistoryEnabled.first()
+                        val retainText = app.settingsRepository.transcriptHistoryEnabled.first() || archiveProducer.textPlan != null
                         val textDuration = app.settingsRepository.transcriptHistoryRetention.first()
                         diagnosticSession = app.recognitionDiagnostics.capture(options)
                         diagnostics = viewModelScope.launch { metrics.state.collect { diagnosticSession?.record(it) } }
@@ -259,12 +289,30 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         resultModelId = app.modelManager.selected.value.id
                         lastRequestedModelId = resultModelId
                         created.store.attachSource(TranscriptSource(audioId, modelName = chosenModel, modelId = resultModelId,
-                            recovered = source.recovered))
+                            recovered = source.recovered, archivePlan = archiveProducer.textPlan))
                         resultMetadata = TranscriptMetadata(source, speakerLabels = false)
                         exposeStore(created.store)
                         publishTranscriptionState()
                         val accept: suspend (ShortArray) -> Unit = { pcm -> metrics.captured(pcm.size); gain.deliver(pcm, created::accept) }
-                        if (source.sourceName != null) AudioDecoder(app).decode(source.part(0).absolutePath, accept)
+                        val original = audioLease.originalSource
+                        if (original != null) {
+                            if (original.nativePcm) audioLease.originalPcmReader().use { reader ->
+                                while (reader.offset < original.samples) {
+                                    currentCoroutineContext().ensureActive()
+                                    accept(reader.read())
+                                }
+                            } else for (part in 0 until original.parts) AudioDecoder(app).decodePart(original.asset(part), accept)
+                        } else if (audioLease.originalImportFile != null) {
+                            // A concurrently completed optional conversion must
+                            // not switch original import ASR onto lossy output.
+                            AudioDecoder(app).decode(audioLease.originalImportFile.absolutePath, accept)
+                        } else if (source.sourceName != null || source.rollingAudio != null) {
+                            app.recordingHistory.prepareAudio(source)
+                            for (part in 0 until source.parts) {
+                                app.recordingHistory.preparePart(source, part)
+                                AudioDecoder(app).decodePart(source.asset(part), accept)
+                            }
+                        }
                         else audioLease.reader().use { reader ->
                             while (reader.offset < source.samples) {
                                 currentCoroutineContext().ensureActive()
@@ -286,7 +334,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         publishTranscriptionState()
                         if (retainText && textDuration != HistoryRetention.NONE && created.store.segments > 0) {
                             try {
-                                val saved = resultMetadata.save(app.transcriptHistory, created.store.file, chosenModel, audioId, modelId = resultModelId)
+                                val saved = resultMetadata.save(app.transcriptHistory, created.store.file, chosenModel, audioId,
+                                    modelId = resultModelId, archivePlan = archiveProducer.textPlan)
                                 created.store.attachSource(created.store.source.copy(transcriptId = saved.id))
                                 mutable.update { it.copy(transcriptId = saved.id) }
                                 historyOwners.transcript(saved.id)
@@ -294,7 +343,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                                 Log.i("TranscribeDialog", "Transcript autosave skipped after explicit deletion")
                             }
                         }
-                        app.recordingHistory.completeRecovery(audioId, app.settingsRepository.audioHistoryRetention.first())
+                        checkNotNull(processing).complete()
                         metrics.completed(null)
                         fileProgress.complete()
                         latestPreview = created.store.preview()
@@ -308,8 +357,17 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         } catch (e: CancellationException) { metrics.cancelled(); fileProgress.fail(cancelled = true); throw e
         } catch (e: Exception) {
             metrics.completed(e.message); fileProgress.fail(); showError(e)
-            withContext(Dispatchers.IO) { app.recordingHistory.recordFailure(audioId, e.message.orEmpty(), if (session == null) "MODEL" else "INFERENCE") }
+            withContext(Dispatchers.IO) {
+                val kind = if (session == null) "MODEL" else "INFERENCE"
+                processing?.fail(e.message.orEmpty(), kind)
+                    ?: app.recordingHistory.recordFailure(audioId, e.message.orEmpty(), kind)
+            }
         } finally {
+            if (archival == null) archiveProducer.close()
+            withContext(NonCancellable + Dispatchers.IO) {
+                try { processing?.close() }
+                catch (e: Exception) { Log.e("TranscribeDialog", "Could not record processing interruption", e) }
+            }
             presenter?.cancel(); activity?.cancel(); diagnostics?.cancel()
             diagnosticSession?.record(metrics.state.value)
             try { session?.close() } catch (e: Exception) { Log.e("TranscribeDialog", "Recognition cleanup failed", e) }
@@ -350,6 +408,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         if (audio.pinned != pinned)
             app.recordingHistory.setPinned(audio.id, pinned, app.settingsRepository.audioHistoryRetention.first(), app.historyCleanup.launchToken)
         refreshAudio()
+        if (pinned) app.archival.producer().use { it.audio(audio.id) }
     }
 
     fun saveTranscriptToHistory() = saveAction(R.string.action_feedback_pinned_text) {
@@ -400,14 +459,138 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         // Publication emits a repository revision before state owns the new ID.
         // Acquire explicitly too, rather than depending on collector scheduling.
         refreshTranscript()
+        if (pinned) app.archival.producer().use { producer ->
+            mutable.value.transcriptId?.let { producer.text(it) }
+        }
     }
 
-    fun shareAudio(launch: (android.content.Intent) -> Unit) = saveAction(R.string.action_feedback_share) {
-        val intent = audioActions.share(checkNotNull(ownedAudioId))
-        withContext(Dispatchers.Main) { launch(intent) }
+    /** Publication is a small local history action. The potentially slow folder
+     * writer belongs to the application supervisor, never result.saving/Home.busy. */
+    fun saveMarkdown(folder: String? = null) {
+        if (state.value.running || state.value.deleting || state.value.closing || state.value.checkingExit) return
+        val store = currentStore ?: return
+        val selected = io.github.lrq3000.utterlane.archive.MarkdownSelection(store, chosenModel, ownedAudioId, resultModelId, resultMetadata)
+        io.github.lrq3000.utterlane.archive.ManualMarkdownSave(app.applicationScope, app.transcriptHistory).start(selected,
+            prepare = {
+                val producer = app.archival.producer(manual = true)
+                try {
+                    val destination = folder ?: producer.settings.markdownFolder ?: error(app.getString(R.string.archive_no_folder))
+                    io.github.lrq3000.utterlane.archive.PreparedMarkdownSave(
+                        io.github.lrq3000.utterlane.archive.ArchivePlan(destination, producer.epoch), producer::close)
+                } catch (error: Exception) { producer.close(); throw error }
+            }, onPublished = { result ->
+                // Re-evaluated inside StateFlow's CAS loop: retry may expose a new
+                // store between IO completion and this callback reaching Main.
+                mutable.update { old -> if (result.canUpdate(currentStore, old.store))
+                    old.copy(transcriptId = result.entry.id, transcriptPinned = result.entry.retention.pinned) else old }
+                app.applicationScope.launch(Dispatchers.IO) {
+                    if (result.canUpdate(currentStore, mutable.value.store)) refreshTranscript()
+                }
+                ActionFeedback.show(app, if (result.state == io.github.lrq3000.utterlane.archive.ArchivalState.PUBLISHED)
+                    R.string.archive_already_saved else R.string.archive_queued)
+            }, onFailure = { error ->
+                if (currentStore === selected.store) showError(error)
+                else {
+                    Log.e("TranscribeDialog", "An earlier Markdown save failed", error)
+                    ActionFeedback.show(app, error.message ?: app.getString(R.string.transcribe_error_failed))
+                }
+            })
     }
-    fun exportAudio(destination: Uri, directory: Boolean) = saveAction(R.string.action_feedback_audio_saved) {
-        audioActions.export(checkNotNull(ownedAudioId), destination, directory)
+
+    private fun exportBlocked() = state.value.audioExporting || state.value.exitRequest != null || state.value.checkingExit ||
+        state.value.closing || state.value.deleting || state.value.exited
+    private suspend fun releaseExport(action: () -> Unit) {
+        try { withContext(NonCancellable + Dispatchers.IO) { action() } }
+        catch (error: Exception) { Log.e("TranscribeDialog", "Export source cleanup failed; private history is preserved", error) }
+    }
+
+    fun prepareAudioExport(launch: (AudioExportRequest) -> Unit) {
+        if (exportBlocked()) return
+        val id = ownedAudioId ?: return
+        mutable.update { it.copy(audioExporting = true) }
+        exportPreparation = viewModelScope.launch {
+            var selection: AudioExportSelection? = null
+            var installed = false
+            var launched = false
+            try {
+                // Publish the lease to the cleanup holder before IO returns: a
+                // cancelled dispatch must not lose its only closeable reference.
+                withContext(Dispatchers.IO) { selection = app.recordingHistory.selectForExport(id) }
+                val selected = checkNotNull(selection)
+                audioExportSession.install(selected); selection = null; installed = true
+                launch(AudioExportRequest(selected.name, selected.mimeType, selected.parts > 1))
+                launched = true
+            } catch (cancelled: CancellationException) { throw cancelled
+            } catch (error: Exception) { showError(error)
+            } finally {
+                releaseExport { selection?.close() }
+                if (installed && !launched) releaseExport { audioExportSession.cancel() }
+                if (!launched) mutable.update { it.copy(audioExporting = false) }
+            }
+        }
+    }
+
+    fun finishAudioExport(destination: Uri?, directory: Boolean) {
+        if (destination == null) {
+            app.applicationScope.launch {
+                releaseExport { audioExportSession.cancel() }
+                mutable.update { it.copy(audioExporting = false) }
+            }
+            return
+        }
+        val selected = try { audioExportSession.take() } catch (error: Exception) {
+            mutable.update { it.copy(audioExporting = false) }; showError(error); return
+        }
+        // Ownership transfers from picker to application task. Navigation and
+        // ViewModel destruction release only a still-pending picker, not this task.
+        app.applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                withContext(Dispatchers.IO) { audioActions.export(selected, destination, directory) }
+                ActionFeedback.show(app, R.string.action_feedback_audio_saved)
+            } catch (cancelled: CancellationException) { throw cancelled
+            } catch (error: Exception) { showError(error)
+            } finally {
+                releaseExport { selected.close() }
+                mutable.update { it.copy(audioExporting = false) }
+            }
+        }
+    }
+
+    /** Direct export callers have no picker interval; still bind metadata/bytes
+     * once and do not hold result.saving/Home busy throughout provider transfer. */
+    fun exportAudio(destination: Uri, directory: Boolean) {
+        if (exportBlocked()) return
+        val id = ownedAudioId ?: return
+        mutable.update { it.copy(audioExporting = true) }
+        app.applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            var selection: AudioExportSelection? = null
+            try {
+                withContext(Dispatchers.IO) {
+                    selection = app.recordingHistory.selectForExport(id)
+                    audioActions.export(checkNotNull(selection), destination, directory)
+                }
+                ActionFeedback.show(app, R.string.action_feedback_audio_saved)
+            } catch (cancelled: CancellationException) { throw cancelled
+            } catch (error: Exception) { showError(error)
+            } finally {
+                releaseExport { selection?.close() }
+                mutable.update { it.copy(audioExporting = false) }
+            }
+        }
+    }
+    fun shareAudio(launch: (android.content.Intent) -> Unit) {
+        if (exportBlocked()) return
+        val id = ownedAudioId ?: return
+        mutable.update { it.copy(audioExporting = true) }
+        app.applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                val intent = withContext(Dispatchers.IO) { audioActions.share(id) }
+                launch(intent)
+                ActionFeedback.show(app, R.string.action_feedback_share)
+            } catch (cancelled: CancellationException) { throw cancelled
+            } catch (error: Exception) { showError(error)
+            } finally { mutable.update { it.copy(audioExporting = false) } }
+        }
     }
     private fun saveAction(successMessage: Int? = R.string.dialog_audio_action_done, action: suspend () -> Unit) {
         if (state.value.exitRequest != null || state.value.checkingExit || state.value.saving || state.value.closing || state.value.deleting) return
@@ -548,6 +731,10 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         mutable.update { it.copy(closing = true) }
         app.audioPlayback.stop(playbackOwner)
         app.applicationScope.launch {
+            // Partial/recovered text may publish on Back, after its original ASR
+            // producer ended. Acquire service ownership before this visible UI
+            // closes, while retaining the working source's cancellation epoch.
+            val archiveOwner = app.archival.producer(manual = currentStore?.source?.archivePlan != null)
             try {
                 // Import and final partial-text publication can race Back. Join
                 // first, then recheck loss against the actual surviving content.
@@ -557,7 +744,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         if (currentStore?.bytes?.let { it > 0 } == true) persistTranscriptPin(true)
                         if (linkedHistory.availableAudio(ownedAudioId) != null) persistAudioPin(true)
                     }
-                    exitRetention.finish(ownedAudioId, currentStore, resultMetadata, if (pin) null else consent)
+                    exitRetention.finish(ownedAudioId, currentStore, resultMetadata, if (pin) null else consent, archiveOwner.textPlan)
                 }
                 if (renewed != null) {
                     mutable.update { it.copy(exitRequest = renewed, closing = false) }
@@ -571,7 +758,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                 mutable.update { it.copy(exited = true, exitRequest = null) }
             } catch (e: Exception) {
                 showError(e); mutable.update { it.copy(closing = false) }
-            }
+            } finally { archiveOwner.close() }
         }
     }
 
@@ -609,6 +796,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     /** Release only after disposition is durable, whether navigation retained the
      * result or an explicit Home action retired it. All payload cleanup is on IO. */
     private fun releaseWorkingResults() {
+        exportPreparation?.cancel()
+        audioExportSession.close()
         currentStore?.dispose(); currentStore = null
         workingFiles().forEach(TranscriptStore::deleteArtifacts)
         historyOwners.close()
@@ -635,7 +824,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         // Unexpected owner destruction preserves disk-backed input and useful
         // partial text. Explicit dismiss already deleted/released its own work.
         currentStore?.keepForRecovery()
-        app.applicationScope.launch(Dispatchers.IO) { historyOwners.close() }
+        exportPreparation?.cancel()
+        app.applicationScope.launch(Dispatchers.IO) { releaseExport { audioExportSession.close() }; historyOwners.close() }
         app.audioPlayback.stop(playbackOwner)
         super.onCleared()
     }

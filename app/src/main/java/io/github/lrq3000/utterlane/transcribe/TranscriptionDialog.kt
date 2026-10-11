@@ -10,6 +10,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -42,19 +43,26 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
         view.keepScreenOn = working
         onDispose { view.keepScreenOn = previous }
     }
-    LaunchedEffect(state.finished, state.exited) { if (state.finished || state.exited) onEmpty() }
+    LaunchedEffect(state.finished, state.exited, state.importCancelled) {
+        if (state.finished || state.exited || state.importCancelled) onEmpty()
+    }
     val stats by app.settingsRepository.showTranscriptionStreamStatistics.collectAsStateWithLifecycle(initialValue = false)
     var audioMenu by remember { mutableStateOf(false) }
     var modelMenu by remember { mutableStateOf(false) }
     var beforeModel by remember { mutableStateOf("") }
+    // Survives process recreation too. A restored picker result must be consumed
+    // (and rejected by a new model with no lease) before another picker is begun.
+    var pickerPending by rememberSaveable { mutableStateOf(false) }
     val chooser = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (app.modelManager.selected.value.id != beforeModel) model.retry(useCurrentModel = true)
     }
-    val file = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(state.audio?.mimeType ?: "audio/*")) { uri ->
-        uri?.let { model.exportAudio(it, directory = false) }
+    val file = rememberLauncherForActivityResult(AudioExportContract()) { uri ->
+        pickerPending = false
+        model.finishAudioExport(uri, directory = false)
     }
     val directory = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        uri?.let { model.exportAudio(it, directory = true) }
+        pickerPending = false
+        model.finishAudioExport(uri, directory = true)
     }
     Surface(color = Color.Transparent, modifier = Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
         Box(Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
@@ -83,12 +91,16 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                                 state.audio != null && !busy, onClick = { audioMenu = true })
                             DropdownMenu(audioMenu, { audioMenu = false }) {
                                 DropdownMenuItem(text = { Text(stringResource(R.string.dialog_save_history)) }, onClick = { audioMenu = false; model.saveAudioToHistory() })
-                                DropdownMenuItem(text = { Text(stringResource(R.string.dialog_share_audio)) }, onClick = {
+                                DropdownMenuItem(text = { Text(stringResource(R.string.dialog_share_audio)) }, enabled = !state.audioExporting && !pickerPending, onClick = {
                                     audioMenu = false; model.shareAudio { context.startActivity(Intent.createChooser(it, context.getString(R.string.dialog_share_audio))) }
                                 })
-                                DropdownMenuItem(text = { Text(stringResource(R.string.dialog_save_device)) }, onClick = {
+                                DropdownMenuItem(text = { Text(stringResource(R.string.dialog_save_device)) }, enabled = !state.audioExporting && !pickerPending, onClick = {
                                     audioMenu = false
-                                    state.audio?.let { if (it.parts > 1) directory.launch(null) else file.launch(it.part(0).name) }
+                                    model.prepareAudioExport { request ->
+                                        pickerPending = true
+                                        try { if (request.directory) directory.launch(null) else file.launch(request) }
+                                        catch (error: Exception) { pickerPending = false; throw error }
+                                    }
                                 })
                             }
                         }
@@ -110,10 +122,13 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                         val hasText = state.transcriptBytes > 0
                         DialogPinControl(model, state, busy)
                         TranscriptTransferActions(state.store, enabled = hasText && !state.deleting, iconsOnly = true)
+                        io.github.lrq3000.utterlane.archive.ManagedMarkdownAction(model, hasText && !working)
                     }
+                    io.github.lrq3000.utterlane.archive.ArchivalStatusControls()
                 }
             }
         }
     }
     DialogExitConfirmation(model, state)
+    ImportRetentionQuestion(model)
 }

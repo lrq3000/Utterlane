@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /** Both block count and sample budget are bounded, independent of capture cadence. */
 class BoundedAudioQueue(capacity: Int = 1000, private val maximumSamples: Int = 320000) {
     constructor(options: RuntimeOptions) : this(CaptureBufferPolicy(options))
+    constructor(options: RuntimeOptions, format: io.github.lrq3000.utterlane.archive.PcmFormat) : this(CaptureBufferPolicy(options, format))
     private constructor(buffers: CaptureBufferPolicy) : this(buffers.queueCapacity, buffers.maximumSamples)
 
     private val channel = Channel<ShortArray>(capacity)

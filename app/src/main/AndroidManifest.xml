@@ -13,6 +13,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- User-requested model downloads only; capture metrics stay in memory. -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -36,6 +39,13 @@
         <!-- Main Settings Activity -->
         <service android:name=".asr.RecognitionWorkerService"
             android:exported="false" android:process=":recognition" />
+        <service android:name=".archive.ArchiveWorkerService"
+            android:exported="false" android:process=":archive" />
+        <service android:name=".archive.ArchiveSupervisorService"
+            android:exported="false" android:foregroundServiceType="dataSync|mediaProcessing|specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="On Android 14, performs user-requested on-device audio compression while capture or transcription continues independently. Stops on completion, cancellation or timeout. Android 15 and newer use mediaProcessing." />
+        </service>
 
         <!-- Post-onboarding launcher. Explicit legacy Settings intents still work. -->
         <activity

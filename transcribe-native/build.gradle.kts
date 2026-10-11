@@ -2,7 +2,7 @@ plugins { id("com.android.library") }
 
 android {
     namespace = "io.github.lrq3000.utterlane.transcribenative"
-    compileSdk = 35
+    compileSdk = 37
     ndkVersion = "28.2.13676358"
     defaultConfig {
         minSdk = 26
