@@ -66,5 +66,43 @@ Paths abbreviate `app/src/main/java/io/github/lrq3000/utterlane/`.
 - Full F-Droid execution, newer Android foreground-service behavior, C2 and physical
   Bluetooth/OEM behavior retain their documented verification boundaries.
 
-Replay hashes, dispositions and final publication verification are appended after
-the authorized Git operations establish those facts.
+## Fresh-main replay result
+
+- Original committed feature: `9a8cbbb0f85c1c3885d48289004bb97703c6a4e6`.
+- Recovery ref: `backup/progressive-archival-before-main-first-20261011`.
+- Freshly fetched canonical main:
+  `72dc059cc9684e64b5f38f10d02daa54c8158086`.
+- The feature's existing base and fresh canonical main are identical. There were
+  no new upstream commits to transfer around and no conflicted files/hunks.
+- `git rebase origin/main` completed with the branch already up to date. It did
+  not manufacture a history rewrite when none was necessary.
+- `git range-diff 72dc059c..backup/progressive-archival-before-main-first-20261011 origin/main..HEAD`
+  reports one **equal** patch, `9a8cbbb0 = 9a8cbbb0`; no dropped/adapted commits.
+- Full-tree comparison against the recovery ref is empty, with tree
+  `e608bb54cfa61d6f565a9175a0bac2830ce535db` on both sides.
+
+All twelve intention-ledger entries **I01–I12 are retained unchanged**. The complete
+previously validated feature patch, including every clean hunk and its earlier
+explicit adaptation to main's microphone/HFP contracts, remains intact. The strict
+conflict-file hunk checklist is empty because the fresh rebase introduced no conflict;
+no whole-file feature preference or skipped hunk was used to obtain that result.
+
+## Post-rebase verification
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest "-Pkotlin.compiler.execution.strategy=in-process" --max-workers=2 --console=plain --offline
+python -m unittest discover -s tools/tests -v
+git diff --exit-code backup/progressive-archival-before-main-first-20261011 HEAD
+git diff --check
+```
+
+The Gradle invocation succeeded in **1m 43s**, 104 tasks (5 executed, 99 up-to-date).
+It confirmed the unchanged 1,090-test JVM results and both debug APK outputs; it
+did not force reruns or claim new device execution. All **13 Python tests passed**.
+The working/index tree is clean except for the same four untracked maintainer
+fixtures. The remote feature branch did not previously exist, so publication uses
+a normal first push and requires no force push.
+
+This audit-only follow-up changes this document, not the implementation. The merge
+commit records the final feature tip and self-contained context. Remote refs and
+the merged tree are checked after the requested pushes.
