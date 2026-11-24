@@ -27,8 +27,8 @@
 
 ## Steps
 
-- [ ] File-only setup activity and explicit options.
-- [ ] Per-result durable completion and history presentation.
+- [x] File-only setup activity and explicit options.
+- [x] Per-result durable completion and history presentation.
 - [ ] Live speaker toggle, pipeline transitions, and final journey verification.
 
 ### Task 1: File-only setup activity

@@ -117,6 +117,8 @@ leaves recoverable input and committed text. A failed microphone start or failed
 file copy does not discard the prior result. Recognition errors offer retry/model
 selection after capture rather than requiring the recording to be repeated.
 
+When a new transcription is interrupted before it has processed the whole source, reopened text is marked **Partial transcript**. This label is not part of the copied or exported text. An older result created before completion tracking may have no indicator; that does not establish that it finished.
+
 ## Microphone input and Bluetooth
 
 Open **Settings → Microphone → Audio input → Change** to choose the phone microphone

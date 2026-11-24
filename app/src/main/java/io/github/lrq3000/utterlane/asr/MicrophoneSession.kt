@@ -168,7 +168,7 @@ class MicrophoneSession(
                             if (!cancelled) withContext(Dispatchers.Main) { onText(delta, session!!.store) }
                         }
                         phase = SessionFailure.Kind.INFERENCE
-                        session!!.store.attachSource(TranscriptSource(saved.entry.id,
+                        session!!.store.beginTranscription(TranscriptSource(saved.entry.id,
                             modelName = app.modelManager.selected.value.name, modelId = app.modelManager.selected.value.id,
                             archivePlan = archival?.textPlan))
                         metrics.preparing(false)
@@ -179,22 +179,7 @@ class MicrophoneSession(
                         val complete = checkNotNull(session)
                         gain.drain(complete::accept)
                         complete.finish()
-                        if (saveTranscripts && textRetention != io.github.lrq3000.utterlane.history.HistoryRetention.NONE && complete.store.segments > 0) {
-                            try {
-                                // The writer is drained; the entry's samples are finalized later.
-                                val text = TranscriptMetadata(saved.entry,
-                                    durationMs = saved.writtenSamples * 1000 / 16000,
-                                    speakerLabels = complete.hasSpeakerLabels).save(app.transcriptHistory,
-                                    complete.store.file, complete.store.source.modelName, saved.entry.id,
-                                    modelId = complete.store.source.modelId, archivePlan = archival?.textPlan)
-                                savedTranscriptId = text.id
-                                complete.store.attachSource(complete.store.source.copy(transcriptId = text.id))
-                            } catch (_: TranscriptDiscardedException) {
-                                // An explicit deletion elsewhere is not a capture
-                                // failure and must not force extra audio retention.
-                                Log.i("MicrophoneSession", "Transcript autosave skipped after explicit deletion")
-                            }
-                        }
+                        check(complete.finished) { "Recognition ended before finalization" }
                     },
                     onSamples = run {
                         val converter = if (actualFormat.native) null else io.github.lrq3000.utterlane.transcribe.StreamingResampler(actualFormat.sampleRate, actualFormat.channels)
@@ -210,6 +195,26 @@ class MicrophoneSession(
                         metrics.recognitionFailed(io.github.lrq3000.utterlane.util.StorageFailure.userMessage(context, error)
                             ?: error.message ?: context.getString(R.string.transcribe_error_failed))
                     }, closeConsumer = { session?.close() })
+                // Reaching ASR EOF alone is not proof of a complete result. A failed capture or writer also presents EOF to its consumer.
+                session?.takeIf { it.finished }?.let { complete ->
+                    try {
+                        currentCoroutineContext().ensureActive()
+                        if (!cancelled && result.captureError == null && result.storageError == null && result.processingError == null)
+                            complete.store.markComplete()
+                        if (saveTranscripts && textRetention != io.github.lrq3000.utterlane.history.HistoryRetention.NONE && complete.store.segments > 0) {
+                            val text = TranscriptMetadata(saved.entry,
+                                durationMs = saved.writtenSamples * 1000 / 16000,
+                                speakerLabels = complete.hasSpeakerLabels).save(app.transcriptHistory,
+                                complete.store.file, complete.store.source.modelName, saved.entry.id,
+                                modelId = complete.store.source.modelId, archivePlan = archival?.textPlan)
+                            savedTranscriptId = text.id
+                            complete.store.attachSource(complete.store.source.copy(transcriptId = text.id))
+                        }
+                    } catch (_: TranscriptDiscardedException) {
+                        // An explicit deletion elsewhere is not a capture failure.
+                        Log.i("MicrophoneSession", "Transcript autosave skipped after explicit deletion")
+                    }
+                }
                 failure = when {
                     result.storageError != null -> SessionFailure(SessionFailure.Kind.AUDIO,
                         io.github.lrq3000.utterlane.util.StorageFailure.userMessage(context, result.storageError)

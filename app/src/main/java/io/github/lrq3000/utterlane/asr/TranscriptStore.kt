@@ -55,8 +55,23 @@ class TranscriptStore(val file: File) {
     fun keepForRecovery() = owner.close()
 
     @Synchronized fun attachSource(value: TranscriptSource) {
-        value.write(file)
-        source = value
+        source = value.write(file)
+    }
+
+    @Synchronized fun beginTranscription(provenance: TranscriptSource) {
+        check(bytes == 0L && source.completion == TranscriptCompletion.UNKNOWN) { "Transcript attempt already started" }
+        attachSource(provenance.copy(completion = TranscriptCompletion.INCOMPLETE))
+    }
+
+    @Synchronized fun markComplete() {
+        if (source.completion == TranscriptCompletion.COMPLETE) return
+        check(source.completion == TranscriptCompletion.INCOMPLETE) { "Transcript attempt was not started" }
+        // Flush text first: a durable success marker must never overtake its bytes.
+        TranscriptSource.withActiveSource(file) {
+            check(file.isFile) { "Transcript became unavailable" }
+            RandomAccessFile(file, "rw").use { it.fd.sync() }
+            attachSource(source.copy(completion = TranscriptCompletion.COMPLETE))
+        }
     }
 
     @Synchronized fun append(text: String) {

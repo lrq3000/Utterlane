@@ -78,6 +78,9 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 15.dp)) {
+                    if (!state.busy && state.result.partial) Text(stringResource(R.string.transcript_partial),
+                        Modifier.padding(top = 12.dp).testTag("home_transcript_partial"),
+                        style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.error)
                     if (state.result.preview.isEmpty()) EmptyTranscript(state, Modifier.heightIn(min = previewHeight).padding(vertical = 12.dp))
                     else TranscriptReader(model?.document ?: controller.liveDocument, state.result,
                         Modifier.height(previewHeight).fillMaxWidth(), followTail = state.capture.active || state.result.running)

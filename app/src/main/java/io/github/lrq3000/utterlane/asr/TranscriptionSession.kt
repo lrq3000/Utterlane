@@ -41,7 +41,8 @@ class TranscriptionSession(
         if (!mayContinue()) return@AudioSegmenter
         Log.i("TranscriptionSession", "Segment ${window.ownedStart}..${window.ownedEnd}; input=${window.samples.size}; completed=${store.segments}")
     }
-    private var finished = false
+    @Volatile var finished = false
+        private set
     val hasSpeakerFinalization: Boolean get() = speakerText != null && finishSpeakers != null
     suspend fun accept(samples: ShortArray) {
         check(!closed.get()) { "Transcription session is closed" }

@@ -2,6 +2,7 @@ package io.github.lrq3000.utterlane.asr
 
 import io.github.lrq3000.utterlane.history.HistoryMetadata
 import io.github.lrq3000.utterlane.history.TranscriptHistory
+import io.github.lrq3000.utterlane.archive.AudioMetadata
 import java.io.File
 import java.util.Properties
 
@@ -15,13 +16,17 @@ class TranscriptDiscardedException : IllegalStateException("Transcript was delet
  * It contains identifiers and recovery state; exports and clipboard text never include it. */
 data class TranscriptSource(val audioId: String? = null, val transcriptId: String? = null,
     val modelName: String = "", val modelId: String? = null, val discarded: Boolean = false,
-    val recovered: Boolean = false, val archivePlan: io.github.lrq3000.utterlane.archive.ArchivePlan? = null) {
-    fun write(file: File) {
+    val recovered: Boolean = false, val archivePlan: io.github.lrq3000.utterlane.archive.ArchivePlan? = null,
+    val completion: TranscriptCompletion = TranscriptCompletion.UNKNOWN) {
+    fun write(file: File): TranscriptSource =
         synchronized(lockFor(file)) {
             // Late producer metadata must not clear a durable deletion marker.
             // Serialize the check/write and the shared atomic temporary filename.
             val previous = read(file)
             if (!discarded && previous.discarded) throw TranscriptDiscardedException()
+            // Late Keep/recovery callbacks can add provenance, not regress the exact result.
+            val resolved = copy(recovered = recovered || previous.recovered, archivePlan = archivePlan ?: previous.archivePlan,
+                completion = maxOf(completion, previous.completion))
             val properties = Properties().apply {
                 audioId?.let { setProperty("audioId", it) }
                 transcriptId?.let { setProperty("transcriptId", it) }
@@ -30,12 +35,15 @@ data class TranscriptSource(val audioId: String? = null, val transcriptId: Strin
                 setProperty("discarded", discarded.toString())
                 // Origin is monotonic: an older producer snapshot may add an ID,
                 // but cannot erase a recovery acknowledgement from another owner.
-                setProperty("recovered", (recovered || previous.recovered).toString())
-                (archivePlan ?: previous.archivePlan)?.writeTo(this)
+                setProperty("recovered", resolved.recovered.toString())
+                setProperty("completion", resolved.completion.name)
+                resolved.archivePlan?.writeTo(this)
             }
-            HistoryMetadata.write(metadata(file), properties)
+            val sidecar = metadata(file)
+            if (resolved.completion != previous.completion) AudioMetadata.write(sidecar, properties)
+            else HistoryMetadata.write(sidecar, properties)
+            resolved
         }
-    }
 
     companion object {
         // Bounded striping avoids retaining a lock for every historical filename,
@@ -62,7 +70,8 @@ data class TranscriptSource(val audioId: String? = null, val transcriptId: Strin
             val p = HistoryMetadata.read(metadata)
             return TranscriptSource(p.getProperty("audioId"), p.getProperty("transcriptId"),
                 p.getProperty("modelName", ""), p.getProperty("modelId"), p.getProperty("discarded", "false").toBoolean(),
-                p.getProperty("recovered", "false").toBoolean(), io.github.lrq3000.utterlane.archive.ArchivePlan.read(p))
+                p.getProperty("recovered", "false").toBoolean(), io.github.lrq3000.utterlane.archive.ArchivePlan.read(p),
+                TranscriptCompletion.read(p.getProperty("completion")))
         }
         fun retentionReference(file: File): Long {
             if (!file.name.endsWith(".source")) return file.lastModified()

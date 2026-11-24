@@ -245,6 +245,7 @@
     <string name="file_setup_transcribe">Transcribe</string>
     <string name="file_setup_speaker_help">Identify who is speaking in this file only.</string>
     <string name="file_speakers_unavailable">Speaker labels are unavailable. Transcription can continue without them. Download or import the speaker model in Settings.</string>
+    <string name="transcript_partial">Partial transcript</string>
     <string name="transcribe_checking_model">Checking speech model…</string>
     <string name="transcribe_decoding">Decoding audio: %1$d%%</string>
     <string name="transcribe_transcribing">Transcribing…</string>

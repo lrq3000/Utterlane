@@ -247,6 +247,7 @@ private fun HistoryEntryRow(entry: HistoryRow, transcripts: Boolean, labels: His
                         if (entry.durationMs <= 0) contentDescription = unknown
                     })
                     if (entry.speakerLabels) Text("· ${stringResource(R.string.home_speakers)}")
+                    if (entry.partial) Text("· ${stringResource(R.string.transcript_partial)}", color = colors.error)
                     // Announced once as the row's retention state, with no extra
                     // focus target or click handler on this decorative indicator.
                     if (entry.retention.pinned) Icon(Icons.Default.PushPin, null,
