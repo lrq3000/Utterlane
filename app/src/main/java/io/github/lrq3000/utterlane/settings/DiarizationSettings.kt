@@ -38,9 +38,9 @@ fun DiarizationSettings(onPickFolder: ((Uri) -> Unit) -> Unit) {
     SettingsSection(stringResource(R.string.diarization_title)) {
         SwitchSettingItem(stringResource(R.string.diarization_enable), stringResource(R.string.diarization_description),
             Icons.Default.RecordVoiceOver, enabled, onCheckedChange = { run { repository.setDiarizationEnabled(it) } })
-        ListItem(modifier = Modifier.clickable(enabled = enabled) { chooseCount = true }, headlineContent = { Text(stringResource(R.string.diarization_count)) },
+        ListItem(modifier = Modifier.clickable { chooseCount = true }, headlineContent = { Text(stringResource(R.string.diarization_count)) },
             supportingContent = { Text(if (count == 0) stringResource(R.string.diarization_auto) else count.toString()) },
-            trailingContent = { TextButton(enabled = enabled, onClick = { chooseCount = true }) { Text(stringResource(R.string.history_change)) } })
+            trailingContent = { TextButton(onClick = { chooseCount = true }) { Text(stringResource(R.string.history_change)) } })
         Text(stringResource(R.string.diarization_count_help), Modifier.padding(horizontal = 16.dp))
         Text(stringResource(R.string.diarization_model_info), Modifier.padding(16.dp))
         when (val current = state) {

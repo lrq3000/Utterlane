@@ -33,6 +33,7 @@ class MicrophoneSession(
     }
     private var job: Job? = null
     val metrics = CaptureMetrics()
+    val speakerControl = LiveSpeakerControl()
     @Volatile private var cancelled = false
     @Volatile private var resetRequested = false
     @Volatile private var discardRequested = false
@@ -83,6 +84,8 @@ class MicrophoneSession(
                 // Capture, queue and every wake reopen retain one immutable snapshot.
                 // Preferences changed during recording take effect only next session.
                 val captureOptions = app.settingsRepository.runtimeOptions.first()
+                // Initialize the control without waiting for model preparation or delaying microphone capture.
+                launch { speakerControl.initialize(app.settingsRepository.diarizationEnabled.first()) }
                 val microphoneOptions = app.settingsRepository.microphoneSettings.first().options
                 recorder.configureMicrophone(microphoneOptions)
                 val gain = io.github.lrq3000.utterlane.audio.TranscriptionGain(microphoneOptions.gain)
@@ -156,13 +159,15 @@ class MicrophoneSession(
                 val result = RecordingPipeline(recorder, app.recordingHistory, saved, captureOptions).run(
                     prepare = {
                         phase = SessionFailure.Kind.MODEL
-                        session = app.recognizerManager.createSession(captureOptions, onProcessed = { samples, millis ->
+                        session = app.recognizerManager.createLiveSession(captureOptions, speakerControl, onProcessed = { samples, millis ->
                             metrics.processed(samples, millis)
                             if (saved.rolling != null) session?.store?.sync()
                             // Keep the entire bounded recognition window, not just
                             // a reader's submitted offset, behind durable progress.
                             saved.rolling?.commitAsr(samples, (16000 * (captureOptions.asrWindowSeconds +
                                 captureOptions.asrLeftContextSeconds + captureOptions.asrRightContextSeconds)).toLong())
+                        }, onSpeakerUnavailable = {
+                            scope.launch(Dispatchers.Main) { if (!cancelled) onWarning(context.getString(R.string.live_speakers_unavailable)) }
                         }) { delta ->
                             speakerLabels = session!!.hasSpeakerLabels
                             if (!cancelled) withContext(Dispatchers.Main) { onText(delta, session!!.store) }

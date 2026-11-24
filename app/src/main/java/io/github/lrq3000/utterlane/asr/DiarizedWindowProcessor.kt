@@ -34,13 +34,18 @@ class DiarizedWindowProcessor(
     private val timeline = SpeakerTimeline(count, ((2 * 192000 + waitSamples + historyMs * 16L + 319) / 160).toInt(), options)
     private val pending = ArrayDeque<WindowText.Word>()
     private var pendingCharacters = 0
+    private var origin: Long? = null
     private var fed = 0L
     private var finished = false
     private var closed = false
     private var previous = -1
 
-    fun process(window: AudioWindow): List<SpeechSpan> {
+    fun process(absolute: AudioWindow): List<SpeechSpan> {
         check(!finished && !closed)
+        // The first window can follow an unlabeled interval. Native frames are relative to this run's first sample, not to the start of the recording.
+        val base = origin ?: absolute.startSample.also { origin = it }
+        val window = if (base == 0L) absolute else absolute.copy(startSample = absolute.startSample - base,
+            ownedStart = absolute.ownedStart - base, ownedEnd = absolute.ownedEnd - base)
         val end = window.startSample + window.samples.size
         require(window.samples.size <= 192000 && window.startSample <= fed && fed <= end &&
             window.ownedStart >= window.startSample && window.ownedEnd <= end)

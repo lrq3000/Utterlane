@@ -27,7 +27,8 @@ internal data class HomeState(
     val pendingImport: TranscriptionDialogModel? = null,
     val preparing: Boolean = false,
     val permissionDenied: Boolean = false,
-    val message: String? = null
+    val message: String? = null,
+    val liveSpeakers: Boolean? = null
 ) {
     val busy get() = capture.active || preparing || result.running || result.importing || result.saving || result.closing || result.deleting || result.checkingDeletion
     val canStop get() = capture.phase in setOf(HomeCapturePhase.STARTING, HomeCapturePhase.RECORDING, HomeCapturePhase.STOPPING)
@@ -80,6 +81,10 @@ class HomeController(private val app: UtterlaneApp) {
         if (captureOwner.state.value.active) { captureOwner.stop(); return }
         if (state.value.busy) return
         captureOwner.start()
+    }
+
+    internal fun setLiveSpeakers(enabled: Boolean) {
+        if (captureOwner.state.value.phase == HomeCapturePhase.RECORDING) captureDriver?.setSpeakerLabels(enabled)
     }
 
     fun load(uri: Uri, options: FileTranscriptionOptions = FileTranscriptionOptions()) {
@@ -186,6 +191,7 @@ class HomeController(private val app: UtterlaneApp) {
         private var session: MicrophoneSession? = null
         private var observer: Job? = null
         private var spoolObserver: Job? = null
+        private var speakerObserver: Job? = null
         private var ended = false
         private var delivered = false
         private var sourceLease: Closeable? = null
@@ -217,6 +223,7 @@ class HomeController(private val app: UtterlaneApp) {
                 }, onSessionClosed = {
                     observer?.cancel()
                     spoolObserver?.cancel()
+                    speakerObserver?.cancel()
                     if (!delivered) {
                         // Cancellation preserves input but omits onComplete. Adopt
                         // its partial workspace too, so explicit Next can later
@@ -225,7 +232,10 @@ class HomeController(private val app: UtterlaneApp) {
                     }
                     ended = true
                     events.closed()
-                    if (captureDriver === this) captureDriver = null
+                    if (captureDriver === this) {
+                        captureDriver = null
+                        mutable.update { it.copy(liveSpeakers = null) }
+                    }
                     // A cancelled session does not deliver onComplete. Leave its
                     // journal and disk-backed data available for recovery.
                     sourceLease?.let { lease -> scope.launch(Dispatchers.IO) { lease.close() } }; sourceLease = null
@@ -234,6 +244,9 @@ class HomeController(private val app: UtterlaneApp) {
             observer = scope.launch { created.metrics.state.collect { metrics ->
                 if (!isCurrent()) return@collect
                 mutable.update { it.copy(metrics = metrics) }
+            } }
+            speakerObserver = scope.launch { created.speakerControl.state.collect { enabled ->
+                if (isCurrent()) mutable.update { it.copy(liveSpeakers = enabled) }
             } }
             spoolObserver = scope.launch {
                 // Metrics can be conflated after the producer pauses. Poll the
@@ -251,6 +264,7 @@ class HomeController(private val app: UtterlaneApp) {
             created.start()
         }
         override fun stop() { session?.stop() }
+        fun setSpeakerLabels(enabled: Boolean) { session?.speakerControl?.set(enabled) }
         private fun isCurrent() = captureDriver === this && !ended
 
         private fun publishInput(spooledSamples: Long = 0, store: TranscriptStore? = rawStore) {
@@ -285,8 +299,11 @@ class HomeController(private val app: UtterlaneApp) {
             else session?.cancel(discard = false)
         }
         fun reject(message: String) {
-            ended = true; observer?.cancel(); spoolObserver?.cancel(); events.rejected(message)
-            if (captureDriver === this) captureDriver = null
+            ended = true; observer?.cancel(); spoolObserver?.cancel(); speakerObserver?.cancel(); events.rejected(message)
+            if (captureDriver === this) {
+                captureDriver = null
+                mutable.update { it.copy(liveSpeakers = null) }
+            }
         }
         fun input(store: TranscriptStore?, metadata: TranscriptMetadata) = DialogInput(
             audioId = session?.audioId, transcriptId = session?.savedTranscriptId,
