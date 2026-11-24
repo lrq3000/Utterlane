@@ -89,10 +89,8 @@ class WorkerSpeakerFinalizationTest {
         val other = pending(Backend(), Stream())
         val sessions = mutableMapOf(1L to pending(Backend(), stream), 2L to other)
         try {
-            val error = assertThrows(IllegalStateException::class.java) {
-                RecognitionWorkerService.finishSpeakerSession(sessions, 1) { options }
-            }
-            assertEquals("Injected native drain failure", error.message)
+            assertEquals(listOf(SpeechSpan("tail", SpeechSpan.UNLABELED)),
+                RecognitionWorkerService.finishSpeakerSession(sessions, 1) { options })
             assertEquals(setOf(2L), sessions.keys)
             assertSame(other, sessions[2])
             assertEquals(2, stream.pushes)

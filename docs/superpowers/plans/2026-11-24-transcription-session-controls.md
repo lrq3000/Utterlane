@@ -30,7 +30,7 @@
 - [x] File-only setup activity and explicit options.
 - [x] Per-result durable completion and history presentation.
 - [x] Live speaker toggle and pipeline transitions; JVM and APK checks.
-- [ ] Final Android journey verification and independent review.
+- [x] Final Android journey verification and independent review.
 
 ### Task 1: File-only setup activity
 

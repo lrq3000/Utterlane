@@ -94,7 +94,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         linkedHistory.availableAudio(ownedAudioId) else null
                     // A new interrupted attempt on the same audio can have useful working text even when an older version was kept.
                     val working = if (!input.automatic && input.transcriptId == null && input.transcriptPath == null &&
-                        (saved == null || audio?.needsRecovery == true)) linkedWorkingCopies()
+                        (saved == null || audio?.needsRecovery == true)) linkedWorkingCopies(recoverable = true)
                         .filter { saved == null || (it.source.transcriptId == null && it.file.lastModified() >= saved.file.lastModified()) }
                         .maxByOrNull { it.file.lastModified() } else null
                     val entry = saved.takeIf { working == null }
@@ -142,7 +142,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         // when cancellation races completion of the source copy.
                         // The import lease bridges publication to the dialog owner;
                         // a late onCleared closes it rather than leaking an owner.
-                        val owned = audioActions.import(source, choice)
+                        val owned = audioActions.import(source, choice, input.fileOptions)
                         try {
                             ownedAudioId = owned.entry.id
                             historyOwners.audio(owned.entry.id)
@@ -284,7 +284,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                             }
                         }
                         session = app.recognizerManager.createSession(options, onProcessed = metrics::processed,
-                            speakerOverride = input.fileOptions?.speakerLabels, onSpeakerUnavailable = {
+                            speakerOverride = input.fileOptions?.speakerLabels ?: source.fileSpeakerLabels, onSpeakerUnavailable = {
                                 mutable.update { it.copy(speakerWarning = app.getString(R.string.file_speakers_unavailable)) }
                             }) {
                             val current = checkNotNull(session)
@@ -387,6 +387,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
             presenter?.cancel(); activity?.cancel(); diagnostics?.cancel()
             diagnosticSession?.record(metrics.state.value)
             try { session?.close() } catch (e: Exception) { Log.e("TranscribeDialog", "Recognition cleanup failed", e) }
+            session?.store?.finishProducing()
             session?.takeIf { it.store === currentStore }?.let { completed ->
                 // Partial labeled text is still a real result after inference
                 // failure. Save the badge without requiring its source to exist.
@@ -633,9 +634,10 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     private fun workingFiles(): List<File> = synchronized(temporaryResults) { temporaryResults.toList() }
     private fun workingId(file: File): String = TranscriptSource.read(file).transcriptId ?: TranscriptHistory.idForAttempt(file.name)
     private fun cachedWorkingCopies() = TranscriptSource.copies(File(app.cacheDir, "transcripts"))
-    private fun linkedWorkingCopies(): List<WorkingTranscriptCopy> {
+    private fun linkedWorkingCopies(recoverable: Boolean = false): List<WorkingTranscriptCopy> {
         val audioId = ownedAudioId ?: return emptyList()
-        return cachedWorkingCopies().filter { it.source.audioId == audioId }
+        val copies = if (recoverable) TranscriptSource.recoverableCopies(File(app.cacheDir, "transcripts")) else cachedWorkingCopies()
+        return copies.filter { it.source.audioId == audioId }
     }
 
     private fun deletionPlan(): HistoryDeletionPlan {

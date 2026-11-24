@@ -4,7 +4,9 @@ import io.github.lrq3000.utterlane.history.HistoryMetadata
 import io.github.lrq3000.utterlane.history.TranscriptHistory
 import io.github.lrq3000.utterlane.archive.AudioMetadata
 import java.io.File
+import java.io.Closeable
 import java.util.Properties
+import java.util.concurrent.ConcurrentHashMap
 
 data class WorkingTranscriptCopy(val file: File, val source: TranscriptSource) {
     val id: String get() = source.transcriptId ?: TranscriptHistory.idForAttempt(file.name)
@@ -49,6 +51,12 @@ data class TranscriptSource(val audioId: String? = null, val transcriptId: Strin
         // Bounded striping avoids retaining a lock for every historical filename,
         // while unrelated metadata usually remains independent of a large save.
         private val sourceLocks = Array(64) { Any() }
+        private val activeProducers = ConcurrentHashMap.newKeySet<String>()
+        internal fun claimProducer(file: File): Closeable {
+            val key = file.canonicalPath
+            check(activeProducers.add(key)) { "Transcript already has a producer" }
+            return Closeable { activeProducers.remove(key) }
+        }
         private fun lockFor(file: File) = sourceLocks[(file.canonicalPath.hashCode() and Int.MAX_VALUE) % sourceLocks.size]
         fun <T> withActiveSource(file: File, action: () -> T): T = synchronized(lockFor(file)) {
             if (read(file).discarded) throw TranscriptDiscardedException()
@@ -64,6 +72,10 @@ data class TranscriptSource(val audioId: String? = null, val transcriptId: Strin
             }
             if (source.discarded) null else WorkingTranscriptCopy(file, source)
         }
+
+        /** Recovery viewers may dispose their working file on Back. Never hand them a producer's append target. */
+        fun recoverableCopies(directory: File): List<WorkingTranscriptCopy> =
+            copies(directory).filterNot { it.file.canonicalPath in activeProducers }
         fun read(file: File): TranscriptSource {
             val metadata = metadata(file)
             if (!metadata.isFile) return TranscriptSource()

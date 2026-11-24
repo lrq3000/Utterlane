@@ -32,6 +32,7 @@ class TranscriptStore(val file: File) {
     var segments = 0
         private set
     private val owner: Closeable
+    private var producer: Closeable? = null
     @Volatile var bytes: Long = file.length()
         private set
     @Volatile var source: TranscriptSource = TranscriptSource.read(file)
@@ -51,7 +52,7 @@ class TranscriptStore(val file: File) {
             catch (error: Exception) { text.close(); throw error }
         return Closeable { try { text.close() } finally { metadata.close() } }
     }
-    fun dispose() { deleteArtifacts(file); owner.close() }
+    fun dispose() { try { deleteArtifacts(file) } finally { finishProducing(); owner.close() } }
     fun keepForRecovery() = owner.close()
 
     @Synchronized fun attachSource(value: TranscriptSource) {
@@ -60,8 +61,14 @@ class TranscriptStore(val file: File) {
 
     @Synchronized fun beginTranscription(provenance: TranscriptSource) {
         check(bytes == 0L && source.completion == TranscriptCompletion.UNKNOWN) { "Transcript attempt already started" }
-        attachSource(provenance.copy(completion = TranscriptCompletion.INCOMPLETE))
+        val claim = TranscriptSource.claimProducer(file)
+        try {
+            attachSource(provenance.copy(completion = TranscriptCompletion.INCOMPLETE))
+            producer = claim
+        } catch (e: Throwable) { claim.close(); throw e }
     }
+
+    @Synchronized fun finishProducing() { producer?.close(); producer = null }
 
     @Synchronized fun markComplete() {
         if (source.completion == TranscriptCompletion.COMPLETE) return

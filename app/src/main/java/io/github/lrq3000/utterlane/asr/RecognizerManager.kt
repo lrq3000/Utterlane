@@ -331,7 +331,8 @@ class RecognizerManager(
                         // drain so even Immediate idle unloading cannot race it.
                         finishSpeakers = if (hasSpeakerDecoder) { { withSessionBackend(expected, id, options) { it.finishSpeakers(id, options) } } } else null,
                         speakerRequested = liveSpeakers?.let { { it.resolve(false) } },
-                        speakerStart = ::speakersAvailable
+                        speakerStart = ::speakersAvailable,
+                        onSpeakersBypassed = { liveSpeakers?.unavailable(); onSpeakerUnavailable?.invoke() }
                     ).also { created = it }
                 }
             }

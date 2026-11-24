@@ -18,10 +18,12 @@ class TranscriptionSession(
     options: RuntimeOptions = RuntimeOptions(),
     private val finishSpeakers: (suspend () -> List<SpeechSpan>)? = null,
     private val speakerRequested: (() -> Boolean)? = null,
-    private val speakerStart: suspend () -> Boolean = { true }
+    private val speakerStart: suspend () -> Boolean = { true },
+    private val onSpeakersBypassed: () -> Unit = {}
 ) : java.io.Closeable {
     private var speakerText = if (decodeSpeakers != null && speakerRequested == null) SpeakerText(corrections, speakerLabel) else null
     private var newParagraph = false
+    private var bypassReported = false
     // Punctuation-only speaker output has no header. This records a committed
     // label, not decoder availability or formatting that could fail to append.
     @Volatile var hasSpeakerLabels: Boolean = false
@@ -36,7 +38,7 @@ class TranscriptionSession(
         if (formatter != null) {
             val spans = checkNotNull(decodeSpeakers).invoke(window)
             if (!mayContinue()) return@AudioSegmenter
-            emit(formatter.acceptEmission(spans))
+            emitSpeakerSpans(formatter, spans)
         } else {
             val text = decode(window)
             if (!mayContinue()) return@AudioSegmenter
@@ -85,7 +87,10 @@ class TranscriptionSession(
         drainMode()
         if (!mayContinue()) return
         newParagraph = store.bytes > 0
-        speakerText = if (requested) SpeakerText(corrections, speakerLabel) else null
+        val latest = speakerRequested.invoke()
+        speakerText = if (latest && (requested || speakerStart()) && speakerRequested.invoke())
+            SpeakerText(corrections, speakerLabel) else null
+        bypassReported = false
     }
 
     private suspend fun drainMode() {
@@ -97,11 +102,19 @@ class TranscriptionSession(
             if (finishSpeakers != null) {
                 val spans = finishSpeakers.invoke()
                 if (!mayContinue()) return
-                emit(formatter.acceptEmission(spans))
+                emitSpeakerSpans(formatter, spans)
                 if (!mayContinue()) return
             }
             emit(formatter.finishEmission())
         }
+    }
+
+    private suspend fun emitSpeakerSpans(formatter: SpeakerText, spans: List<SpeechSpan>) {
+        if (!bypassReported && spans.any { it.speaker == SpeechSpan.UNLABELED }) {
+            bypassReported = true
+            onSpeakersBypassed()
+        }
+        emit(formatter.acceptEmission(spans))
     }
 
     // Closing does not itself cancel an in-flight decoder or callback. Check
@@ -226,7 +239,11 @@ class StreamingCorrections(rules: List<DictionaryManager.ReplacementRule>) {
                 // whichever speaker happened to cause a premature buffer flush.
                 var owner: Int? = null
                 for (i in start until stop) if (text[i].isLetterOrDigit()) {
-                    owner = if (owner == null || owner == owners[i]) owners[i] else -1
+                    owner = when {
+                        owner == SpeechSpan.UNLABELED || owners[i] == SpeechSpan.UNLABELED -> SpeechSpan.UNLABELED
+                        owner == null || owner == owners[i] -> owners[i]
+                        else -> -1
+                    }
                 }
                 labels.fill(owner ?: -1, output.length, output.length + replacement.length)
                 output.append(replacement)

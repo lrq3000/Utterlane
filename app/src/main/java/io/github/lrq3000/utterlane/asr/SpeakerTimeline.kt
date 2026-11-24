@@ -3,7 +3,12 @@ package io.github.lrq3000.utterlane.asr
 import io.github.lrq3000.utterlane.settings.RuntimeOptions
 
 data class SpeakerTurn(val start: Long, val end: Long, val speaker: Int)
-data class SpeechSpan(val text: String, val speaker: Int)
+data class SpeechSpan(val text: String, val speaker: Int) {
+    companion object {
+        /** Attribution was bypassed; distinct from a valid model's "Unknown speaker". */
+        internal const val UNLABELED = -2
+    }
+}
 
 /** Absolute 10 ms coordinates, bounded storage, and session-stable native track identities. */
 class SpeakerTimeline(

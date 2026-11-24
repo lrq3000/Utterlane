@@ -9,7 +9,7 @@ import java.io.InterruptedIOException
 
 /** Shared source-close / owned-copy boundary, independent of Android providers. */
 internal fun copyImportedAudio(history: RecordingHistory, source: InputStream, extension: String,
-    metadata: AudioImportMetadata, retention: ImportRetentionChoice): RecordingHistory.OwnedImport {
+    metadata: AudioImportMetadata, retention: ImportRetentionChoice, speakerLabels: Boolean? = null): RecordingHistory.OwnedImport {
     // runInterruptible can stop large local copies between read operations.
     val input = object : FilterInputStream(source) {
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
@@ -19,7 +19,7 @@ internal fun copyImportedAudio(history: RecordingHistory, source: InputStream, e
     }
     var owned: RecordingHistory.OwnedImport? = null
     try {
-        input.use { owned = history.importAudioOwned(it, extension, metadata, retention) }
+        input.use { owned = history.importAudioOwned(it, extension, metadata, retention, speakerLabels) }
         return checkNotNull(owned)
     } catch (error: Throwable) {
         // Source close happens after publication, but before the caller receives

@@ -149,7 +149,9 @@ class RecognitionWorkerService : Service() {
                 check(path.isFile && path.length() == DiarizationModel.definition.downloadBytes) { "Download the speaker diarization model in Settings first" }
                 ObservedSpeakerStream(path.absolutePath, options)
             }
-            SpeakerSession(DiarizedWindowProcessor(recognizer, stream, count, textOnly, options), count, options).also { speakerSessions[id] = it }
+            SpeakerSession(DiarizedWindowProcessor(recognizer, stream, count, textOnly, options) { failure ->
+                Log.w("RecognitionWorker", "Speaker labeling failed; retaining the speech recognition output", failure)
+            }, count, options).also { speakerSessions[id] = it }
         }
         try {
             require(session.count == count && session.options == options) { "Speaker session options changed during recognition" }
@@ -214,7 +216,13 @@ class RecognitionWorkerService : Service() {
             if (count == 1) object : SpeakerProbabilityStream {
                 override fun push(samples: ShortArray, final: Boolean) = floatArrayOf()
                 override fun close() {}
-            } else create()
+            } else object : SpeakerProbabilityStream {
+                private var delegate: SpeakerProbabilityStream? = null
+                // Construct within the optional push boundary so a load failure cannot erase ASR's already-owned words.
+                override fun push(samples: ShortArray, final: Boolean): FloatArray =
+                    (delegate ?: create().also { delegate = it }).push(samples, final)
+                override fun close() { delegate?.close(); delegate = null }
+            }
     }
 
     private fun respond(recipient: Messenger, id: Int, data: Bundle, kind: Int = RecognitionProtocol.RESULT) {

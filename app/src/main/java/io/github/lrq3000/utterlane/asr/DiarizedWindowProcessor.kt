@@ -14,7 +14,8 @@ class DiarizedWindowProcessor(
     private val stream: SpeakerProbabilityStream,
     private val count: Int,
     private val textOnly: Boolean = false,
-    private val options: RuntimeOptions = RuntimeOptions()
+    private val options: RuntimeOptions = RuntimeOptions(),
+    private val onSpeakerFailure: (Throwable) -> Unit = {}
 ) : Closeable {
     init { require(count in 0..8); options.requireValid() }
 
@@ -39,6 +40,7 @@ class DiarizedWindowProcessor(
     private var finished = false
     private var closed = false
     private var previous = -1
+    private var speakerBypassed = false
 
     fun process(absolute: AudioWindow): List<SpeechSpan> {
         check(!finished && !closed)
@@ -64,7 +66,7 @@ class DiarizedWindowProcessor(
             else -> rawText(result, recognitionWindow)
         }
         val output = SpanCollector()
-        if (count != 1) {
+        if (count != 1 && !speakerBypassed) {
             val keepFrom = minOf(pending.peekFirst()?.start ?: window.startSample, window.startSample) - historyMs * 16L
             timeline.discardBefore(keepFrom.coerceAtLeast(0))
             val fresh = window.samples.copyOfRange((fed - window.startSample).toInt(), window.samples.size)
@@ -96,7 +98,7 @@ class DiarizedWindowProcessor(
             if (pendingCharacters > 262144) emit(pending.removeFirst(), output, forceUnknown = true)
         }
         drain(output)
-        return output.finish()
+        return speakerResult(output)
     }
 
     /** Drain native lookahead and pending text without ever invoking ASR again. */
@@ -104,18 +106,30 @@ class DiarizedWindowProcessor(
         if (finished || closed) return emptyList()
         // An exact zero-right-context boundary was already recognized by accept().
         // No audio is retained or replayed: the native cache owns its bounded tail.
-        if (count != 1) pushProbabilities(ShortArray(0), final = true, endSample = fed)
+        if (count != 1 && !speakerBypassed) pushProbabilities(ShortArray(0), final = true, endSample = fed)
         finished = true
         val output = SpanCollector()
         drain(output)
-        return output.finish()
+        return speakerResult(output)
     }
 
     private fun pushProbabilities(samples: ShortArray, final: Boolean, endSample: Long) {
-        timeline.append(stream.push(samples, final))
+        try {
+            timeline.append(stream.push(samples, final))
+        } catch (failure: Throwable) {
+            if (failure is java.util.concurrent.CancellationException || (failure !is Exception && failure !is LinkageError)) throw failure
+            // Only optional model work is caught here. Preserve already decoded words and never retry ASR just to remove their labels.
+            speakerBypassed = true
+            onSpeakerFailure(failure)
+            return
+        }
         // Only the documented centered-FFT tail may inherit the last frame.
         // Larger final shortfalls remain Unknown, while all text still flushes.
         if (final && endSample - timeline.endSample in 0..256) timeline.finishAt(endSample)
+    }
+
+    private fun speakerResult(output: SpanCollector): List<SpeechSpan> = output.finish().let {
+        if (speakerBypassed && it.isEmpty()) listOf(SpeechSpan("", SpeechSpan.UNLABELED)) else it
     }
 
     private fun rawText(result: WindowResult, window: AudioWindow): List<WindowText.Word> =
@@ -125,7 +139,11 @@ class DiarizedWindowProcessor(
 
     private fun drain(output: SpanCollector) {
         while (pending.isNotEmpty()) {
-            val word = pending.peekFirst()
+            if (speakerBypassed) {
+                emit(pending.removeFirst(), output)
+                continue
+            }
+            val word = checkNotNull(pending.peekFirst())
             val horizonReady = count == 1 || timeline.endSample >= word.end +
                 maxOf(options.labelLookaheadMs, paddingMs) * 16L
             val labelReady = timeline.endSample >= word.end + options.labelLookaheadMs * 16L
@@ -146,6 +164,7 @@ class DiarizedWindowProcessor(
     private fun emit(word: WindowText.Word, output: SpanCollector, forceUnknown: Boolean = false, directSpeaker: Int = -1) {
         pendingCharacters -= word.text.length
         val speaker = when {
+            speakerBypassed -> SpeechSpan.UNLABELED
             count == 1 -> 0
             // Punctuation follows the last owned lexical speaker. Its ASR
             // timestamp still controls text ownership, not a new voice label.

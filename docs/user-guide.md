@@ -98,7 +98,7 @@ Home recording has no onboarding practice timer. Device storage and memory limit
 still apply.
 
 - Use the icon beside **New transcript** to load a local audio file. The **Transcribe audio** dialog lets you turn on **Speaker labels** for this file before starting. The same dialog appears when you share an audio file to Utterlane or open one with it. Labels start off for each new file and do not change the live recording default. No microphone, keyboard or floating-button setup is required for files. Cancelling setup or selecting a missing/empty file preserves the previous useful workspace.
-- Before recording, **Speaker labels** changes the default for future live recordings. While recording, the speaker icon beside the waveform changes labels for the next transcription segment without stopping the microphone or rewriting earlier text. Turning labels off preserves the preceding labeled text. Turning them back on starts a fresh set of speaker identities.
+- Before recording, **Speaker labels** changes the default for future live recordings. While recording, the speaker icon beside the waveform changes labels for the next transcription segment without stopping the microphone or rewriting earlier text. Turning labels off preserves the preceding labeled text. Turning them back on starts a fresh set of speaker identities. A multiword dictionary correction does not span the point where labeling switches.
 - Read the complete disk-backed transcript in its scrollable area. **Copy** uses
   the clipboard transfer limit; when a result is too large, **Share** exports its
   full text file instead. Neither action substitutes the short history preview.

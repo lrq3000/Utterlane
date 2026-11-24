@@ -46,4 +46,38 @@ class TranscriptCompletionTest {
         assertEquals("UNKNOWN", TranscriptSource.read(legacy).completion.name)
         assertEquals("UNKNOWN", saved.completion.name)
     }
+
+    @Test fun recoveryOnlyOffersTheWorkingCopyAfterItsProducerRetires() {
+        val store = TranscriptStore(temporary.newFile("live.txt"))
+        try {
+            store.beginTranscription(TranscriptSource(audioId = "same-audio"))
+            store.append("Live prefix")
+            assertEquals(emptyList<File>(), TranscriptSource.recoverableCopies(temporary.root).map { it.file })
+            store.finishProducing()
+            assertEquals(listOf(store.file), TranscriptSource.recoverableCopies(temporary.root).map { it.file })
+        } finally { store.dispose() }
+    }
+
+    @Test fun writerSealsFinalWavBeforeTranscriptionCanClaimEndOfSource() {
+        val audio = RecordingHistory(temporary.newFolder("audio"))
+        val recording = audio.begin(HistoryRetention.DAY, automatic = true)
+        try {
+            recording.append(shortArrayOf(7, 9))
+            recording.closeCapture()
+            val header = recording.entry.part(0).readBytes()
+            assertEquals(4, java.nio.ByteBuffer.wrap(header).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt(40))
+        } finally { recording.finish(failed = false) }
+    }
+
+    @Test fun importRestoresAnExplicitOffChoiceAndAnExplicitOnChoiceBeforeRetry() {
+        val root = temporary.newFolder("imports")
+        val audio = RecordingHistory(root)
+        val metadata = AudioImportMetadata("meeting.wav", "audio/wav", 1000, 1, "audio/raw", false)
+        val ids = listOf(false, true).map { requested ->
+            audio.importAudioOwned(byteArrayOf(7).inputStream(), "wav", metadata, ImportRetentionChoice.KEEP,
+                speakerLabels = requested).let { entry -> entry.lease.close(); entry.entry.id }
+        }
+        val restored = RecordingHistory(root).apply { initialize() }
+        assertEquals(listOf(false, true), ids.map { restored.get(it).fileSpeakerLabels })
+    }
 }

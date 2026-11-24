@@ -252,6 +252,7 @@ class MicrophoneSession(
                         try { recorder.releaseAfterCapture() }
                         catch (e: Exception) { Log.e("MicrophoneSession", "Microphone setup cleanup failed", e) }
                         try { session?.close() } catch (e: Exception) { Log.e("MicrophoneSession", "Recognition cleanup failed", e) }
+                        session?.store?.finishProducing()
                         speakerLabels = session?.hasSpeakerLabels == true
                         try { recording?.let { UtterlaneApp.instance.recordingHistory.setSpeakerLabels(it.entry.id, speakerLabels) } }
                         catch (e: Exception) { Log.e("MicrophoneSession", "Could not save speaker metadata", e) }
