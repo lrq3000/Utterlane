@@ -41,13 +41,13 @@ class FileTranscriptionSetupAndroidTest {
             fun share() = Intent(Intent.ACTION_SEND).setPackage(app.packageName).setType("audio/wav")
                 .putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
             screen = launchNativeActivity(share())
-            ui.node("file_setup_speakers").useNode { assertFalse(it.isChecked) }
+            ui.awaitChecked("file_setup_speakers", false)
             ui.click("file_setup_speakers")
-            ui.node("file_setup_speakers").useNode { assertTrue(it.isChecked) }
+            ui.awaitChecked("file_setup_speakers", true)
             ui.click("file_setup_cancel")
             assertEquals(recordings, app.recordingHistory.list().map { it.id })
             screen = launchNativeActivity(share())
-            ui.node("file_setup_speakers").useNode { assertFalse(it.isChecked) }
+            ui.awaitChecked("file_setup_speakers", false)
             assertTrue(settings.diarizationEnabled.first())
         } finally {
             instrumentation.runOnMainSync { screen?.finish() }
@@ -80,7 +80,7 @@ class FileTranscriptionSetupAndroidTest {
             ui.prepare()
             screen = launchNativeActivity(HomeActivity.intent(app))
             ui.click("home_load_audio")
-            ui.node("file_setup_speakers").useNode { assertFalse(it.isChecked) }
+            ui.awaitChecked("file_setup_speakers", false)
             ui.click("file_setup_speakers")
             ui.click("file_setup_start")
             val result = withTimeout(30000) {
@@ -99,8 +99,4 @@ class FileTranscriptionSetupAndroidTest {
             source.delete()
         }
     }
-
-    private inline fun android.view.accessibility.AccessibilityNodeInfo.useNode(
-        check: (android.view.accessibility.AccessibilityNodeInfo) -> Unit
-    ) { try { check(this) } finally { recycle() } }
 }
