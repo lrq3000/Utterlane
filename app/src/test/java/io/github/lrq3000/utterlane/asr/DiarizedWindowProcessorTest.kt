@@ -5,6 +5,36 @@ import org.junit.Test
 import io.github.lrq3000.utterlane.settings.RuntimeOptions
 
 class DiarizedWindowProcessorTest {
+    @Test fun speakerModelConstructionFailureDoesNotRepeatOrBlockAsr() {
+        val asr = Backend(WindowResult(arrayOf(" text"), floatArrayOf(.4f)))
+        var opens = 0
+        val stream = RecognitionWorkerService.speakerStream(0) { opens++; error("speaker model could not open") }
+        DiarizedWindowProcessor(asr, stream, 0, onSpeakerFailure = {}).use { processor ->
+            assertEquals(listOf(SpeechSpan("text", SpeechSpan.UNLABELED)),
+                processor.process(AudioWindow(ShortArray(16000), 0, 0, 16000)))
+            assertEquals(listOf(SpeechSpan("text", SpeechSpan.UNLABELED)),
+                processor.process(AudioWindow(ShortArray(16000), 16000, 16000, 32000, true)))
+        }
+        assertEquals(1, opens)
+        assertEquals(2, asr.calls)
+    }
+
+    @Test fun isolatedSpeakerFailureDuringNativeDrainDoesNotDropPendingWords() {
+        val asr = Backend(WindowResult(arrayOf(" tail"), floatArrayOf(.4f)))
+        val stream = object : SpeakerProbabilityStream {
+            override fun push(samples: ShortArray, final: Boolean): FloatArray {
+                if (final) error("speaker decoder alone failed")
+                return floatArrayOf()
+            }
+            override fun close() = Unit
+        }
+        DiarizedWindowProcessor(asr, stream, 0, onSpeakerFailure = {}).use { processor ->
+            assertEquals(emptyList<SpeechSpan>(), processor.process(AudioWindow(ShortArray(16000), 0, 0, 16000)))
+            assertEquals(listOf(SpeechSpan("tail", SpeechSpan.UNLABELED)), processor.finish())
+            assertEquals(1, asr.calls)
+        }
+    }
+
     @Test fun finalCenteredFftTailKeepsItsLastSpeakerWithoutDroppingText() {
         val stream = object : SpeakerProbabilityStream {
             override fun push(samples: ShortArray, final: Boolean) = FloatArray(383 * 8) { if (it % 8 == 1) .95f else .01f }

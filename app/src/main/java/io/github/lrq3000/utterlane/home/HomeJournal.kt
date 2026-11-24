@@ -5,6 +5,7 @@ import io.github.lrq3000.utterlane.asr.CaptureSnapshot
 import io.github.lrq3000.utterlane.asr.TranscriptStore
 import io.github.lrq3000.utterlane.history.TranscriptMetadata
 import io.github.lrq3000.utterlane.transcribe.DialogInput
+import io.github.lrq3000.utterlane.transcribe.FileTranscriptionOptions
 
 /** Only stable local identifiers are journaled; transcript/audio contents stay on disk. */
 internal class HomeJournal(context: Context) {
@@ -28,7 +29,9 @@ internal class HomeJournal(context: Context) {
             .putLong("created", metadata?.created ?: 0).putLong("duration", metadata?.durationMs ?: 0)
             .putBoolean("has_created", metadata?.created != null)
             .putBoolean("speakers", metadata?.speakerLabels ?: false)
-            .putBoolean("recovered", metadata?.recovered ?: false).apply()
+            .putBoolean("recovered", metadata?.recovered ?: false).apply {
+                input.fileOptions?.let { putBoolean("file_speaker_labels", it.speakerLabels) }
+            }.apply()
     }
     fun restore(): DialogInput? {
         val input = DialogInput(audioId = prefs.getString("audio", null), transcriptId = prefs.getString("text", null),
@@ -39,7 +42,8 @@ internal class HomeJournal(context: Context) {
             metadata = TranscriptMetadata(prefs.getLong("created", 0).takeIf {
                 prefs.getBoolean("has_created", it > 0)
             },
-                prefs.getLong("duration", 0), prefs.getBoolean("speakers", false), prefs.getBoolean("recovered", false)))
+                prefs.getLong("duration", 0), prefs.getBoolean("speakers", false), prefs.getBoolean("recovered", false)),
+            fileOptions = if (prefs.contains("file_speaker_labels")) FileTranscriptionOptions(prefs.getBoolean("file_speaker_labels", false)) else null)
         return input.takeIf { it.audioId != null || it.transcriptId != null || it.transcriptPath != null }
     }
     fun clear() { previous = null; prefs.edit().clear().apply() }

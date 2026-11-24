@@ -33,6 +33,7 @@ class MicrophoneSession(
     }
     private var job: Job? = null
     val metrics = CaptureMetrics()
+    val speakerControl = LiveSpeakerControl()
     @Volatile private var cancelled = false
     @Volatile private var resetRequested = false
     @Volatile private var discardRequested = false
@@ -83,6 +84,8 @@ class MicrophoneSession(
                 // Capture, queue and every wake reopen retain one immutable snapshot.
                 // Preferences changed during recording take effect only next session.
                 val captureOptions = app.settingsRepository.runtimeOptions.first()
+                // Initialize the control without waiting for model preparation or delaying microphone capture.
+                launch { speakerControl.initialize(app.settingsRepository.diarizationEnabled.first()) }
                 val microphoneOptions = app.settingsRepository.microphoneSettings.first().options
                 recorder.configureMicrophone(microphoneOptions)
                 val gain = io.github.lrq3000.utterlane.audio.TranscriptionGain(microphoneOptions.gain)
@@ -156,19 +159,21 @@ class MicrophoneSession(
                 val result = RecordingPipeline(recorder, app.recordingHistory, saved, captureOptions).run(
                     prepare = {
                         phase = SessionFailure.Kind.MODEL
-                        session = app.recognizerManager.createSession(captureOptions, onProcessed = { samples, millis ->
+                        session = app.recognizerManager.createLiveSession(captureOptions, speakerControl, onProcessed = { samples, millis ->
                             metrics.processed(samples, millis)
                             if (saved.rolling != null) session?.store?.sync()
                             // Keep the entire bounded recognition window, not just
                             // a reader's submitted offset, behind durable progress.
                             saved.rolling?.commitAsr(samples, (16000 * (captureOptions.asrWindowSeconds +
                                 captureOptions.asrLeftContextSeconds + captureOptions.asrRightContextSeconds)).toLong())
+                        }, onSpeakerUnavailable = {
+                            scope.launch(Dispatchers.Main) { if (!cancelled) onWarning(context.getString(R.string.live_speakers_unavailable)) }
                         }) { delta ->
                             speakerLabels = session!!.hasSpeakerLabels
                             if (!cancelled) withContext(Dispatchers.Main) { onText(delta, session!!.store) }
                         }
                         phase = SessionFailure.Kind.INFERENCE
-                        session!!.store.attachSource(TranscriptSource(saved.entry.id,
+                        session!!.store.beginTranscription(TranscriptSource(saved.entry.id,
                             modelName = app.modelManager.selected.value.name, modelId = app.modelManager.selected.value.id,
                             archivePlan = archival?.textPlan))
                         metrics.preparing(false)
@@ -179,22 +184,7 @@ class MicrophoneSession(
                         val complete = checkNotNull(session)
                         gain.drain(complete::accept)
                         complete.finish()
-                        if (saveTranscripts && textRetention != io.github.lrq3000.utterlane.history.HistoryRetention.NONE && complete.store.segments > 0) {
-                            try {
-                                // The writer is drained; the entry's samples are finalized later.
-                                val text = TranscriptMetadata(saved.entry,
-                                    durationMs = saved.writtenSamples * 1000 / 16000,
-                                    speakerLabels = complete.hasSpeakerLabels).save(app.transcriptHistory,
-                                    complete.store.file, complete.store.source.modelName, saved.entry.id,
-                                    modelId = complete.store.source.modelId, archivePlan = archival?.textPlan)
-                                savedTranscriptId = text.id
-                                complete.store.attachSource(complete.store.source.copy(transcriptId = text.id))
-                            } catch (_: TranscriptDiscardedException) {
-                                // An explicit deletion elsewhere is not a capture
-                                // failure and must not force extra audio retention.
-                                Log.i("MicrophoneSession", "Transcript autosave skipped after explicit deletion")
-                            }
-                        }
+                        check(complete.finished) { "Recognition ended before finalization" }
                     },
                     onSamples = run {
                         val converter = if (actualFormat.native) null else io.github.lrq3000.utterlane.transcribe.StreamingResampler(actualFormat.sampleRate, actualFormat.channels)
@@ -210,6 +200,26 @@ class MicrophoneSession(
                         metrics.recognitionFailed(io.github.lrq3000.utterlane.util.StorageFailure.userMessage(context, error)
                             ?: error.message ?: context.getString(R.string.transcribe_error_failed))
                     }, closeConsumer = { session?.close() })
+                // Reaching ASR EOF alone is not proof of a complete result. A failed capture or writer also presents EOF to its consumer.
+                session?.takeIf { it.finished }?.let { complete ->
+                    try {
+                        currentCoroutineContext().ensureActive()
+                        if (!cancelled && result.captureError == null && result.storageError == null && result.processingError == null)
+                            complete.store.markComplete()
+                        if (saveTranscripts && textRetention != io.github.lrq3000.utterlane.history.HistoryRetention.NONE && complete.store.segments > 0) {
+                            val text = TranscriptMetadata(saved.entry,
+                                durationMs = saved.writtenSamples * 1000 / 16000,
+                                speakerLabels = complete.hasSpeakerLabels).save(app.transcriptHistory,
+                                complete.store.file, complete.store.source.modelName, saved.entry.id,
+                                modelId = complete.store.source.modelId, archivePlan = archival?.textPlan)
+                            savedTranscriptId = text.id
+                            complete.store.attachSource(complete.store.source.copy(transcriptId = text.id))
+                        }
+                    } catch (_: TranscriptDiscardedException) {
+                        // An explicit deletion elsewhere is not a capture failure.
+                        Log.i("MicrophoneSession", "Transcript autosave skipped after explicit deletion")
+                    }
+                }
                 failure = when {
                     result.storageError != null -> SessionFailure(SessionFailure.Kind.AUDIO,
                         io.github.lrq3000.utterlane.util.StorageFailure.userMessage(context, result.storageError)
@@ -242,6 +252,7 @@ class MicrophoneSession(
                         try { recorder.releaseAfterCapture() }
                         catch (e: Exception) { Log.e("MicrophoneSession", "Microphone setup cleanup failed", e) }
                         try { session?.close() } catch (e: Exception) { Log.e("MicrophoneSession", "Recognition cleanup failed", e) }
+                        session?.store?.finishProducing()
                         speakerLabels = session?.hasSpeakerLabels == true
                         try { recording?.let { UtterlaneApp.instance.recordingHistory.setSpeakerLabels(it.entry.id, speakerLabels) } }
                         catch (e: Exception) { Log.e("MicrophoneSession", "Could not save speaker metadata", e) }

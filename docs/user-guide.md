@@ -97,11 +97,8 @@ screen distinguishes listening, model loading, stopping and remaining processing
 Home recording has no onboarding practice timer. Device storage and memory limits
 still apply.
 
-- Use the icon beside **New transcript** to load a local audio file. No microphone,
-  keyboard or floating-button setup is required for files. Cancelling the picker
-  or selecting a missing/empty file preserves the previous useful workspace.
-- **Speaker labels** changes the same app-wide setting as Settings. Existing
-  sessions retain their starting options; auxiliary model setup remains optional.
+- Use the icon beside **New transcript** to load a local audio file. The **Transcribe audio** dialog lets you turn on **Speaker labels** for this file before starting. The same dialog appears when you share an audio file to Utterlane or open one with it. Labels start off for each new file and do not change the live recording default. No microphone, keyboard or floating-button setup is required for files. Cancelling setup or selecting a missing/empty file preserves the previous useful workspace.
+- Before recording, **Speaker labels** changes the default for future live recordings. While recording, the speaker icon beside the waveform changes labels for the next transcription segment without stopping the microphone or rewriting earlier text. Turning labels off preserves the preceding labeled text. Turning them back on starts a fresh set of speaker identities. A multiword dictionary correction does not span the point where labeling switches.
 - Read the complete disk-backed transcript in its scrollable area. **Copy** uses
   the clipboard transfer limit; when a result is too large, **Share** exports its
   full text file instead. Neither action substitutes the short history preview.
@@ -118,6 +115,8 @@ temporary work; keep/export anything you want to retain. Unexpected interruption
 leaves recoverable input and committed text. A failed microphone start or failed
 file copy does not discard the prior result. Recognition errors offer retry/model
 selection after capture rather than requiring the recording to be repeated.
+
+When a new transcription is interrupted before it has processed the whole source, reopened text is marked **Partial transcript**. This label is not part of the copied or exported text. An older result created before completion tracking may have no indicator; that does not establish that it finished.
 
 ## Microphone input and Bluetooth
 
@@ -294,15 +293,9 @@ mistakes. Corrections are applied after speech recognition.
 
 ## Speaker labels
 
-Enable **Speaker diarization → Add speaker labels** and download the separate
-NVIDIA Nemotron-3-Diarization model (107 MB), or import its GGUF from a folder.
-This is **off by default** and does not require replacing your speech model.
+Turn on **Speaker labels** in the file setup dialog for a shared or picked recording. For live recordings, use the waveform toggle, or enable **Speaker diarization → Add speaker labels** in Settings to start each recording with labels on. For multiple speakers, download or import the separate NVIDIA Nemotron-3-Diarization model (107 MB); it does not replace your speech model.
 
-Choose **Auto (up to 8)** or **1–8** speakers. Labels appear during microphone and
-file transcription and are included in copied/shared transcripts and text
-inserted into other apps. Labels apply to one recording; uncertain speech can
-appear as **Unknown speaker**. Selecting a count does not create speakers who
-are not present. Settings changes take effect on the next recording.
+In Settings, choose **Auto (up to 8)** or **1–8** speakers; this count is used whenever a new transcription requests labels. Labels are included in copied/shared transcripts and text inserted into other apps. If the speaker cannot be identified reliably, the transcript can show **Unknown speaker**. The same speaker number may mean a different person after you turn labels off and on within a live recording.
 
 Speaker labeling adds processing work, so performance depends on your device.
 One-speaker mode labels the recognized text directly without loading the separate

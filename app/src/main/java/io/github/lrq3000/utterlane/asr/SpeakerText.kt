@@ -29,6 +29,13 @@ class SpeakerText(private val corrections: StreamingCorrections, private val lab
                 output.append(span.text)
                 continue
             }
+            if (span.speaker == SpeechSpan.UNLABELED) {
+                if (emitted && speaker != SpeechSpan.UNLABELED) output.append('\n')
+                output.append(span.text)
+                speaker = SpeechSpan.UNLABELED
+                emitted = true
+                continue
+            }
             if (speaker != span.speaker) {
                 var text = span.text
                 if (emitted) {

@@ -17,7 +17,8 @@ data class HistoryEntry(val id: String, val directory: File, val started: Long, 
     val importRetention: ImportRetentionChoice? = null, val importMetadata: AudioImportMetadata? = null,
     val processingAttempts: Set<String> = emptySet(), val externalParts: Map<Int, String> = emptyMap(), val archivePlan: ArchivePlan? = null,
     val rollingAudio: RollingAudio? = null, val representation: String = AudioRepresentation.ORIGINAL,
-    val sourceOverride: OriginalAudioSource? = null, val microphone: MicrophoneOptions? = null) {
+    val sourceOverride: OriginalAudioSource? = null, val microphone: MicrophoneOptions? = null,
+    val fileSpeakerLabels: Boolean? = null) {
     val retention get() = RetentionMark(reference, pinned, holdForLaunch)
     /** The user already declined archival, but not recovery of unfinished work. */
     val completedTransientImport get() = importRetention == ImportRetentionChoice.DISCARD && temporary &&
@@ -310,7 +311,8 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
                 attempts, external, ArchivePlan.read(properties), rollingLayout, representation,
                 microphone = if (properties.containsKey("microphone.gain")) MicrophoneOptions.fromMap(
                     MicrophoneOptions.HFP.toMap().keys.mapNotNull { name -> properties.getProperty("microphone.$name")?.let { name to it } }.toMap(),
-                    MicrophoneOptions.STANDARD) else null)
+                     MicrophoneOptions.STANDARD) else null,
+                 fileSpeakerLabels = properties.getProperty("fileSpeakerLabels")?.toBooleanStrictOrNull())
             // A successful transcript-only import has no recovery obligation. All
             // runtime owners disappeared with the old process, so finish cleanup.
             if (entry.completedTransientImport) {
@@ -345,7 +347,7 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
 
     /** Copy the encoded source once; the caller's original is never owned or deleted. */
     fun importAudio(input: InputStream, extension: String, mime: String, durationMs: Long = 0): HistoryEntry =
-        copyImport(input, extension, mime, durationMs, null, null, protectFromPruning = false) { entry, _ -> entry }
+         copyImport(input, extension, mime, durationMs, null, null, protectFromPruning = false, speakerLabels = null) { entry, _ -> entry }
 
     data class OwnedImport(val entry: HistoryEntry, val lease: AudioLease)
 
@@ -353,14 +355,14 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
      * complete copy. The caller must publish/close it on IO before a cancellable
      * dispatch; there is no prune window between return and viewer acquisition. */
     fun importAudioOwned(input: InputStream, extension: String, metadata: AudioImportMetadata,
-        retention: ImportRetentionChoice): OwnedImport = copyImport(input, extension,
+         retention: ImportRetentionChoice, speakerLabels: Boolean? = null): OwnedImport = copyImport(input, extension,
         metadata.mimeType ?: metadata.trackMimeType ?: "audio/*", metadata.durationMs ?: 0, retention, metadata,
-        protectFromPruning = true) { entry, lease ->
+         protectFromPruning = true, speakerLabels = speakerLabels) { entry, lease ->
         OwnedImport(entry, checkNotNull(lease))
     }
 
     private fun <T> copyImport(input: InputStream, extension: String, mime: String, durationMs: Long,
-        retention: ImportRetentionChoice?, metadata: AudioImportMetadata?, protectFromPruning: Boolean,
+         retention: ImportRetentionChoice?, metadata: AudioImportMetadata?, protectFromPruning: Boolean, speakerLabels: Boolean?,
         publish: (HistoryEntry, AudioLease?) -> T): T {
         val entry = synchronized(this) {
             initialize()
@@ -371,7 +373,7 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
             HistoryEntry(id, directory, clock(), clock(), 0, "importing", needsRecovery = true,
                 temporary = retention != ImportRetentionChoice.KEEP,
                 sourceName = "source.$suffix", mimeType = mime, importedDurationMs = durationMs,
-                importRetention = retention, importMetadata = metadata).also(::save)
+                 importRetention = retention, importMetadata = metadata, fileSpeakerLabels = speakerLabels).also(::save)
         }
         try {
             entry.part(0).outputStream().use { input.copyTo(it, 64 * 1024) }
@@ -832,6 +834,7 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
             // samples. Only software gain is replayed; old/imported audio has none.
             entry.microphone?.toMap()?.forEach { (name, value) -> setProperty("microphone.$name", value) }
             entry.importRetention?.let { setProperty("importRetention", it.name) }
+            entry.fileSpeakerLabels?.let { setProperty("fileSpeakerLabels", it.toString()) }
             entry.importMetadata?.let { metadata ->
                 setProperty("importMetadata", "true")
                 metadata.displayName?.let { setProperty("importName", it) }
@@ -860,7 +863,7 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
         private val partSamples get() = rolling?.let { it.partFrames * 16000 / it.format.sampleRate } ?: PART_SAMPLES
 
         fun append(samples: ShortArray) {
-            check(!finished)
+            check(!finished && !captureClosed)
             rolling?.append(samples)
             if (rolling != null && converter == null) { writtenSamples += samples.size; return }
             appendNormalized(converter?.accept(FloatArray(samples.size) { samples[it] / 32768f }) ?: samples)
@@ -880,15 +883,26 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
         fun closeCapture() {
             if (captureClosed) return
             captureClosed = true
-            converter?.finish()?.let(::appendNormalized)
-            rolling?.closeCapture()
+            var failure: Exception? = null
+            fun seal(action: () -> Unit) {
+                try { action() } catch (e: Exception) {
+                    val earlier = failure
+                    if (earlier == null) failure = e else earlier.addSuppressed(e)
+                }
+            }
+            seal { converter?.finish()?.let(::appendNormalized) }
+            seal { rolling?.closeCapture() }
+            // The writer's EOF is only genuine once the last local WAV header and payload are synced.
+            seal { wav?.close() }
+            wav = null
+            failure?.let { throw it }
         }
 
         fun finish(failed: Boolean) {
             if (finished) return
             finished = true
             var incomplete = failed
-            try { closeCapture(); wav?.close() }
+            try { closeCapture() }
             catch (e: Exception) { incomplete = true; throw e }
             finally {
                 synchronized(this@RecordingHistory) {

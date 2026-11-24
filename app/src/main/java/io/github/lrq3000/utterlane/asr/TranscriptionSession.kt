@@ -14,11 +14,16 @@ class TranscriptionSession(
     private val onClosed: () -> Unit = {},
     private val onProcessed: (Long, Long) -> Unit = { _, _ -> },
     private val decodeSpeakers: (suspend (AudioWindow) -> List<SpeechSpan>)? = null,
-    speakerLabel: (Int) -> String = { if (it < 0) "Unknown speaker" else "Speaker ${it + 1}" },
+    private val speakerLabel: (Int) -> String = { if (it < 0) "Unknown speaker" else "Speaker ${it + 1}" },
     options: RuntimeOptions = RuntimeOptions(),
-    private val finishSpeakers: (suspend () -> List<SpeechSpan>)? = null
+    private val finishSpeakers: (suspend () -> List<SpeechSpan>)? = null,
+    private val speakerRequested: (() -> Boolean)? = null,
+    private val speakerStart: suspend () -> Boolean = { true },
+    private val onSpeakersBypassed: () -> Unit = {}
 ) : java.io.Closeable {
-    private val speakerText = if (decodeSpeakers != null) SpeakerText(corrections, speakerLabel) else null
+    private var speakerText = if (decodeSpeakers != null && speakerRequested == null) SpeakerText(corrections, speakerLabel) else null
+    private var newParagraph = false
+    private var bypassReported = false
     // Punctuation-only speaker output has no header. This records a committed
     // label, not decoder availability or formatting that could fail to append.
     @Volatile var hasSpeakerLabels: Boolean = false
@@ -27,10 +32,13 @@ class TranscriptionSession(
     private val segmenter = AudioSegmenter(flushPendingOnFinish = decodeSpeakers != null, options = options) { window ->
         if (!mayContinue()) return@AudioSegmenter
         val started = System.nanoTime()
-        if (decodeSpeakers != null) {
-            val spans = decodeSpeakers.invoke(window)
+        switchSpeakerMode()
+        if (!mayContinue()) return@AudioSegmenter
+        val formatter = speakerText
+        if (formatter != null) {
+            val spans = checkNotNull(decodeSpeakers).invoke(window)
             if (!mayContinue()) return@AudioSegmenter
-            emit(checkNotNull(speakerText).acceptEmission(spans))
+            emitSpeakerSpans(formatter, spans)
         } else {
             val text = decode(window)
             if (!mayContinue()) return@AudioSegmenter
@@ -41,7 +49,8 @@ class TranscriptionSession(
         if (!mayContinue()) return@AudioSegmenter
         Log.i("TranscriptionSession", "Segment ${window.ownedStart}..${window.ownedEnd}; input=${window.samples.size}; completed=${store.segments}")
     }
-    private var finished = false
+    @Volatile var finished = false
+        private set
     val hasSpeakerFinalization: Boolean get() = speakerText != null && finishSpeakers != null
     suspend fun accept(samples: ShortArray) {
         check(!closed.get()) { "Transcription session is closed" }
@@ -61,21 +70,52 @@ class TranscriptionSession(
             if (!mayContinue()) return
             onFinalizing(hasSpeakerFinalization)
             if (!mayContinue()) return
-            // Speaker lookahead can outlive the last ASR window (notably with
-            // zero right context). Its text must reach the same correction
-            // buffer before any pending dictionary phrase is finalized.
-            if (speakerText != null && finishSpeakers != null) {
-                val spans = finishSpeakers.invoke()
-                if (!mayContinue()) return
-                emit(speakerText.acceptEmission(spans))
-                if (!mayContinue()) return
-            }
-            if (speakerText != null) emit(speakerText.finishEmission()) else emit(corrections.finish())
+            drainMode()
             if (!mayContinue()) return
             finished = true
         } finally { close() }
     }
     override fun close() { if (closed.compareAndSet(false, true)) onClosed() }
+
+    private suspend fun switchSpeakerMode() {
+        val requested = speakerRequested?.invoke() ?: return
+        if (decodeSpeakers == null || requested == (speakerText != null)) return
+        if (requested && !speakerStart()) return
+        if (!mayContinue()) return
+        if (speakerRequested.invoke() != requested) return
+        // Flush the previous mode's native lookahead and dictionary tail before opening a fresh formatter or emitting plain text.
+        drainMode()
+        if (!mayContinue()) return
+        newParagraph = store.bytes > 0
+        val latest = speakerRequested.invoke()
+        speakerText = if (latest && (requested || speakerStart()) && speakerRequested.invoke())
+            SpeakerText(corrections, speakerLabel) else null
+        bypassReported = false
+    }
+
+    private suspend fun drainMode() {
+        val formatter = speakerText
+        if (formatter == null) {
+            emit(corrections.finish())
+        } else {
+            // Native lookahead can outlive even the last window; feed its words into corrections before flushing the dictionary tail.
+            if (finishSpeakers != null) {
+                val spans = finishSpeakers.invoke()
+                if (!mayContinue()) return
+                emitSpeakerSpans(formatter, spans)
+                if (!mayContinue()) return
+            }
+            emit(formatter.finishEmission())
+        }
+    }
+
+    private suspend fun emitSpeakerSpans(formatter: SpeakerText, spans: List<SpeechSpan>) {
+        if (!bypassReported && spans.any { it.speaker == SpeechSpan.UNLABELED }) {
+            bypassReported = true
+            onSpeakersBypassed()
+        }
+        emit(formatter.acceptEmission(spans))
+    }
 
     // Closing does not itself cancel an in-flight decoder or callback. Check
     // both signals after suspension so a late result cannot enter corrections,
@@ -89,7 +129,8 @@ class TranscriptionSession(
 
     private suspend fun emit(text: String, speakerLabels: Boolean = false) {
         if (text.isBlank() || !mayContinue()) return
-        store.append(text)
+        store.append(if (newParagraph) "\n$text" else text)
+        newParagraph = false
         // Delivery can fail or close the session after this write. The result
         // already owns the label, so publish its metadata before the callback.
         if (speakerLabels) hasSpeakerLabels = true
@@ -198,7 +239,11 @@ class StreamingCorrections(rules: List<DictionaryManager.ReplacementRule>) {
                 // whichever speaker happened to cause a premature buffer flush.
                 var owner: Int? = null
                 for (i in start until stop) if (text[i].isLetterOrDigit()) {
-                    owner = if (owner == null || owner == owners[i]) owners[i] else -1
+                    owner = when {
+                        owner == SpeechSpan.UNLABELED || owners[i] == SpeechSpan.UNLABELED -> SpeechSpan.UNLABELED
+                        owner == null || owner == owners[i] -> owners[i]
+                        else -> -1
+                    }
                 }
                 labels.fill(owner ?: -1, output.length, output.length + replacement.length)
                 output.append(replacement)

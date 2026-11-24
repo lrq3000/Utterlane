@@ -78,6 +78,9 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 15.dp)) {
+                    if (!state.busy && state.result.partial) Text(stringResource(R.string.transcript_partial),
+                        Modifier.padding(top = 12.dp).testTag("home_transcript_partial"),
+                        style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.error)
                     if (state.result.preview.isEmpty()) EmptyTranscript(state, Modifier.heightIn(min = previewHeight).padding(vertical = 12.dp))
                     else TranscriptReader(model?.document ?: controller.liveDocument, state.result,
                         Modifier.height(previewHeight).fillMaxWidth(), followTail = state.capture.active || state.result.running)
@@ -104,7 +107,7 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            if (!state.capture.active) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Outlined.People, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Column(Modifier.weight(1f)) {
@@ -118,7 +121,7 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
                     app.applicationScope.launch { app.settingsRepository.setDiarizationEnabled(enabled) }
                 }, modifier = Modifier.testTag("home_speakers"))
             }
-            if (speakers && speakerCount != 1 && !speakerReady) {
+            if (!state.capture.active && speakers && speakerCount != 1 && !speakerReady) {
                 HomeNotice(stringResource(R.string.diarization_install_first), stringResource(R.string.home_speaker_setup), onSettings)
             }
             if (!modelReady) {
@@ -126,7 +129,9 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
                     context.startActivity(RecordingRecovery.modelIntent(context))
                 }
             }
-            HomeCaptureControl(state, onRecord)
+            HomeCaptureControl(state, onRecord, controller::setLiveSpeakers)
+            state.result.speakerWarning?.let { Text(it, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error) }
             io.github.lrq3000.utterlane.archive.ArchivalStatusControls()
             PrivacyNote()
             HomeFeedback(state, onModels = { context.startActivity(RecordingRecovery.modelIntent(context)) }, onRetry = controller::retry)
@@ -214,7 +219,7 @@ private fun EmptyTranscript(state: HomeState, modifier: Modifier) {
 }
 
 @Composable
-private fun HomeCaptureControl(state: HomeState, onRecord: () -> Unit) {
+private fun HomeCaptureControl(state: HomeState, onRecord: () -> Unit, onSpeakers: (Boolean) -> Unit) {
     val palette = LocalBrandPalette.current
     val phase = state.capture.phase
     val label = stringResource(when {
@@ -232,9 +237,19 @@ private fun HomeCaptureControl(state: HomeState, onRecord: () -> Unit) {
     })
     val seconds = state.metrics.capturedSeconds.toLong()
     Column(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.extraLarge).background(Brush.horizontalGradient(palette.waveform))) {
-        Row(Modifier.fillMaxWidth().padding(start = 17.dp, end = 17.dp, top = 14.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(Modifier.fillMaxWidth().padding(start = 17.dp, end = 9.dp, top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(status, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = Color.White)
             if (state.capture.active) Text("%d:%02d".format(seconds / 60, seconds % 60), style = MaterialTheme.typography.labelMedium, color = Color.White)
+            if (phase == HomeCapturePhase.RECORDING) {
+                val enabled = state.liveSpeakers == true
+                IconToggleButton(enabled, onSpeakers, modifier = Modifier.testTag("home_live_speakers"),
+                    colors = IconButtonDefaults.iconToggleButtonColors(contentColor = Color.White.copy(alpha = .78f),
+                        checkedContentColor = MaterialTheme.colorScheme.primary,
+                        checkedContainerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                    Icon(Icons.Outlined.People, stringResource(R.string.home_speakers))
+                }
+            }
         }
         val scale = LocalDensity.current.fontScale
         if (state.busy && !state.canStop) HomeProgress(state)

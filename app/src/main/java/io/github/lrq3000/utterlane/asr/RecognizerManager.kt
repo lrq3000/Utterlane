@@ -253,8 +253,20 @@ class RecognizerManager(
     suspend fun createSession(options: RuntimeOptions, onProcessed: (Long, Long) -> Unit = { _, _ -> }, onSegment: suspend (String) -> Unit = {}): TranscriptionSession =
         createSessionWithOptions(options, onProcessed, onSegment)
 
+    suspend fun createSession(options: RuntimeOptions, onProcessed: (Long, Long) -> Unit,
+        speakerOverride: Boolean?, onSpeakerUnavailable: () -> Unit,
+        onSegment: suspend (String) -> Unit = {}): TranscriptionSession =
+        createSessionWithOptions(options, onProcessed, onSegment, speakerOverride, onSpeakerUnavailable)
+
+    internal suspend fun createLiveSession(options: RuntimeOptions, speakerControl: LiveSpeakerControl,
+        onProcessed: (Long, Long) -> Unit, onSpeakerUnavailable: () -> Unit,
+        onSegment: suspend (String) -> Unit): TranscriptionSession =
+        createSessionWithOptions(options, onProcessed, onSegment, onSpeakerUnavailable = onSpeakerUnavailable,
+            liveSpeakers = speakerControl)
+
     private suspend fun createSessionWithOptions(providedOptions: RuntimeOptions?, onProcessed: (Long, Long) -> Unit,
-        onSegment: suspend (String) -> Unit): TranscriptionSession = withModelOperation { expected ->
+        onSegment: suspend (String) -> Unit, speakerOverride: Boolean? = null,
+        onSpeakerUnavailable: (() -> Unit)? = null, liveSpeakers: LiveSpeakerControl? = null): TranscriptionSession = withModelOperation { expected ->
         val owner = currentCoroutineContext()[Job]
         var created: TranscriptionSession? = null
         try {
@@ -265,11 +277,23 @@ class RecognizerManager(
                     // consume the same entry-point snapshot, including while queued.
                     check(initializeLocked(expected, options)) { _failure.value ?: context.getString(R.string.toast_model_load_failed) }
                     val rules = if (app.settingsRepository.dictionaryEnabled.first()) app.dictionaryManager.rules.value else emptyList()
-                    val diarize = app.settingsRepository.diarizationEnabled.first()
+                    var diarize = speakerOverride ?: liveSpeakers?.state?.value ?: app.settingsRepository.diarizationEnabled.first()
+                    liveSpeakers?.initialize(diarize)
                     val count = app.settingsRepository.speakerCount.first()
                     val speakerLabels = (1..8).map { context.getString(R.string.speaker_label, it) }
                     val unknownSpeaker = context.getString(R.string.speaker_unknown)
-                    if (diarize && count != 1) check(app.diarizationModels.ensureVerified()) { context.getString(R.string.diarization_install_first) }
+                    suspend fun speakersAvailable(): Boolean {
+                        val ready = count == 1 || try { app.diarizationModels.ensureVerified() }
+                        catch (e: CancellationException) { throw e }
+                        catch (e: Exception) { Log.w(TAG, "Unable to verify the speaker model", e); false }
+                        if (!ready) {
+                            liveSpeakers?.unavailable()
+                            checkNotNull(onSpeakerUnavailable) { context.getString(R.string.diarization_install_first) }.invoke()
+                        }
+                        return ready
+                    }
+                    if (liveSpeakers == null && diarize) diarize = speakersAvailable()
+                    val hasSpeakerDecoder = liveSpeakers != null || diarize
                     val sessionBackend = checkNotNull(recognizer)
                     val directory = File(context.cacheDir, "transcripts").apply { mkdirs() }
                     val store = TranscriptStore(File.createTempFile("transcript-", ".txt", directory))
@@ -299,13 +323,16 @@ class RecognizerManager(
                             }
                         }
                     }, onProcessed = onProcessed,
-                        decodeSpeakers = if (diarize) { window -> withSessionBackend(expected, id, options) { it.transcribeSpeakers(id, window, count, options) } } else null,
+                        decodeSpeakers = if (hasSpeakerDecoder) { window -> withSessionBackend(expected, id, options) { it.transcribeSpeakers(id, window, count, options) } } else null,
                         speakerLabel = { speaker -> speakerLabels.getOrElse(speaker) { unknownSpeaker } },
                         options = options,
                         // The session lease remains held until onClosed. Use the
                         // same snapshot/mutex/activity owner for its native EOF
                         // drain so even Immediate idle unloading cannot race it.
-                        finishSpeakers = if (diarize) { { withSessionBackend(expected, id, options) { it.finishSpeakers(id, options) } } } else null
+                        finishSpeakers = if (hasSpeakerDecoder) { { withSessionBackend(expected, id, options) { it.finishSpeakers(id, options) } } } else null,
+                        speakerRequested = liveSpeakers?.let { { it.resolve(false) } },
+                        speakerStart = ::speakersAvailable,
+                        onSpeakersBypassed = { liveSpeakers?.unavailable(); onSpeakerUnavailable?.invoke() }
                     ).also { created = it }
                 }
             }

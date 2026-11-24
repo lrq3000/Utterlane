@@ -3,6 +3,7 @@ package io.github.lrq3000.utterlane.history
 import io.github.lrq3000.utterlane.asr.TranscriptSource
 import io.github.lrq3000.utterlane.asr.TranscriptStore
 import io.github.lrq3000.utterlane.asr.TranscriptDiscardedException
+import io.github.lrq3000.utterlane.asr.TranscriptCompletion
 import java.io.Closeable
 import java.io.File
 import java.util.Properties
@@ -13,7 +14,8 @@ import io.github.lrq3000.utterlane.archive.*
 
 data class TranscriptEntry(val id: String, val directory: File, val created: Long, val model: String,
     val audioId: String?, val retention: RetentionMark, val modelId: String? = null,
-    val durationMs: Long = 0, val speakerLabels: Boolean = false, val recovered: Boolean = false, val archivePlan: ArchivePlan? = null) {
+    val durationMs: Long = 0, val speakerLabels: Boolean = false, val recovered: Boolean = false, val archivePlan: ArchivePlan? = null,
+    val completion: TranscriptCompletion = TranscriptCompletion.UNKNOWN) {
     val file get() = File(directory, "transcript.txt")
     val cursor get() = HistoryCursor(created, id)
 }
@@ -73,7 +75,8 @@ class TranscriptHistory(private val root: File, private val artifacts: ArchivalJ
             if (File(directory, "transcript.txt").isFile) put(TranscriptEntry(directory.name, directory, created,
                 p.getProperty("model", ""), p.getProperty("audioId"), HistoryMetadata.readMark(p, created), p.getProperty("modelId"),
                 p.getProperty("durationMs", "0").toLong(), p.getProperty("speakerLabels", "false").toBoolean(),
-                p.getProperty("recovered", "false").toBoolean(), ArchivePlan.read(p)).also { queueArchive(it) })
+                p.getProperty("recovered", "false").toBoolean(), ArchivePlan.read(p),
+                TranscriptCompletion.read(p.getProperty("completion"))).also { queueArchive(it) })
         }
         initialized = true
     }
@@ -103,11 +106,16 @@ class TranscriptHistory(private val root: File, private val artifacts: ArchivalJ
             // Source chronology is independent of saving time. Ordinary recovery
             // handoff supplies its original age; an explicit new save starts now.
             val now = clock()
+            val provenance = TranscriptSource.read(source)
             val entry = TranscriptEntry(id, directory, created ?: now, model, audioId, RetentionMark(reference ?: now, pinned), modelId,
-                durationMs, speakerLabels, recovered || TranscriptSource.read(source).recovered, archivePlan)
+                durationMs, speakerLabels, recovered || provenance.recovered, archivePlan, provenance.completion)
             try {
-                source.inputStream().use { input -> entry.file.outputStream().use { input.copyTo(it, 64 * 1024) } }
-                persist(entry)
+                val complete = entry.completion == TranscriptCompletion.COMPLETE
+                source.inputStream().use { input -> entry.file.outputStream().use { output ->
+                    input.copyTo(output, 64 * 1024)
+                    if (complete) output.fd.sync()
+                } }
+                persist(entry, durable = complete)
                 put(entry)
                 // The saved row contains the intent before enqueuing. Restart
                 // repairs the queue if the process dies between these two writes.
@@ -160,7 +168,8 @@ class TranscriptHistory(private val root: File, private val artifacts: ArchivalJ
                 store.attachSource(current.copy(audioId = current.audioId ?: legacy.audioId,
                     transcriptId = current.transcriptId ?: legacy.transcriptId,
                     modelName = current.modelName.ifBlank { legacy.modelName },
-                    modelId = current.modelId ?: legacy.modelId))
+                    modelId = current.modelId ?: legacy.modelId,
+                    completion = current.completion.takeUnless { it == TranscriptCompletion.UNKNOWN } ?: legacy.completion))
                 transferred = true
                 store
             }
@@ -277,7 +286,7 @@ class TranscriptHistory(private val root: File, private val artifacts: ArchivalJ
             if (ids.isEmpty()) byAudio.remove(audioId)
         }
     }
-    private fun persist(entry: TranscriptEntry, discarded: Boolean = false) {
+    private fun persist(entry: TranscriptEntry, discarded: Boolean = false, durable: Boolean = false) {
         val p = Properties().apply {
             setProperty("created", entry.created.toString()); setProperty("model", entry.model)
             entry.audioId?.let { setProperty("audioId", it) }
@@ -285,9 +294,14 @@ class TranscriptHistory(private val root: File, private val artifacts: ArchivalJ
             setProperty("durationMs", entry.durationMs.toString()); setProperty("speakerLabels", entry.speakerLabels.toString())
             setProperty("discarded", discarded.toString())
             setProperty("recovered", entry.recovered.toString())
+            setProperty("completion", entry.completion.name)
             entry.archivePlan?.writeTo(this)
             HistoryMetadata.writeMark(this, entry.retention)
         }
-        HistoryMetadata.write(File(entry.directory, "transcript.properties"), p)
+        val file = File(entry.directory, "transcript.properties")
+        if (durable) {
+            AudioMetadata.write(file, p)
+            entry.directory.parentFile?.let(AudioMetadata::syncDirectory)
+        } else HistoryMetadata.write(file, p)
     }
 }

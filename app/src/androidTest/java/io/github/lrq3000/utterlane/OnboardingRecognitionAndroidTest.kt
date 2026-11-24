@@ -11,6 +11,7 @@ import io.github.lrq3000.utterlane.asr.MicrophoneSessionFactory
 import io.github.lrq3000.utterlane.onboarding.*
 import io.github.lrq3000.utterlane.transcribe.AudioDecoder
 import io.github.lrq3000.utterlane.transcribe.TranscribeActivity
+import io.github.lrq3000.utterlane.transcribe.FileTranscriptionSetupActivity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -102,10 +103,11 @@ class OnboardingRecognitionAndroidTest {
             repository.update { it.copy(initialized = true, stepId = OnboardingStep.FILE_TRIAL.id, modelId = app.modelManager.selected.value.id) }
             caller = instrumentation.startActivitySync(Intent(app, OnboardingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as OnboardingActivity
             ui.node("onboarding_page_try-file").recycle()
-            val send = OnboardingSample(app).shareIntent().setClass(app, TranscribeActivity::class.java)
+            val send = OnboardingSample(app).shareIntent().setClass(app, FileTranscriptionSetupActivity::class.java)
             // Match the real foreground share handoff, rather than making the
             // dialog receiver the root of a background instrumentation task.
             instrumentation.runOnMainSync { caller!!.startActivity(send) }
+            ui.click("file_setup_start")
             activity = monitor.waitForActivityWithTimeout(10000) as? TranscribeActivity
             assertNotNull("The share receiver did not open", activity)
             instrumentation.waitForIdleSync()

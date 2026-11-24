@@ -57,7 +57,7 @@ class OnboardingAndroidTest {
         assertTrue(intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
         @Suppress("DEPRECATION")
         val receivers = app.packageManager.queryIntentActivities(intent, 0)
-        assertTrue(receivers.any { it.activityInfo.name.endsWith(".TranscribeActivity") && it.activityInfo.packageName == app.packageName })
+        assertTrue(receivers.any { it.activityInfo.name.endsWith(".FileTranscriptionSetupActivity") && it.activityInfo.packageName == app.packageName })
     }
 
     @Test fun everyRealPageHasAppearanceAndThemeChoicePersists() = runBlocking {

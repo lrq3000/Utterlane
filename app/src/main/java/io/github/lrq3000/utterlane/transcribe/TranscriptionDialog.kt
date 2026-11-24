@@ -113,6 +113,11 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                             state.audio!!.temporary -> R.string.dialog_temporary_info
                             else -> R.string.dialog_audio_saved
                         }), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        state.speakerWarning?.let { Text(it, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error) }
+                        if (state.partial) Text(stringResource(R.string.transcript_partial),
+                            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.testTag("transcript_partial"))
                     }
                     Spacer(Modifier.height(8.dp))
                     TranscriptReader(model.document, state, Modifier.weight(1f).fillMaxWidth()) {

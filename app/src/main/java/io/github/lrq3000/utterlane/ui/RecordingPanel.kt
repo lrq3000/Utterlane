@@ -10,6 +10,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.ToggleButton
 import androidx.compose.ui.graphics.toArgb
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
@@ -49,6 +50,16 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         text = context.getString(R.string.capture_tap_finish)
         contentDescription = text
     }
+    private var speakerControl: LiveSpeakerControl? = null
+    private val speakers = ToggleButton(context).apply {
+        id = R.id.recording_speakers
+        textOn = context.getString(R.string.live_speakers_on)
+        textOff = context.getString(R.string.live_speakers_off)
+        text = textOff
+        contentDescription = context.getString(R.string.home_speakers)
+        isAllCaps = false
+        setOnClickListener { speakerControl?.set(isChecked) }
+    }
     private val processing = LinearLayout(context).apply { orientation = VERTICAL; gravity = Gravity.CENTER }
     private val bar = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100 }
     private val percent = label(19f, foreground)
@@ -59,6 +70,7 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
     }
     private var observer: Job? = null
     private var themeObserver: Job? = null
+    private var speakerObserver: Job? = null
 
     init {
         orientation = VERTICAL
@@ -71,6 +83,7 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         addView(title); addView(details); addView(recognition); addView(signal)
         addView(input); addView(inputWarning)
         addView(waveform, LayoutParams(LayoutParams.MATCH_PARENT, dp(136)).apply { topMargin = dp(12) })
+        addView(speakers, LayoutParams(LayoutParams.WRAP_CONTENT, dp(48)).apply { gravity = Gravity.END })
         processing.addView(percent)
         processing.addView(bar, LayoutParams(LayoutParams.MATCH_PARENT, dp(16)).apply { topMargin = dp(16) })
         addView(processing, LayoutParams(LayoutParams.MATCH_PARENT, dp(136)).apply { topMargin = dp(12) })
@@ -79,8 +92,13 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         applyPalette(initialPalette)
         render(CaptureSnapshot())
     }
-    fun bind(scope: CoroutineScope, state: StateFlow<CaptureSnapshot>) {
+    fun bind(scope: CoroutineScope, state: StateFlow<CaptureSnapshot>, speakers: LiveSpeakerControl? = null) {
         observer?.cancel()
+        speakerControl = speakers
+        speakerObserver?.cancel()
+        speakerObserver = speakers?.let { control -> scope.launch {
+            control.state.collect { enabled -> this@RecordingPanel.speakers.isChecked = enabled == true }
+        } }
         observer = scope.launch {
             // Redraw even if only the display preference changes (no new audio/progress).
             // The existing observer owns both subscriptions, so release cancels both.
@@ -99,7 +117,12 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         }
     }
     fun preview(text: String) { statusText.text = text.takeLast(300) }
-    fun release() { observer?.cancel(); observer = null; themeObserver?.cancel(); themeObserver = null; keepScreenOn = false }
+    fun release() {
+        observer?.cancel(); observer = null
+        themeObserver?.cancel(); themeObserver = null
+        speakerObserver?.cancel(); speakerObserver = null; speakerControl = null
+        keepScreenOn = false
+    }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
@@ -123,6 +146,9 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         cancelButton.backgroundTintList = null
         cancelButton.background = NativeBrandStyle.tonalButton(palette, dp(12).toFloat())
         cancelButton.setTextColor(palette.onContainer.toArgb())
+        speakers.backgroundTintList = null
+        speakers.background = NativeBrandStyle.tonalButton(palette, dp(12).toFloat())
+        speakers.setTextColor(palette.onContainer.toArgb())
         waveform.applyPalette(palette)
     }
 
@@ -136,6 +162,7 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         val capturing = snapshot.phase == CapturePhase.CAPTURING
         waveform.visibility = if (capturing) View.VISIBLE else View.GONE
         waveform.isEnabled = capturing
+        speakers.visibility = if (capturing && speakerControl != null) View.VISIBLE else View.GONE
         processing.visibility = if (capturing) View.GONE else View.VISIBLE
         waveform.levels = snapshot.waveform
         title.text = context.getString(when (snapshot.phase) {

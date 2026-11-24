@@ -9,6 +9,7 @@ import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import androidx.paging.cachedIn
 import io.github.lrq3000.utterlane.UtterlaneApp
+import io.github.lrq3000.utterlane.asr.TranscriptCompletion
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
@@ -17,7 +18,7 @@ import kotlinx.coroutines.withContext
 
 internal data class HistoryRow(val cursor: HistoryCursor, val detail: String,
     val retention: RetentionMark, val durationMs: Long = 0,
-    val recovery: Boolean = false, val speakerLabels: Boolean = false) {
+    val recovery: Boolean = false, val speakerLabels: Boolean = false, val partial: Boolean = false) {
     val id get() = cursor.id
 
     companion object {
@@ -25,7 +26,8 @@ internal data class HistoryRow(val cursor: HistoryCursor, val detail: String,
             // Result metadata belongs to this transcript, never to the current
             // speaker setting or a subsequently retranscribed source recording.
             HistoryRow(entry.cursor, preview, entry.retention,
-                durationMs = entry.durationMs, recovery = entry.recovered, speakerLabels = entry.speakerLabels)
+                durationMs = entry.durationMs, recovery = entry.recovered, speakerLabels = entry.speakerLabels,
+                partial = entry.completion == TranscriptCompletion.INCOMPLETE)
 
         fun from(entry: HistoryEntry) =
             HistoryRow(entry.cursor, "", entry.retention, durationMs = entry.durationMs,

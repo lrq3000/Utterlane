@@ -13,7 +13,7 @@ class ResultSpanCodecTest {
     @Test fun rejectsMalformedMetadataAndResultsOutsideTheExistingIpcBudget() {
         for ((texts, speakers) in listOf(
             arrayOf("tail") to intArrayOf(),
-            arrayOf("tail") to intArrayOf(-2),
+            arrayOf("tail") to intArrayOf(-3),
             arrayOf("tail") to intArrayOf(8),
             Array(8193) { "x" } to IntArray(8193),
             arrayOf("x".repeat(128001)) to intArrayOf(0)

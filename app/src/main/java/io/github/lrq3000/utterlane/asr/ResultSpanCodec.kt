@@ -20,7 +20,7 @@ internal object ResultSpanCodec {
     }
 
     private fun validate(texts: Array<String>, speakers: IntArray) {
-        check(texts.size == speakers.size && speakers.all { it in -1..7 }) { "Invalid speaker result metadata" }
+        check(texts.size == speakers.size && speakers.all { it in SpeechSpan.UNLABELED..7 }) { "Invalid speaker result metadata" }
         check(texts.size <= 8192 && texts.sumOf { it.length.toLong() } <= 128000) { "Speaker result exceeds IPC budget" }
     }
 }
