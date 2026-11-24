@@ -206,9 +206,10 @@ class AppOnboardingServices(private val app: UtterlaneApp) : OnboardingServices 
             onCaptureEnded = callbacks.onCaptureEnded, onWarning = callbacks.onWarning,
             onReady = callbacks.onReady, onSessionClosed = callbacks.onClosed)
         return object : OnboardingTrialSession {
+            override val panel = VoiceTrialPanel(session.metrics.state, session.speakerControl)
             override fun start() = session.start()
             override fun stop() = session.stop()
-            override fun cancel() = session.cancel()
+            override fun cancel(discard: Boolean) = session.cancel(discard)
         }
     }
 }

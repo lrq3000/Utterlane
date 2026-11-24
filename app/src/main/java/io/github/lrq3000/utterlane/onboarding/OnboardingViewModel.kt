@@ -95,15 +95,11 @@ class OnboardingViewModel(
             }
             OnboardingAction.Back -> back()
             OnboardingAction.CancelDownload -> cancelAndMove(if (state.value.step == OnboardingStep.SPEAKER_DOWNLOAD) OnboardingStep.SPEAKERS else OnboardingStep.MODELS)
+            OnboardingAction.StopRecording -> trial.stop()
             OnboardingAction.CancelRecording -> trial.cancel()
             is OnboardingAction.EditText -> trial.setText(action.text)
-            OnboardingAction.Record -> {
-                if (trial.state.value.active) trial.stop()
-                // MicrophoneSession already verifies/loads the model. Enter the
-                // trial's cancellable PREPARING state before any suspension, so
-                // onStop can prevent a late microphone start during that work.
-                else trial.start()
-            }
+            // Enter cancellable preparation before any suspension; the session loads the model without waiting to start capture.
+            OnboardingAction.Record -> trial.start()
             is OnboardingAction.SelectModel -> runOperation { repository.update { it.copy(modelId = action.id) } }
             is OnboardingAction.Monitor -> runOperation { repository.update { it.copy(monitorWanted = action.enabled) } }
             is OnboardingAction.RemoveFolder -> runOperation { services.removeFolder(action.path) }

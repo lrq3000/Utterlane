@@ -1,22 +1,32 @@
 package io.github.lrq3000.utterlane.onboarding
 
+import io.github.lrq3000.utterlane.asr.CapturePhase
+import io.github.lrq3000.utterlane.asr.CaptureSnapshot
+import io.github.lrq3000.utterlane.asr.LiveSpeakerControl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 enum class TrialPhase { IDLE, PREPARING, RECORDING, PROCESSING }
+
+/** The keyboard panel observes this session directly, without routing waveform frames through onboarding state. */
+class VoiceTrialPanel(val metrics: StateFlow<CaptureSnapshot>, val speakers: LiveSpeakerControl)
+
 data class VoiceTrialState(
     val text: String = "", val phase: TrialPhase = TrialPhase.IDLE,
-    val error: String? = null, val warning: String? = null
+    val error: String? = null, val warning: String? = null,
+    val panel: VoiceTrialPanel? = null, val preview: String = "", val releasing: Boolean = false
 ) { val active: Boolean get() = phase != TrialPhase.IDLE }
 
 interface OnboardingTrialSession {
+    val panel: VoiceTrialPanel
     fun start()
     fun stop()
-    fun cancel()
+    fun cancel(discard: Boolean)
 }
 
 /** Bounded, lifecycle-aware trial; its capture implementation is supplied by the app. */
@@ -36,6 +46,7 @@ class OnboardingVoiceTrial(
     private val _state = MutableStateFlow(VoiceTrialState())
     val state = _state.asStateFlow()
     private var generation = 0L
+    private var releasingGeneration: Long? = null
     private var session: OnboardingTrialSession? = null
     private var timeout: Job? = null
 
@@ -48,20 +59,21 @@ class OnboardingVoiceTrial(
     }
 
     fun start() {
-        if (session != null || state.value.active) return
+        if (session != null || state.value.active || state.value.releasing) return
         val token = ++generation
         val prefix = state.value.text.trim()
         _state.value = state.value.copy(phase = TrialPhase.PREPARING, error = null, warning = null)
         val callbacks = Callbacks(
             onReady = {
-                if (token == generation && state.value.active) {
+                if (token == generation && state.value.phase == TrialPhase.PREPARING) {
                     _state.value = state.value.copy(phase = TrialPhase.RECORDING)
                     timeout = scope.launch { delay(MAX_DURATION_MS); stop() }
                 }
             },
             onText = { text ->
                 if (token == generation && state.value.active) {
-                    _state.value = state.value.copy(text = bounded(listOf(prefix, text).filter { it.isNotBlank() }.joinToString(" ")))
+                    _state.value = state.value.copy(preview = bounded(text),
+                        text = bounded(listOf(prefix, text).filter { it.isNotBlank() }.joinToString(" ")))
                 }
             },
             onCaptureEnded = {
@@ -72,47 +84,70 @@ class OnboardingVoiceTrial(
             },
             onComplete = { error ->
                 if (token == generation) {
-                    timeout?.cancel(); session = null
-                    _state.value = state.value.copy(phase = TrialPhase.IDLE, error = error)
+                    close(error)
                 }
             },
             onWarning = { if (token == generation) _state.value = state.value.copy(warning = it) },
             onClosed = {
-                if (token == generation) {
-                    timeout?.cancel(); session = null
-                    _state.value = state.value.copy(phase = TrialPhase.IDLE)
+                when (token) {
+                    releasingGeneration -> {
+                        releasingGeneration = null
+                        _state.value = state.value.copy(releasing = false)
+                    }
+                    generation -> close()
                 }
             }
         )
-        try { session = factory(callbacks); session?.start() }
-        catch (error: Exception) {
-            session?.cancel(); session = null; timeout?.cancel()
-            _state.value = state.value.copy(phase = TrialPhase.IDLE, error = error.message)
+        try {
+            val current = factory(callbacks)
+            session = current
+            _state.value = state.value.copy(panel = current.panel)
+            current.start()
+        } catch (error: Exception) {
+            generation++
+            val previous = session
+            close(error.message)
+            previous?.cancel(discard = true)
         }
     }
 
     fun stop() {
-        when (state.value.phase) {
-            TrialPhase.PREPARING -> cancel()
-            TrialPhase.RECORDING -> {
+        val current = state.value
+        if (!current.active || current.phase == TrialPhase.PROCESSING) return
+        // Native capture publishes before its Main callbacks; only an actually open microphone needs a Stop.
+        val nativePhase = current.panel?.metrics?.value?.phase
+        when (nativePhase) {
+            CapturePhase.CAPTURING, CapturePhase.STOPPING, CapturePhase.PROCESSING -> {
                 timeout?.cancel()
-                _state.value = state.value.copy(phase = TrialPhase.PROCESSING)
-                session?.stop()
+                _state.value = current.copy(phase = TrialPhase.PROCESSING)
+                if (nativePhase == CapturePhase.CAPTURING) session?.stop()
             }
             else -> Unit
         }
     }
 
-    fun stopForBackground() = stop()
+    fun stopForBackground() {
+        val current = state.value
+        val nativePhase = current.panel?.metrics?.value?.phase
+        // Cancel a not-yet-started setup, but preserve any PCM that races with backgrounding.
+        if (current.phase == TrialPhase.PREPARING && (nativePhase == null || nativePhase == CapturePhase.LOADING)) {
+            cancel(discard = false)
+        } else stop()
+    }
 
-    fun cancel() {
+    fun cancel(discard: Boolean = true) {
         // Invalidate callbacks before asking capture to stop: teardown can invoke
-        // callbacks synchronously, or deliver them after a subsequent trial starts.
-        generation++
-        timeout?.cancel()
+        // callbacks synchronously, or deliver them after a subsequent trial starts. Only onClosed releases admission.
+        val previousGeneration = generation++
         val previous = session
-        session = null
-        _state.value = state.value.copy(phase = TrialPhase.IDLE)
-        previous?.cancel()
+        if (previous != null) releasingGeneration = previousGeneration
+        close()
+        previous?.cancel(discard)
+    }
+
+    private fun close(error: String? = state.value.error) {
+        timeout?.cancel(); timeout = null; session = null
+        _state.value = state.value.copy(phase = TrialPhase.IDLE, panel = null, preview = "",
+            error = error, releasing = releasingGeneration != null)
     }
 }

@@ -1,5 +1,7 @@
 package io.github.lrq3000.utterlane.onboarding
 
+import io.github.lrq3000.utterlane.asr.CaptureMetrics
+import io.github.lrq3000.utterlane.asr.LiveSpeakerControl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,7 +21,7 @@ class OnboardingVoiceTrialTest {
         trial.start(); trial.start()
         assertEquals(1, sessions.size)
         assertEquals(TrialPhase.PREPARING, trial.state.value.phase)
-        sessions[0].callbacks.onReady()
+        sessions[0].beginCapture()
         trial.stop()
         assertEquals(TrialPhase.PROCESSING, trial.state.value.phase)
         assertEquals(1, sessions[0].stops)
@@ -34,9 +36,48 @@ class OnboardingVoiceTrialTest {
         trial.start()
         trial.stopForBackground()
         assertEquals(1, sessions[0].cancels)
+        assertEquals(false, sessions[0].discarded)
         assertEquals(0, sessions[0].stops)
         sessions[0].callbacks.onReady()
         assertEquals(TrialPhase.IDLE, trial.state.value.phase)
+    }
+
+    @Test fun waveformStopDrainsCaptureEvenIfTheReadyCallbackIsStillInFlight() {
+        trial.start()
+        val session = sessions.single()
+        // Native metrics are published on the capture thread just before the Main callback.
+        session.metrics.started()
+        trial.stop()
+        session.callbacks.onReady()
+        assertEquals(TrialPhase.PROCESSING, trial.state.value.phase)
+        assertEquals(1, session.stops)
+        assertEquals(0, session.cancels)
+    }
+
+    @Test fun endingBeforeReadyDoesNotDiscardAlreadyCapturedAudio() {
+        trial.start()
+        val session = sessions.single()
+        session.metrics.started()
+        session.metrics.captureEnded()
+        trial.stopForBackground()
+        session.callbacks.onReady()
+        assertEquals(TrialPhase.PROCESSING, trial.state.value.phase)
+        assertEquals(0, session.cancels)
+        assertEquals(0, session.stops)
+    }
+
+    @Test fun cancelClosesThePreviewButDoesNotAdmitAnotherCaptureBeforeRelease() {
+        trial.start()
+        val first = sessions.single()
+        trial.cancel()
+        assertNull(trial.state.value.panel)
+        trial.start()
+        assertEquals(1, sessions.size)
+        first.callbacks.onClosed()
+        trial.start()
+        assertEquals(2, sessions.size)
+        first.callbacks.onClosed()
+        assertNotNull(trial.state.value.panel)
     }
 
     @Test fun lateCallbacksCannotOverwriteANewerTrial() {
@@ -44,7 +85,7 @@ class OnboardingVoiceTrialTest {
         val old = sessions[0]
         trial.cancel(); old.callbacks.onClosed()
         trial.start()
-        sessions[1].callbacks.onReady()
+        sessions[1].beginCapture()
         sessions[1].callbacks.onText("New words")
         old.callbacks.onText("Stale words")
         old.callbacks.onComplete("Old failure")
@@ -54,7 +95,7 @@ class OnboardingVoiceTrialTest {
 
     @Test fun completedTextSurvivesFailureAndPreviewMemoryIsBounded() {
         trial.setText("My note.")
-        trial.start(); sessions[0].callbacks.onReady()
+        trial.start(); sessions[0].beginCapture()
         sessions[0].callbacks.onText("More words.")
         sessions[0].callbacks.onComplete("Audio interrupted")
         assertEquals("My note. More words.", trial.state.value.text)
@@ -64,11 +105,35 @@ class OnboardingVoiceTrialTest {
         assertEquals(OnboardingVoiceTrial.MAX_TEXT, trial.state.value.text.length)
     }
 
+    @Test fun panelPreviewBelongsOnlyToTheActiveTrialAndNeverIncludesTheTypedPrefix() {
+        trial.setText("Typed words.")
+        trial.start()
+        assertNotNull(trial.state.value.panel)
+        assertEquals("", trial.state.value.preview)
+        sessions[0].beginCapture()
+        sessions[0].callbacks.onText("Spoken words.")
+        assertEquals("Spoken words.", trial.state.value.preview)
+        assertEquals("Typed words. Spoken words.", trial.state.value.text)
+        trial.stop()
+        assertEquals("Spoken words.", trial.state.value.preview)
+        sessions[0].callbacks.onComplete(null)
+        assertNull(trial.state.value.panel)
+        assertEquals("", trial.state.value.preview)
+        trial.start()
+        sessions[0].callbacks.onText("Stale words")
+        assertEquals("", trial.state.value.preview)
+        assertEquals("Typed words. Spoken words.", trial.state.value.text)
+    }
+
     private class FakeSession(val callbacks: OnboardingVoiceTrial.Callbacks) : OnboardingTrialSession {
+        val metrics = CaptureMetrics()
+        override val panel = VoiceTrialPanel(metrics.state, LiveSpeakerControl())
         var stops = 0
         var cancels = 0
+        var discarded: Boolean? = null
+        fun beginCapture() { metrics.started(); callbacks.onReady() }
         override fun start() = Unit
         override fun stop() { stops++ }
-        override fun cancel() { cancels++ }
+        override fun cancel(discard: Boolean) { cancels++; discarded = discard }
     }
 }

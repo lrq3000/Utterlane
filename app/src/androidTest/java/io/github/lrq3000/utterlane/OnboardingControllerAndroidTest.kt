@@ -1,11 +1,22 @@
 package io.github.lrq3000.utterlane
 
+import android.content.Intent
+import android.graphics.Rect
 import android.net.Uri
+import android.view.View
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import io.github.lrq3000.utterlane.asr.CaptureMetrics
+import io.github.lrq3000.utterlane.asr.LiveSpeakerControl
 import io.github.lrq3000.utterlane.onboarding.*
+import io.github.lrq3000.utterlane.ui.RecordingPanel
+import io.github.lrq3000.utterlane.ui.WaveformButton
+import io.github.lrq3000.utterlane.ui.theme.UtterlaneTheme
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import org.junit.After
@@ -22,6 +33,7 @@ class OnboardingControllerAndroidTest {
     private val repository = OnboardingRepository(app)
     private val store = ViewModelStore()
     private val services = ControlledServices()
+    private val ui = OnboardingTestUi()
     private lateinit var original: OnboardingProgress
     private lateinit var model: OnboardingViewModel
 
@@ -116,6 +128,116 @@ class OnboardingControllerAndroidTest {
         withTimeout(5000) { model.state.first { !it.busy && it.step == OnboardingStep.SPEAKERS } }
     }
 
+    @Test fun voiceTrialUsesKeyboardWaveformThroughProcessing(): Unit = runBlocking {
+        withTrialScreen { activity ->
+            instrumentation.runOnMainSync { model.act(OnboardingAction.EditText("Typed before dictation.")) }
+            startTrial()
+            instrumentation.runOnMainSync {
+                services.voice!!.apply {
+                    metrics.model("Practice speech model")
+                    beginCapture()
+                    repeat(64) { index ->
+                        val amplitude = 400 * (1 + (index * 7 % 32))
+                        metrics.samples(ShortArray(800) { if (it % 2 == 0) amplitude.toShort() else (-amplitude).toShort() }, true)
+                    }
+                    metrics.preparing(false) // Publish the bounded sample batch without waiting for the QA clock.
+                    callbacks.onText("Recognized during capture.")
+                }
+            }
+            val waveformId = "${app.packageName}:id/recording_done"
+            ui.scrollTo(waveformId)
+            val liveField = ui.node("onboarding_transcript")
+            try {
+                val visible = Rect().also(liveField::getBoundsInScreen)
+                assertTrue("Leave at least one line of practice text above the keyboard panel",
+                    liveField.isVisibleToUser && visible.height() >= 32 * activity.resources.displayMetrics.density)
+            } finally { liveField.recycle() }
+            instrumentation.runOnMainSync {
+                val waveform = activity.findViewById<WaveformButton>(R.id.recording_done)
+                val panel = waveform.parent as RecordingPanel
+                assertTrue("Waveform must reflect actual samples", waveform.levels.any { it > 0f })
+                assertEquals("Recognized during capture.", panel.statusText.text.toString())
+                val speakers = panel.findViewById<android.widget.ToggleButton>(R.id.recording_speakers)
+                assertEquals(View.VISIBLE, speakers.visibility)
+                speakers.performClick()
+                assertEquals(true, services.voice!!.speakers.state.value)
+            }
+            ui.screenshot("onboarding-keyboard-waveform")
+            ui.click(waveformId, scroll = false)
+            withTimeout(5000) { model.state.first { it.trial.phase == TrialPhase.PROCESSING } }
+            ui.textNode(activity.getString(R.string.capture_processing)).recycle()
+            instrumentation.runOnMainSync {
+                services.voice!!.callbacks.onText("Recognized during capture. Final words.")
+                services.voice!!.callbacks.onComplete(null)
+            }
+            ui.scrollTo("onboarding_transcript", backwards = true)
+            instrumentation.runOnMainSync {
+                assertNull(activity.findViewById<View>(R.id.recording_done))
+            }
+            val result = ui.node("onboarding_transcript")
+            try {
+                assertEquals("Typed before dictation. Recognized during capture. Final words.", result.text.toString())
+                assertTrue("The practice text must be editable again", result.isEditable)
+            } finally { result.recycle() }
+        }
+    }
+
+    @Test fun cancelClosesThePanelAndTheNextTrialStartsWithAnEmptyPreview(): Unit = runBlocking {
+        withTrialScreen { activity ->
+            startTrial()
+            instrumentation.runOnMainSync {
+                services.voice!!.apply {
+                    beginCapture()
+                    callbacks.onText("Words from the first trial.")
+                }
+            }
+            val waveformId = "${app.packageName}:id/recording_done"
+            ui.scrollTo(waveformId)
+            val first = services.voice!!
+            instrumentation.runOnMainSync { first.deferClose = true }
+            ui.clickText(activity.getString(R.string.overlay_cancel))
+            withTimeout(5000) { model.state.first { !it.trial.active && it.trial.releasing } }
+            ui.scrollTo("onboarding_record")
+            instrumentation.runOnMainSync { assertNull(activity.findViewById<View>(R.id.recording_done)) }
+            val mic = ui.node("onboarding_record")
+            try { assertFalse("Do not offer an immediate retry during microphone teardown", mic.isEnabled) }
+            finally { mic.recycle() }
+
+            instrumentation.runOnMainSync { first.callbacks.onClosed() }
+            withTimeout(5000) { model.state.first { !it.trial.releasing } }
+            instrumentation.waitForIdleSync()
+            startTrial()
+            instrumentation.runOnMainSync { services.voice!!.beginCapture() }
+            ui.scrollTo(waveformId)
+            instrumentation.runOnMainSync {
+                val status = activity.findViewById<android.widget.TextView>(R.id.recording_status)
+                assertEquals("", status.text.toString())
+            }
+        }
+    }
+
+    private suspend fun withTrialScreen(test: suspend (OnboardingActivity) -> Unit) {
+        ui.prepare()
+        val activity = launchNativeActivity(Intent(app, OnboardingActivity::class.java)) as OnboardingActivity
+        try {
+            repository.update { it.copy(stepId = OnboardingStep.VOICE_TRIAL.id, modelId = "full") }
+            initialize()
+            instrumentation.runOnMainSync {
+                activity.setContent {
+                    val state by model.state.collectAsStateWithLifecycle()
+                    UtterlaneTheme(darkTheme = false) { OnboardingScreen(state, model::act) }
+                }
+            }
+            test(activity)
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
+    private suspend fun startTrial() {
+        ui.scrollTo("onboarding_record")
+        ui.click("onboarding_record", scroll = false)
+        withTimeout(5000) { model.state.first { it.trial.phase == TrialPhase.PREPARING } }
+    }
+
     private class ControlledServices : OnboardingServices {
         val initialization = CompletableDeferred<Unit>()
         var failInitialization = false
@@ -151,10 +273,22 @@ class OnboardingControllerAndroidTest {
         override suspend fun addFolder(path: String) { folder.value = path }
         override suspend fun removeFolder(path: String) { if (folder.value == path) folder.value = null }
         override suspend fun enableFloating() = Unit
-        override fun voiceSession(scope: CoroutineScope, callbacks: OnboardingVoiceTrial.Callbacks) = object : OnboardingTrialSession {
+        var voice: ControlledVoiceSession? = null
+        override fun voiceSession(scope: CoroutineScope, callbacks: OnboardingVoiceTrial.Callbacks) =
+            ControlledVoiceSession(callbacks).also { voice = it }
+
+        inner class ControlledVoiceSession(val callbacks: OnboardingVoiceTrial.Callbacks) : OnboardingTrialSession {
+            val metrics = CaptureMetrics { 0L }
+            val speakers = LiveSpeakerControl()
+            override val panel = VoiceTrialPanel(metrics.state, speakers)
+            var deferClose = false
+            fun beginCapture() { metrics.started(); callbacks.onReady() }
             override fun start() { sessionsStarted.value++ }
-            override fun stop() = Unit
-            override fun cancel() { sessionsCancelled.value++; callbacks.onClosed() }
+            override fun stop() { metrics.captureEnded(); callbacks.onCaptureEnded() }
+            override fun cancel(discard: Boolean) {
+                sessionsCancelled.value++
+                if (!deferClose) callbacks.onClosed()
+            }
         }
     }
 }

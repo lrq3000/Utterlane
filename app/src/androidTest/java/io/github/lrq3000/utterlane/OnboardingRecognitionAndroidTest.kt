@@ -73,7 +73,7 @@ class OnboardingRecognitionAndroidTest {
             activity = instrumentation.startActivitySync(Intent(app, OnboardingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as OnboardingActivity
             ui.click("onboarding_record")
             assertTrue("Sample did not reach the real capture pipeline", capture.sent.await(120, TimeUnit.SECONDS))
-            ui.click("onboarding_record")
+            ui.click("${app.packageName}:id/recording_done", scroll = false)
             val text = ui.recognizedText(id = "onboarding_transcript")
             assertTrue("Expected reading content: $text", text.contains("late", ignoreCase = true))
             ui.screenshot("voice-trial-result")

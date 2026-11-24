@@ -5,6 +5,17 @@ import org.junit.Test
 import kotlinx.coroutines.runBlocking
 
 class CaptureMetricsTest {
+    @Test fun aLateStopCannotMoveFinalizationBackToStopping() {
+        val metrics = CaptureMetrics()
+        metrics.started()
+        metrics.captureEnded()
+        metrics.stopping()
+        assertEquals(CapturePhase.PROCESSING, metrics.state.value.phase)
+        metrics.completed(null)
+        metrics.stopping()
+        assertEquals(CapturePhase.COMPLETE, metrics.state.value.phase)
+    }
+
     @Test fun fileInputPublishesItsMeasuredRateBeforeEofWithoutCountingOverlapTwice() {
         var clock = 0L
         val meter = CaptureMetrics { clock }

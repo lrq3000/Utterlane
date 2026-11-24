@@ -54,6 +54,7 @@ sealed interface OnboardingAction {
     data class RemoveFolder(val path: String) : OnboardingAction
     data object EnableFloating : OnboardingAction
     data object Record : OnboardingAction
+    data object StopRecording : OnboardingAction
     data object CancelRecording : OnboardingAction
     data class EditText(val text: String) : OnboardingAction
     data object ShareSample : OnboardingAction
