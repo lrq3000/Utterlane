@@ -1,0 +1,4 @@
+Choose speaker labels for each shared or picked audio file without changing your recording defaults.
+Turn speaker labels on or off while recording without stopping the microphone.
+Interrupted results are now marked Partial transcript when reopened.
+If speaker labeling fails, recognized text is kept and transcription can continue without labels.

@@ -7,9 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.2.0] - 2026-11-24
+
 ### Added
+- Choose speaker labels before transcribing shared, opened, or picked audio. The choice is specific to the file, persists for retries, and does not change the microphone default.
+- Turn speaker labels on or off beside the waveform during a live recording. Changes apply to upcoming transcription segments without stopping the microphone or rewriting earlier text.
 - Blue Notebook native Home: direct recording, local audio loading, complete
-  transcript reading/copy/share, an app-wide speaker switch, and fixed Record /
+  transcript reading/copy/share, a live speaker-label default, and fixed Record /
   Audio history / Transcripts navigation. Settings is accessible from the gear.
 - Independent history duration/recording-time/actual-speaker metadata and passive
   pin indicators, with existing detail-level pinning and confirmed deletion.
@@ -19,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bundled vector illustrations and an attributed public-domain audiobook sample.
 
 ### Fixed
+- Reopened unfinished results show **Partial transcript**, without adding the warning to copied or exported text.
+- Recoverable speaker-model failures preserve recognized words and allow transcription to continue without labels.
 - Preserve prior useful work when a new microphone attempt has no input or a local
   file cannot be copied; keep Home capture alive across navigation/recreation.
 - Preserve interrupted labeled text metadata, canonical Android cache leases, and
