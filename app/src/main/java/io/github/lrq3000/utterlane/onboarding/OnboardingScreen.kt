@@ -44,9 +44,13 @@ fun OnboardingScreen(state: OnboardingUiState, onAction: (OnboardingAction) -> U
         else onAction(action)
     }
     Surface(color = MaterialTheme.colorScheme.background) {
-        Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), contentAlignment = Alignment.TopCenter) {
+        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), contentAlignment = Alignment.TopCenter) {
+            val trialPanel = state.trial.panel.takeIf { state.step == OnboardingStep.VOICE_TRIAL }
+            val recording = trialPanel != null
+            // Keep room for the practice field on landscape and short displays; the panel scrolls within its own area.
+            val panelLimit = minOf(maxHeight * .74f, (maxHeight - 118.dp).coerceAtLeast(maxHeight * .55f))
             Column(Modifier.widthIn(max = 600.dp).fillMaxSize().semantics { testTagsAsResourceId = true }) {
-                OnboardingHeader(state, dispatch)
+                if (!recording) OnboardingHeader(state, dispatch)
                 if (!state.ready) {
                     Column(Modifier.weight(1f).fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center) {
@@ -59,7 +63,7 @@ fun OnboardingScreen(state: OnboardingUiState, onAction: (OnboardingAction) -> U
                         }
                     }
                 } else {
-                    key(state.step) {
+                    key(state.step, recording) {
                         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 18.dp)) {
                             val page = OnboardingContent.byStep.getValue(state.step)
                             when (state.step) {
@@ -86,7 +90,8 @@ fun OnboardingScreen(state: OnboardingUiState, onAction: (OnboardingAction) -> U
                             }
                         }
                     }
-                    OnboardingFooter(state, dispatch)
+                    if (trialPanel != null) VoiceTrialRecordingPanel(trialPanel, state.trial.preview, panelLimit, dispatch)
+                    else OnboardingFooter(state, dispatch)
                 }
             }
         }

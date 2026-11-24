@@ -117,7 +117,12 @@ class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 10000
         publish(changed)
     }
     @Synchronized fun silenced(value: Boolean) { blocked = value; tick() }
-    @Synchronized fun stopping() { pending = pending.copy(phase = CapturePhase.STOPPING); publish(true) }
+    @Synchronized fun stopping() {
+        // A Stop racing with capture EOF must not rewind processing or a terminal state.
+        if (pending.phase != CapturePhase.LOADING && pending.phase != CapturePhase.CAPTURING) return
+        pending = pending.copy(phase = CapturePhase.STOPPING)
+        publish(true)
+    }
     @Synchronized fun captureEnded() {
         if (terminal()) return
         pending = pending.copy(phase = CapturePhase.PROCESSING)
