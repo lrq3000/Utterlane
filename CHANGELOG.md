@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.2.1] - 2026-11-25
+
+### Fixed
+- The onboarding microphone trial now shows the keyboard's recording panel, with a live waveform, streaming text preview, speaker controls, and processing feedback. No keyboard setup is required.
+- Stopping the trial preserves captured speech while transcription finishes, and cancelling no longer lets a new take start before the microphone is released.
+
 ## [2.2.0] - 2026-11-24
 
 ### Added

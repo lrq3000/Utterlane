@@ -1,0 +1,2 @@
+The onboarding microphone trial now shows the same live waveform, text preview, and processing feedback as keyboard dictation. No keyboard setup is needed.
+Tap the waveform to finish, then edit your words directly in the guide.
