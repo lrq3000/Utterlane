@@ -57,7 +57,7 @@ class HomeController(private val app: UtterlaneApp) {
     private val ownerGate = Any()
     @Volatile private var slot: ResultOwner? = null
     @Volatile private var fileCandidate: ResultOwner? = null
-    private var pendingFile: Uri? = null
+    private var pendingFile: DialogInput? = null
     private var pendingRetry = false
     private val service = HomeServiceConnection()
     private val journal = HomeJournal(app)
@@ -82,9 +82,9 @@ class HomeController(private val app: UtterlaneApp) {
         captureOwner.start()
     }
 
-    fun load(uri: Uri) {
+    fun load(uri: Uri, options: FileTranscriptionOptions = FileTranscriptionOptions()) {
         if (captureOwner.state.value.active || state.value.busy) return
-        pendingFile = uri
+        pendingFile = DialogInput(uri = uri, automatic = true, fileOptions = options)
         mutable.update { it.prepareFileOperation() }
         try { requestService(microphone = false) }
         catch (error: Exception) {
@@ -125,10 +125,10 @@ class HomeController(private val app: UtterlaneApp) {
         service.started(token)
         when {
             pendingFile != null -> {
-                val uri = pendingFile!!; pendingFile = null
+                val input = pendingFile!!; pendingFile = null
                 // Picking a URI is only an attempt. Retain the old owner/journal
                 // until this candidate has actually copied nonempty private input.
-                val candidate = ResultOwner(DialogInput(uri = uri, automatic = true), null)
+                val candidate = ResultOwner(input, null)
                 fileCandidate = candidate
                 mutable.update { it.copy(pendingImport = candidate.model) }
                 candidate.observer = HomeFileHandoff(scope, app.recordingHistory, app.transcriptHistory).observe(candidate.model.state,

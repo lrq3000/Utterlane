@@ -97,9 +97,7 @@ screen distinguishes listening, model loading, stopping and remaining processing
 Home recording has no onboarding practice timer. Device storage and memory limits
 still apply.
 
-- Use the icon beside **New transcript** to load a local audio file. No microphone,
-  keyboard or floating-button setup is required for files. Cancelling the picker
-  or selecting a missing/empty file preserves the previous useful workspace.
+- Use the icon beside **New transcript** to load a local audio file. The **Transcribe audio** dialog lets you turn on **Speaker labels** for this file before starting. The same dialog appears when you share an audio file to Utterlane or open one with it. Labels start off for each new file and do not change the live recording default. No microphone, keyboard or floating-button setup is required for files. Cancelling setup or selecting a missing/empty file preserves the previous useful workspace.
 - **Speaker labels** changes the same app-wide setting as Settings. Existing
   sessions retain their starting options; auxiliary model setup remains optional.
 - Read the complete disk-backed transcript in its scrollable area. **Copy** uses

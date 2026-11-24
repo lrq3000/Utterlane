@@ -253,8 +253,14 @@ class RecognizerManager(
     suspend fun createSession(options: RuntimeOptions, onProcessed: (Long, Long) -> Unit = { _, _ -> }, onSegment: suspend (String) -> Unit = {}): TranscriptionSession =
         createSessionWithOptions(options, onProcessed, onSegment)
 
+    suspend fun createSession(options: RuntimeOptions, onProcessed: (Long, Long) -> Unit,
+        speakerOverride: Boolean?, onSpeakerUnavailable: () -> Unit,
+        onSegment: suspend (String) -> Unit = {}): TranscriptionSession =
+        createSessionWithOptions(options, onProcessed, onSegment, speakerOverride, onSpeakerUnavailable)
+
     private suspend fun createSessionWithOptions(providedOptions: RuntimeOptions?, onProcessed: (Long, Long) -> Unit,
-        onSegment: suspend (String) -> Unit): TranscriptionSession = withModelOperation { expected ->
+        onSegment: suspend (String) -> Unit, speakerOverride: Boolean? = null,
+        onSpeakerUnavailable: (() -> Unit)? = null): TranscriptionSession = withModelOperation { expected ->
         val owner = currentCoroutineContext()[Job]
         var created: TranscriptionSession? = null
         try {
@@ -265,11 +271,14 @@ class RecognizerManager(
                     // consume the same entry-point snapshot, including while queued.
                     check(initializeLocked(expected, options)) { _failure.value ?: context.getString(R.string.toast_model_load_failed) }
                     val rules = if (app.settingsRepository.dictionaryEnabled.first()) app.dictionaryManager.rules.value else emptyList()
-                    val diarize = app.settingsRepository.diarizationEnabled.first()
+                    var diarize = speakerOverride ?: app.settingsRepository.diarizationEnabled.first()
                     val count = app.settingsRepository.speakerCount.first()
                     val speakerLabels = (1..8).map { context.getString(R.string.speaker_label, it) }
                     val unknownSpeaker = context.getString(R.string.speaker_unknown)
-                    if (diarize && count != 1) check(app.diarizationModels.ensureVerified()) { context.getString(R.string.diarization_install_first) }
+                    if (diarize && count != 1 && !app.diarizationModels.ensureVerified()) {
+                        checkNotNull(onSpeakerUnavailable) { context.getString(R.string.diarization_install_first) }.invoke()
+                        diarize = false
+                    }
                     val sessionBackend = checkNotNull(recognizer)
                     val directory = File(context.cacheDir, "transcripts").apply { mkdirs() }
                     val store = TranscriptStore(File.createTempFile("transcript-", ".txt", directory))

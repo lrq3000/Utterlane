@@ -116,9 +116,9 @@
             </intent-filter>
         </receiver>
 
-        <!-- Transcription Activity for shared/opened audio -->
+        <!-- External audio only: do not expose result, recovery or private paths. -->
         <activity
-            android:name=".transcribe.TranscribeActivity"
+            android:name=".transcribe.FileTranscriptionSetupActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@style/Theme.Utterlane.Dialog">
@@ -146,6 +146,11 @@
                 <data android:mimeType="audio/*" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".transcribe.TranscribeActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:theme="@style/Theme.Utterlane.Dialog" />
 
         <!-- Audio Monitor Service for folder watching -->
         <service

@@ -17,7 +17,8 @@ import kotlinx.coroutines.flow.*
 data class DialogInput(val uri: Uri? = null, val path: String? = null, val audioId: String? = null,
     val transcriptId: String? = null, val transcriptPath: String? = null, val automatic: Boolean = false,
     val transcriptOrigin: Boolean = transcriptId != null, val modelName: String = "", val modelId: String? = null,
-    val metadata: TranscriptMetadata? = null, val recovered: Boolean = false)
+    val metadata: TranscriptMetadata? = null, val recovered: Boolean = false,
+    val fileOptions: FileTranscriptionOptions? = null)
 
 data class TranscriptionDialogState(
     val audio: HistoryEntry? = null, val store: TranscriptStore? = null, val transcriptId: String? = null,
@@ -30,7 +31,7 @@ data class TranscriptionDialogState(
     val deletion: DialogDeletionRequest? = null, val checkingDeletion: Boolean = false,
     val deleting: Boolean = false, val finished: Boolean = false,
     val exitRequest: DialogExitRequest? = null, val checkingExit: Boolean = false, val exited: Boolean = false,
-    val audioExporting: Boolean = false
+    val audioExporting: Boolean = false, val speakerWarning: String? = null
 )
 
 data class DialogDeletionRequest(val plan: HistoryDeletionPlan,
@@ -232,7 +233,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         val archiveProducer = archival ?: app.archival.producer()
         metrics = CaptureMetrics().also { it.setVisualRefreshRate(state.value.visualRate) }
         fileProgress = FileTranscriptionProgress()
-        mutable.update { it.copy(running = true, fileProgress = fileProgress.snapshot(metrics.state.value), message = null) }
+        mutable.update { it.copy(running = true, fileProgress = fileProgress.snapshot(metrics.state.value), message = null, speakerWarning = null) }
         var session: TranscriptionSession? = null
         var processing: RecordingHistory.ProcessingAttempt? = null
         var presenter: Job? = null
@@ -274,7 +275,10 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                                 delay(VisualRefreshRate.intervalMillis(mutable.value.visualRate))
                             }
                         }
-                        session = app.recognizerManager.createSession(options, onProcessed = metrics::processed) {
+                        session = app.recognizerManager.createSession(options, onProcessed = metrics::processed,
+                            speakerOverride = input.fileOptions?.speakerLabels, onSpeakerUnavailable = {
+                                mutable.update { it.copy(speakerWarning = app.getString(R.string.file_speakers_unavailable)) }
+                            }) {
                             val current = checkNotNull(session)
                             // A checkpoint taken while processing must describe
                             // already-committed labels, including partial results.

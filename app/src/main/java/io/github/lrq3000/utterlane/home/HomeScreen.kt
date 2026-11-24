@@ -127,6 +127,8 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
                 }
             }
             HomeCaptureControl(state, onRecord)
+            state.result.speakerWarning?.let { Text(it, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error) }
             io.github.lrq3000.utterlane.archive.ArchivalStatusControls()
             PrivacyNote()
             HomeFeedback(state, onModels = { context.startActivity(RecordingRecovery.modelIntent(context)) }, onRetry = controller::retry)

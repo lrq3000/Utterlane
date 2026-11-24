@@ -9,6 +9,8 @@ import android.os.Bundle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import io.github.lrq3000.utterlane.transcribe.FileTranscriptionOptions
+import io.github.lrq3000.utterlane.transcribe.FileTranscriptionSetupActivity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
@@ -53,10 +55,14 @@ open class HomeActivity : LocalizedActivity() {
         if (granted) app.homeController.record()
         else app.homeController.microphoneDenied()
     }
+    private val fileSetup = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) result.data?.let { accepted ->
+            val options = FileTranscriptionOptions.from(accepted)
+            if (options != null) accepted.data?.let { app.homeController.load(it, options) }
+        }
+    }
     private val audioPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        // Copy immediately through the existing owned-file import; no broad media,
-        // overlay, keyboard or microphone permission is involved in this path.
-        uri?.let(app.homeController::load)
+        uri?.let { fileSetup.launch(FileTranscriptionSetupActivity.forPicker(this, it)) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
