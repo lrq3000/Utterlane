@@ -12,9 +12,13 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Rect
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
+import android.provider.Settings
+import android.view.ContextThemeWrapper
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -25,6 +29,97 @@ import io.github.lrq3000.utterlane.history.HistoryActivity
 
 @RunWith(AndroidJUnit4::class)
 class CapturePanelAndroidTest {
+    @Test fun speakerGlyphIsVisibleInTheRenderedLivePanelInBothStates() = runBlocking {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val app = instrumentation.targetContext.applicationContext as UtterlaneApp
+        val settings = app.settingsRepository
+        val previousTheme = settings.themeMode.first()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        val session = io.github.lrq3000.utterlane.asr.MicrophoneSession(app, scope, { _, _ -> }, { _, _ -> })
+        val control = session.speakerControl.apply { set(false) }
+        val overlayOp = "${app.packageName} SYSTEM_ALERT_WINDOW"
+        fun appOp(command: String): String = ParcelFileDescriptor.AutoCloseInputStream(
+            instrumentation.uiAutomation.executeShellCommand("appops $command")).use { it.readBytes().decodeToString() }
+        val priorOverlayMode = Regex("""SYSTEM_ALERT_WINDOW:\s*(\w+)""").find(appOp("get $overlayOp"))?.groupValues?.get(1) ?: "default"
+        val grantOverlay = !Settings.canDrawOverlays(app)
+        org.junit.Assume.assumeTrue("Only grant overlay permission for this test's isolated application ID",
+            !grantOverlay || app.packageName.endsWith(".qolsandbox"))
+        val activity = instrumentation.startActivitySync(HistoryActivity.intent(app).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val context = ContextThemeWrapper(activity, android.R.style.Theme_Translucent_NoTitleBar)
+        val overlay = io.github.lrq3000.utterlane.ui.RecordingOverlay(context)
+        lateinit var button: android.widget.ToggleButton
+        try {
+            if (grantOverlay) appOp("set $overlayOp allow")
+            awaitPanel { Settings.canDrawOverlays(app) }
+            settings.setThemeMode("dark")
+            instrumentation.runOnMainSync {
+                overlay.show()
+                overlay.bind(scope, session)
+                val panel = overlay.javaClass.getDeclaredField("overlayView").apply { isAccessible = true }.get(overlay) as View
+                button = panel.findViewById(R.id.recording_speakers)
+            }
+            awaitPanel { button.isAttachedToWindow && button.visibility == View.GONE }
+            settings.setThemeMode("light")
+            awaitPanel {
+                (button.rootView.background as? android.graphics.drawable.GradientDrawable)
+                    ?.color?.defaultColor == Color.WHITE
+            }
+            session.metrics.started()
+            awaitPanel { button.isShown && button.width > 0 }
+            // The label is part of this control's content, not an optional foreground decoration.
+            // Suppress the foreground slot to verify the icon is independent of native overlay/theme rendering.
+            instrumentation.runOnMainSync { button.foreground = null }
+            val palette = io.github.lrq3000.utterlane.ui.theme.BlueHarmony.Light
+            for (enabled in listOf(false, true)) {
+                control.set(enabled)
+                awaitPanel { button.isChecked == enabled }
+                // The first callback precedes drawing; wait through that frame before reading the compositor.
+                val frame = CompletableDeferred<Unit>()
+                instrumentation.runOnMainSync { button.postOnAnimation { button.postOnAnimation { frame.complete(Unit) } } }
+                withTimeout(5000) { frame.await() }
+                val bounds = Rect()
+                instrumentation.runOnMainSync {
+                    val (x, y) = IntArray(2).also(button::getLocationOnScreen)
+                    bounds.set(x, y, x + button.width, y + button.height)
+                }
+                val expected = if (enabled) palette.primary.toArgb() else null
+                var visibleGlyphPixels = 0
+                val deadline = SystemClock.uptimeMillis() + 3000
+                do {
+                    instrumentation.waitForIdleSync()
+                    val screen = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+                    try {
+                        visibleGlyphPixels = glyphPixels(screen, bounds, expected)
+                    } finally { screen.recycle() }
+                    if (visibleGlyphPixels >= 5) break
+                    delay(50)
+                } while (SystemClock.uptimeMillis() < deadline)
+                assertTrue("Speaker glyph missing from the composited live panel (enabled=$enabled, glyphPixels=$visibleGlyphPixels)", visibleGlyphPixels >= 5)
+            }
+        } finally {
+            try { instrumentation.runOnMainSync { overlay.hide(); activity.finish() } }
+            finally {
+                scope.cancel()
+                settings.setThemeMode(previousTheme)
+                if (grantOverlay) appOp("set $overlayOp $priorOverlayMode")
+            }
+        }
+    }
+
+    private fun glyphPixels(image: Bitmap, bounds: Rect, color: Int?): Int {
+        // Inspect the central 24 dp glyph, excluding the outline of the larger 40 dp checked fill.
+        val inset = bounds.width() / 4
+        var count = 0
+        for (y in bounds.top + inset until bounds.bottom - inset) {
+            for (x in bounds.left + inset until bounds.right - inset) {
+                val pixel = image.getPixel(x, y)
+                if (color != null && pixel == color || color == null && Color.red(pixel) >= 190 &&
+                    Color.green(pixel) >= 190 && Color.blue(pixel) > Color.red(pixel) + 10) count++
+            }
+        }
+        return count
+    }
+
     @Test fun speakerSettingsShortcutExplicitlyFinishesBeforeItCanNavigate() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp
@@ -152,8 +247,9 @@ class CapturePanelAndroidTest {
                 panel = RecordingPanel(app, {}, {}).also { it.bind(scope, metrics.state, control) }
                 button = panel.findViewById(R.id.recording_speakers)
             }
-            fun renderedColor(drawable: android.graphics.drawable.Drawable, fractionX: Float, fractionY: Float): Int {
+            fun renderedBackground(fractionX: Float, fractionY: Float): Int {
                 val size = (48 * app.resources.displayMetrics.density).toInt()
+                val drawable = button.background
                 drawable.setBounds(0, 0, size, size)
                 val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
                 try {
@@ -168,19 +264,15 @@ class CapturePanelAndroidTest {
                 awaitPanel { !button.isChecked }
                 instrumentation.runOnMainSync {
                     assertEquals("Off must show the waveform gradient through the button",
-                        Color.TRANSPARENT, renderedColor(button.background, .5f, .5f))
-                    assertEquals("The speaker glyph must remain visible against the gradient while off",
-                        0xC7FFFFFF.toInt(), renderedColor(button.foreground, .69f, .62f))
+                        Color.TRANSPARENT, renderedBackground(.5f, .5f))
                 }
                 control.set(true)
-                awaitPanel { button.isChecked && renderedColor(button.background, .5f, .5f) == palette.container.toArgb() }
+                awaitPanel { button.isChecked && renderedBackground(.5f, .5f) == palette.container.toArgb() }
                 instrumentation.runOnMainSync {
                     assertEquals("The checked fill must be round, not squared off",
-                        Color.TRANSPARENT, renderedColor(button.background, .16f, .16f))
+                        Color.TRANSPARENT, renderedBackground(.16f, .16f))
                     assertEquals("Checked fill uses the same color as Home",
-                        palette.container.toArgb(), renderedColor(button.background, .5f, .23f))
-                    assertEquals("Checked glyph uses the same tint as Home",
-                        palette.primary.toArgb(), renderedColor(button.foreground, .69f, .62f))
+                        palette.container.toArgb(), renderedBackground(.5f, .23f))
                 }
             }
         } finally {
