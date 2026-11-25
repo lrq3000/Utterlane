@@ -17,8 +17,8 @@ import kotlinx.coroutines.launch
 object AppEntryServices {
     fun restore(context: Context) {
         val app = context.applicationContext as UtterlaneApp
-        app.modelManager.checkModelStatus()
-        app.diarizationModels.checkModelStatus()
+        app.modelManager.refreshModelStatus()
+        app.diarizationModels.refreshModelStatus()
         app.applicationScope.launch {
             try {
                 if (app.settingsRepository.serviceEnabled.first()) {

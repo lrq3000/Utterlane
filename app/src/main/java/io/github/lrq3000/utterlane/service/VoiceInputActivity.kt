@@ -16,6 +16,7 @@ import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.asr.MicrophoneSession
 import io.github.lrq3000.utterlane.ui.RecordingOverlay
+import io.github.lrq3000.utterlane.settings.speakerSettingsAction
 import kotlinx.coroutines.*
 
 /** Final-result voice-input contract with live preview and no ten-second recording cutoff. */
@@ -48,8 +49,9 @@ class VoiceInputActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
         microphoneSession = UtterlaneApp.instance.microphoneSessions.create(this, activityScope,
             onText = { delta, _ -> recordingOverlay?.setStatus(delta.takeLast(150)) },
             onComplete = { store, error ->
+                val openSettings = microphoneSession?.speakerControl?.speakerSettingsAction(this)
                 isRecording = false; microphoneSession = null
-                TranscriptFinalization.deliver(this, store) {
+                TranscriptFinalization.deliver(this, store, afterDelivery = openSettings) {
                     val text = withContext(Dispatchers.IO) { store?.readForTransfer() }
                     if (isFinishing || isDestroyed) return@deliver false
                     if (error != null) { fail(error.message); false }

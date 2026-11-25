@@ -1,5 +1,7 @@
 package io.github.lrq3000.utterlane.service
 
+import io.github.lrq3000.utterlane.settings.speakerSettingsAction
+
 import android.accessibilityservice.AccessibilityButtonController
 import android.accessibilityservice.AccessibilityService
 import android.os.Build
@@ -125,9 +127,10 @@ class TextInjectionService : AccessibilityService() {
         microphoneSession = UtterlaneApp.instance.microphoneSessions.create(this, serviceScope,
             onText = { delta, store -> target.accept(store); recordingOverlay?.setStatus(delta) },
             onComplete = { store, error ->
+                val openSettings = microphoneSession?.speakerControl?.speakerSettingsAction(this)
                 isRecording.set(false); microphoneSession = null
                 hideCapturePanel()
-                target.finish(store, preserve = error != null)
+                target.finish(store, preserve = error != null, afterDelivery = openSettings)
                 error?.let { showToast(it.message); store?.let { result -> TranscriptRecovery.show(this, result) } }
             }, onCaptureEnded = { isRecording.set(false) }, onWarning = { showToast(it) },
             onSessionClosed = { target.sessionClosed() })

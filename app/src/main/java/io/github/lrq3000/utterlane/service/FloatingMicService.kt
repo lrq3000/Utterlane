@@ -32,6 +32,7 @@ import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.asr.MicrophoneSession
 import io.github.lrq3000.utterlane.settings.SettingsActivity
+import io.github.lrq3000.utterlane.settings.speakerSettingsAction
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -347,9 +348,10 @@ class FloatingMicService : Service() {
         microphoneSession = UtterlaneApp.instance.microphoneSessions.create(this, serviceScope,
             onText = { delta, store -> target.accept(store); recordingOverlay?.setStatus(delta) },
             onComplete = { store, error ->
+                val openSettings = microphoneSession?.speakerControl?.speakerSettingsAction(this)
                 isRecording.set(false); microphoneSession = null; updateMicButtonState()
                 hideCapturePanel()
-                target.finish(store, preserve = error != null)
+                target.finish(store, preserve = error != null, afterDelivery = openSettings)
                 error?.let { showToast(it.message); store?.let { result -> TranscriptRecovery.show(this, result) } }
             }, onCaptureEnded = { isRecording.set(false); updateMicButtonState() }, onWarning = { showToast(it) },
             onSessionClosed = { target.sessionClosed() })

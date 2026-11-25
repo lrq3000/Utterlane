@@ -9,7 +9,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import io.github.lrq3000.utterlane.history.HistoryActivity
 import io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator
 import io.github.lrq3000.utterlane.history.HistoryRetention
-import io.github.lrq3000.utterlane.history.RecordingRecovery
 import io.github.lrq3000.utterlane.home.HomeActivity
 import io.github.lrq3000.utterlane.home.HomeDestination
 import io.github.lrq3000.utterlane.onboarding.OnboardingRepository
@@ -93,11 +92,12 @@ class HistoryNavigationAndroidTest {
                 textIds.add(app.transcriptHistory.save(source, "QA", pinned = true, attempt = "${source.name}-$index").id)
             }
             settings = instrumentation.startActivitySync(Intent(app, SettingsActivity::class.java)
-                .putExtra(RecordingRecovery.EXTRA_MODELS, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            ui.textNode(app.getString(R.string.model_choose)).recycle()
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+                .putExtra(io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             val onboarding = OnboardingRepository(app).progress.first()
             val launch = app.historyCleanup.launchToken
+            ui.scrollTo("settings_open_storage")
+            ui.click("settings_open_storage")
             ui.scrollTo("settings_audio_history")
             ui.click("settings_audio_history")
             history = historyMonitor.waitForActivityWithTimeout(8000)

@@ -16,6 +16,8 @@ import io.github.lrq3000.utterlane.asr.DiarizationModel
 import io.github.lrq3000.utterlane.asr.ModelCatalog
 import io.github.lrq3000.utterlane.asr.ModelDefinition
 import io.github.lrq3000.utterlane.asr.ModelManager
+import io.github.lrq3000.utterlane.asr.MicrophoneSession
+import io.github.lrq3000.utterlane.settings.speakerSettingsAction
 import io.github.lrq3000.utterlane.service.FloatingMicService
 import io.github.lrq3000.utterlane.service.TextInjectionService
 import io.github.lrq3000.utterlane.transcribe.AudioMonitorService
@@ -196,12 +198,14 @@ class AppOnboardingServices(private val app: UtterlaneApp) : OnboardingServices 
     }
 
     override fun voiceSession(scope: CoroutineScope, callbacks: OnboardingVoiceTrial.Callbacks): OnboardingTrialSession {
-        val session = app.microphoneSessions.create(app, scope,
+        lateinit var session: MicrophoneSession
+        session = app.microphoneSessions.create(app, scope,
             onText = { _, store -> callbacks.onText(store.preview()) },
             onComplete = { store, failure ->
                 store?.let { callbacks.onText(it.preview()) }
                 callbacks.onComplete(failure?.message)
                 store?.let { app.applicationScope.launch(Dispatchers.IO) { it.dispose() } }
+                session.speakerControl.speakerSettingsAction(app)?.invoke()
             },
             onCaptureEnded = callbacks.onCaptureEnded, onWarning = callbacks.onWarning,
             onReady = callbacks.onReady, onSessionClosed = callbacks.onClosed)

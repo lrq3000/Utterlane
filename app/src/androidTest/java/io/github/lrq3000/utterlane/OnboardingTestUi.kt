@@ -27,9 +27,26 @@ internal class OnboardingTestUi {
         }
 
     fun node(id: String): AccessibilityNodeInfo = awaitNode(id) { it.viewIdResourceName == id }
+    fun hasNode(id: String): Boolean {
+        var found = false
+        roots().forEach { root ->
+            val match = if (found) null else find(root) { it.viewIdResourceName == id }
+            if (match != null) found = true
+            @Suppress("DEPRECATION") match?.recycle()
+            @Suppress("DEPRECATION") root.recycle()
+        }
+        return found
+    }
+
     fun scrollTo(id: String, backwards: Boolean = false) {
         val action = if (backwards) AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
         val node = awaitNode(id, timeout = 40_000, scrollAction = action) { it.viewIdResourceName == id && it.isVisibleToUser }
+        @Suppress("DEPRECATION") node.recycle()
+    }
+    fun scrollToText(text: String) {
+        val node = awaitNode(text, scrollAction = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) {
+            it.isVisibleToUser && it.text?.toString() == text
+        }
         @Suppress("DEPRECATION") node.recycle()
     }
     fun textNode(text: String): AccessibilityNodeInfo = awaitNode(text, 150_000) { it.text?.toString() == text }

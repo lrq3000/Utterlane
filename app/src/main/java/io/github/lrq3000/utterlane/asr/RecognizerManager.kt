@@ -254,19 +254,19 @@ class RecognizerManager(
         createSessionWithOptions(options, onProcessed, onSegment)
 
     suspend fun createSession(options: RuntimeOptions, onProcessed: (Long, Long) -> Unit,
-        speakerOverride: Boolean?, onSpeakerUnavailable: () -> Unit,
+        speakerOverride: Boolean?, onSpeakerUnavailable: (SpeakerWarning) -> Unit,
         onSegment: suspend (String) -> Unit = {}): TranscriptionSession =
         createSessionWithOptions(options, onProcessed, onSegment, speakerOverride, onSpeakerUnavailable)
 
     internal suspend fun createLiveSession(options: RuntimeOptions, speakerControl: LiveSpeakerControl,
-        onProcessed: (Long, Long) -> Unit, onSpeakerUnavailable: () -> Unit,
+        onProcessed: (Long, Long) -> Unit, onSpeakerUnavailable: (SpeakerWarning) -> Unit,
         onSegment: suspend (String) -> Unit): TranscriptionSession =
         createSessionWithOptions(options, onProcessed, onSegment, onSpeakerUnavailable = onSpeakerUnavailable,
             liveSpeakers = speakerControl)
 
     private suspend fun createSessionWithOptions(providedOptions: RuntimeOptions?, onProcessed: (Long, Long) -> Unit,
         onSegment: suspend (String) -> Unit, speakerOverride: Boolean? = null,
-        onSpeakerUnavailable: (() -> Unit)? = null, liveSpeakers: LiveSpeakerControl? = null): TranscriptionSession = withModelOperation { expected ->
+        onSpeakerUnavailable: ((SpeakerWarning) -> Unit)? = null, liveSpeakers: LiveSpeakerControl? = null): TranscriptionSession = withModelOperation { expected ->
         val owner = currentCoroutineContext()[Job]
         var created: TranscriptionSession? = null
         try {
@@ -288,7 +288,7 @@ class RecognizerManager(
                         catch (e: Exception) { Log.w(TAG, "Unable to verify the speaker model", e); false }
                         if (!ready) {
                             liveSpeakers?.unavailable()
-                            checkNotNull(onSpeakerUnavailable) { context.getString(R.string.diarization_install_first) }.invoke()
+                            checkNotNull(onSpeakerUnavailable) { context.getString(R.string.diarization_install_first) }.invoke(SpeakerWarning.MODEL_NEEDED)
                         }
                         return ready
                     }
@@ -332,7 +332,7 @@ class RecognizerManager(
                         finishSpeakers = if (hasSpeakerDecoder) { { withSessionBackend(expected, id, options) { it.finishSpeakers(id, options) } } } else null,
                         speakerRequested = liveSpeakers?.let { { it.resolve(false) } },
                         speakerStart = ::speakersAvailable,
-                        onSpeakersBypassed = { liveSpeakers?.unavailable(); onSpeakerUnavailable?.invoke() }
+                        onSpeakersBypassed = { liveSpeakers?.unavailable(); onSpeakerUnavailable?.invoke(SpeakerWarning.PROCESSING_FAILED) }
                     ).also { created = it }
                 }
             }

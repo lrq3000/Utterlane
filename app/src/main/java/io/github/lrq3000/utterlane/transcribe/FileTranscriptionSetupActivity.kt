@@ -25,8 +25,10 @@ import androidx.core.content.IntentCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
+import io.github.lrq3000.utterlane.asr.ModelManager
 import io.github.lrq3000.utterlane.settings.LocalizedActivity
 import io.github.lrq3000.utterlane.settings.SettingsRepository
+import io.github.lrq3000.utterlane.settings.SpeakerModelNotice
 import io.github.lrq3000.utterlane.ui.theme.UtterlaneTheme
 
 /** File-only entry point. No source is copied or processed until confirmation. */
@@ -65,7 +67,7 @@ class FileTranscriptionSetupActivity : LocalizedActivity() {
             }
             val count by app.settingsRepository.speakerCount.collectAsStateWithLifecycle(0)
             val modelState by app.diarizationModels.downloadState.collectAsStateWithLifecycle()
-            val available = remember(modelState, count) { count == 1 || app.diarizationModels.isModelReady() }
+            val available = count == 1 || modelState == ModelManager.DownloadState.Ready
             var labels by rememberSaveable { mutableStateOf(FileTranscriptionOptions().speakerLabels) }
             UtterlaneTheme(dark) {
                 Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface,
@@ -86,8 +88,7 @@ class FileTranscriptionSetupActivity : LocalizedActivity() {
                                 Switch(labels, { labels = it }, modifier = Modifier.testTag("file_setup_speakers")
                                     .semantics { contentDescription = label })
                             }
-                            if (labels && !available) Text(stringResource(R.string.file_speakers_unavailable),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                            if (labels && !available) SpeakerModelNotice()
                         }
                         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                             TextButton(::finish, Modifier.testTag("file_setup_cancel")) { Text(stringResource(R.string.action_cancel)) }

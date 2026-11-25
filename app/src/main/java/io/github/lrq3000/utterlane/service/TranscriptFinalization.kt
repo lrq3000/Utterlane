@@ -12,7 +12,7 @@ import kotlinx.coroutines.withContext
 
 /** Final-result ownership outlives an activity/service destroyed during delivery. */
 object TranscriptFinalization {
-    fun deliver(context: Context, store: TranscriptStore?, send: suspend () -> Boolean) {
+    fun deliver(context: Context, store: TranscriptStore?, afterDelivery: (() -> Unit)? = null, send: suspend () -> Boolean) {
         UtterlaneApp.instance.applicationScope.launch {
             val power = io.github.lrq3000.utterlane.asr.TranscriptionPower(context)
             var delivered = false
@@ -30,6 +30,7 @@ object TranscriptFinalization {
                     }
                 } } finally { power.close() }
             }
+            afterDelivery?.invoke()
         }
     }
 }

@@ -5,4 +5,5 @@
     <item name="recording_status" type="id" />
     <item name="recording_input" type="id" />
     <item name="recording_input_warning" type="id" />
+    <item name="recording_speaker_settings" type="id" />
 </resources>

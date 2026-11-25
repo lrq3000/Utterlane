@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -35,13 +36,7 @@ fun DiarizationSettings(onPickFolder: ((Uri) -> Unit) -> Unit) {
             catch (e: Exception) { error = e.message }
         }
     }
-    SettingsSection(stringResource(R.string.diarization_title)) {
-        SwitchSettingItem(stringResource(R.string.diarization_enable), stringResource(R.string.diarization_description),
-            Icons.Default.RecordVoiceOver, enabled, onCheckedChange = { run { repository.setDiarizationEnabled(it) } })
-        ListItem(modifier = Modifier.clickable { chooseCount = true }, headlineContent = { Text(stringResource(R.string.diarization_count)) },
-            supportingContent = { Text(if (count == 0) stringResource(R.string.diarization_auto) else count.toString()) },
-            trailingContent = { TextButton(onClick = { chooseCount = true }) { Text(stringResource(R.string.history_change)) } })
-        Text(stringResource(R.string.diarization_count_help), Modifier.padding(horizontal = 16.dp))
+    SettingsSection(stringResource(R.string.speaker_model_heading)) {
         Text(stringResource(R.string.diarization_model_info), Modifier.padding(16.dp))
         when (val current = state) {
             is ModelManager.DownloadState.Downloading, is ModelManager.DownloadState.Copying -> {
@@ -55,13 +50,25 @@ fun DiarizationSettings(onPickFolder: ((Uri) -> Unit) -> Unit) {
             }
             else -> {
                 Row(Modifier.padding(horizontal = 16.dp)) {
-                    TextButton(onClick = { run { models.downloadModel() } }) { Text(stringResource(R.string.action_download)) }
-                    TextButton(onClick = { onPickFolder { uri -> run { models.importFromFolder(uri) } } }) { Text(stringResource(R.string.action_load_local)) }
+                    TextButton(onClick = { run { models.downloadModel() } }, Modifier.testTag("speaker_model_download")) {
+                        Text(stringResource(R.string.action_download))
+                    }
+                    TextButton(onClick = { onPickFolder { uri -> run { models.importFromFolder(uri) } } }, Modifier.testTag("speaker_model_import")) {
+                        Text(stringResource(R.string.action_load_local))
+                    }
                 }
                 if (current is ModelManager.DownloadState.Error) Text(current.details ?: stringResource(R.string.model_error_checksum), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
             }
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
+    }
+    SettingsSection(stringResource(R.string.diarization_title)) {
+        SwitchSettingItem(stringResource(R.string.diarization_enable), stringResource(R.string.diarization_description),
+            Icons.Default.RecordVoiceOver, enabled, onCheckedChange = { run { repository.setDiarizationEnabled(it) } })
+        ListItem(modifier = Modifier.clickable { chooseCount = true }, headlineContent = { Text(stringResource(R.string.diarization_count)) },
+            supportingContent = { Text(if (count == 0) stringResource(R.string.diarization_auto) else count.toString()) },
+            trailingContent = { TextButton(onClick = { chooseCount = true }) { Text(stringResource(R.string.history_change)) } })
+        Text(stringResource(R.string.diarization_count_help), Modifier.padding(horizontal = 16.dp))
     }
     if (chooseCount) AlertDialog(onDismissRequest = { chooseCount = false }, title = { Text(stringResource(R.string.diarization_count)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) { (0..8).forEach { value ->

@@ -23,7 +23,8 @@ data class CaptureSnapshot(
     val modelPreparing: Boolean = false,
     val recognitionFailure: String? = null,
     val recognition: RecognitionStatus = RecognitionStatus.from(RecognitionActivity()),
-    val input: io.github.lrq3000.utterlane.audio.CaptureInputState = io.github.lrq3000.utterlane.audio.CaptureInputState()
+    val input: io.github.lrq3000.utterlane.audio.CaptureInputState = io.github.lrq3000.utterlane.audio.CaptureInputState(),
+    val speakerModelNeeded: Boolean = false
 ) {
     val capturedSeconds: Double get() = capturedSamples.coerceAtLeast(0) / 16000.0
     val processedSeconds: Double get() = processedSamples.coerceIn(0, capturedSamples.coerceAtLeast(0)) / 16000.0
@@ -67,6 +68,11 @@ class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 10000
     @Synchronized fun preparing(value: Boolean) { pending = pending.copy(modelPreparing = value); publish(true) }
     @Synchronized fun recognitionFailed(message: String) {
         pending = pending.copy(modelPreparing = false, recognitionFailure = message)
+        publish(true)
+    }
+    @Synchronized fun speakerModelNeeded(needed: Boolean = true) {
+        if (pending.speakerModelNeeded == needed || terminal()) return
+        pending = pending.copy(speakerModelNeeded = needed)
         publish(true)
     }
     @Synchronized fun recognition(activity: RecognitionActivity) {
