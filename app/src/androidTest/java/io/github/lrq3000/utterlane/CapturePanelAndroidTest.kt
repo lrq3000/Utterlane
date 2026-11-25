@@ -68,7 +68,8 @@ class CapturePanelAndroidTest {
             awaitPanel { button.isShown && button.width > 0 }
             // The label is part of this control's content, not an optional foreground decoration.
             // Suppress the foreground slot to verify the icon is independent of native overlay/theme rendering.
-            instrumentation.runOnMainSync { button.foreground = null }
+            if (InstrumentationRegistry.getArguments().getString("speakerVisualEvidence") != "true")
+                instrumentation.runOnMainSync { button.foreground = null }
             val palette = io.github.lrq3000.utterlane.ui.theme.BlueHarmony.Light
             for (enabled in listOf(false, true)) {
                 control.set(enabled)
@@ -83,18 +84,26 @@ class CapturePanelAndroidTest {
                     bounds.set(x, y, x + button.width, y + button.height)
                 }
                 val expected = if (enabled) palette.primary.toArgb() else null
-                var visibleGlyphPixels = 0
+                saveSpeakerCrop("dialog-$enabled", bounds)
+                var similarity: Double
+                // A few matching pixels can be a clipped or displaced icon. Compare the complete centered silhouette instead.
+                val glyphMask = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888)
+                val reference = requireNotNull(activity.getDrawable(R.drawable.ic_speaker_conversation)).mutate()
+                val left = (glyphMask.width - reference.intrinsicWidth) / 2
+                val top = (glyphMask.height - reference.intrinsicHeight) / 2
+                reference.setBounds(left, top, left + reference.intrinsicWidth, top + reference.intrinsicHeight)
+                reference.draw(android.graphics.Canvas(glyphMask))
                 val deadline = SystemClock.uptimeMillis() + 3000
-                do {
-                    instrumentation.waitForIdleSync()
-                    val screen = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
-                    try {
-                        visibleGlyphPixels = glyphPixels(screen, bounds, expected)
-                    } finally { screen.recycle() }
-                    if (visibleGlyphPixels >= 5) break
-                    delay(50)
-                } while (SystemClock.uptimeMillis() < deadline)
-                assertTrue("Speaker glyph missing from the composited live panel (enabled=$enabled, glyphPixels=$visibleGlyphPixels)", visibleGlyphPixels >= 5)
+                try {
+                    do {
+                        instrumentation.waitForIdleSync()
+                        val screen = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+                        try { similarity = glyphOverlap(screen, bounds, glyphMask, expected) } finally { screen.recycle() }
+                        if (similarity >= .85) break
+                        delay(50)
+                    } while (SystemClock.uptimeMillis() < deadline)
+                    assertTrue("Live speaker glyph is missing, clipped or misplaced (enabled=$enabled, overlap=$similarity)", similarity >= .85)
+                } finally { glyphMask.recycle() }
             }
         } finally {
             try { instrumentation.runOnMainSync { overlay.hide(); activity.finish() } }
@@ -106,18 +115,20 @@ class CapturePanelAndroidTest {
         }
     }
 
-    private fun glyphPixels(image: Bitmap, bounds: Rect, color: Int?): Int {
-        // Inspect the central 24 dp glyph, excluding the outline of the larger 40 dp checked fill.
-        val inset = bounds.width() / 4
-        var count = 0
-        for (y in bounds.top + inset until bounds.bottom - inset) {
-            for (x in bounds.left + inset until bounds.right - inset) {
-                val pixel = image.getPixel(x, y)
-                if (color != null && pixel == color || color == null && Color.red(pixel) >= 190 &&
-                    Color.green(pixel) >= 190 && Color.blue(pixel) > Color.red(pixel) + 10) count++
-            }
+    private fun glyphOverlap(image: Bitmap, bounds: Rect, mask: Bitmap, checkedColor: Int?): Double {
+        var union = 0
+        var intersection = 0
+        // Inside the checked fill or the unchecked gradient: neither is the foreground color.
+        val margin = bounds.width() / 4
+        for (y in margin until mask.height - margin) for (x in margin until mask.width - margin) {
+            val pixel = image.getPixel(x + bounds.left, y + bounds.top)
+            val visible = if (checkedColor == null) Color.red(pixel) > 110 else
+                kotlin.math.abs(Color.red(pixel) - Color.red(checkedColor)) < 100
+            val expected = Color.alpha(mask.getPixel(x, y)) >= 128
+            if (visible || expected) union++
+            if (visible && expected) intersection++
         }
-        return count
+        return if (union == 0) 0.0 else intersection.toDouble() / union
     }
 
     @Test fun speakerSettingsShortcutExplicitlyFinishesBeforeItCanNavigate() = runBlocking {

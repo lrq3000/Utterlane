@@ -39,9 +39,20 @@ class LiveSpeakerControlAndroidTest {
             ui.node("home_screen").recycle()
             instrumentation.runOnMainSync { app.homeController.record() }
             withTimeout(10000) { app.homeController.state.first { it.liveSpeakers == false && it.capture.active } }
+            fun visual(checked: Boolean) {
+                if (InstrumentationRegistry.getArguments().getString("speakerVisualEvidence") != "true") return
+                ui.scrollTo("home_live_speakers")
+                ui.awaitChecked("home_live_speakers", checked)
+                val node = ui.node("home_live_speakers")
+                val bounds = android.graphics.Rect()
+                try { node.getBoundsInScreen(bounds) } finally { node.recycle() }
+                saveSpeakerCrop("home-$checked", bounds)
+            }
+            visual(false)
             ui.click("home_live_speakers")
             val on = withTimeout(10000) { app.homeController.state.first { it.liveSpeakers == true } }
             assertEquals("RECORDING", on.capture.phase.name)
+            visual(true)
             ui.click("home_live_speakers")
             val off = withTimeout(10000) { app.homeController.state.first { it.liveSpeakers == false } }
             assertEquals("RECORDING", off.capture.phase.name)
