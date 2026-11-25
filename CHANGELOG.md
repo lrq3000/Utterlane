@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.2.4] - 2026-11-25
+
+### Fixed
+- The live recording panel now uses the same round speaker toggle as Home, inside the waveform's top corner. The two-person icon is drawn directly by the live button, so it stays visible without relying on the dialog theme's foreground layer. The panel stays the same height, and tapping the toggle does not stop recording.
+- Waveform bars no longer cover the finish label when it wraps at larger text sizes.
+
 ## [2.2.3] - 2026-11-25
 
 ### Changed

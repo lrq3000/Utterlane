@@ -1,0 +1,1 @@
+The live recording panel now matches Home: the two-person speaker icon appears inside the waveform without making the panel taller. Tapping it does not stop recording. The finish label remains clear at larger text sizes.
