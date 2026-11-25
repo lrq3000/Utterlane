@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.2.5] - 2026-11-25
+
+### Fixed
+- The voice keyboard now shows the two-person icon whether speaker labels are on or off. On affected phones the toggle worked, but its icon was invisible.
+
 ## [2.2.4] - 2026-11-25
 
 ### Fixed
