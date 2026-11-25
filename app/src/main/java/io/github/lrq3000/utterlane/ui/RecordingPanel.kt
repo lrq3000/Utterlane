@@ -4,9 +4,12 @@ import android.content.Context
 import android.content.res.Configuration
 import android.content.res.ColorStateList
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.RippleDrawable
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -53,11 +56,9 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
     private var speakerControl: LiveSpeakerControl? = null
     private val speakers = ToggleButton(context).apply {
         id = R.id.recording_speakers
-        textOn = context.getString(R.string.live_speakers_on)
-        textOff = context.getString(R.string.live_speakers_off)
-        text = textOff
+        textOn = ""; textOff = ""; text = ""
         contentDescription = context.getString(R.string.home_speakers)
-        isAllCaps = false
+        tooltipText = context.getString(R.string.live_speakers_tooltip)
         setOnClickListener { speakerControl?.set(isChecked) }
     }
     private val processing = LinearLayout(context).apply { orientation = VERTICAL; gravity = Gravity.CENTER }
@@ -74,16 +75,23 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
 
     init {
         orientation = VERTICAL
-        setPadding(dp(20), dp(16), dp(20), dp(12))
+        setPadding(dp(20), 0, dp(20), dp(12))
         background = GradientDrawable().apply {
             setColor(initialPalette.surface.toArgb())
             cornerRadii = floatArrayOf(dp(26).toFloat(), dp(26).toFloat(), dp(26).toFloat(), dp(26).toFloat(), 0f, 0f, 0f, 0f)
         }
         elevation = dp(12).toFloat()
-        addView(title); addView(details); addView(recognition); addView(signal)
-        addView(input); addView(inputWarning)
+        // Reuse the existing header and its top padding for the touch target, not a new row below the waveform.
+        addView(FrameLayout(context).apply {
+            addView(LinearLayout(context).apply {
+                orientation = VERTICAL
+                setPadding(0, dp(16), 0, 0)
+                addView(title); addView(details); addView(recognition); addView(signal)
+                addView(input); addView(inputWarning)
+            }, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+            addView(speakers, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.END).apply { topMargin = dp(4) })
+        }, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         addView(waveform, LayoutParams(LayoutParams.MATCH_PARENT, dp(136)).apply { topMargin = dp(12) })
-        addView(speakers, LayoutParams(LayoutParams.WRAP_CONTENT, dp(48)).apply { gravity = Gravity.END })
         processing.addView(percent)
         processing.addView(bar, LayoutParams(LayoutParams.MATCH_PARENT, dp(16)).apply { topMargin = dp(16) })
         addView(processing, LayoutParams(LayoutParams.MATCH_PARENT, dp(136)).apply { topMargin = dp(12) })
@@ -147,8 +155,17 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         cancelButton.background = NativeBrandStyle.tonalButton(palette, dp(12).toFloat())
         cancelButton.setTextColor(palette.onContainer.toArgb())
         speakers.backgroundTintList = null
-        speakers.background = NativeBrandStyle.tonalButton(palette, dp(12).toFloat())
-        speakers.setTextColor(palette.onContainer.toArgb())
+        val checkedStates = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+        val fill = GradientDrawable().apply {
+            cornerRadius = dp(10).toFloat()
+            color = ColorStateList(checkedStates, intArrayOf(palette.primary.toArgb(), palette.outlineVariant.toArgb()))
+        }
+        speakers.background = RippleDrawable(ColorStateList.valueOf(palette.text.copy(alpha = .18f).toArgb()),
+            InsetDrawable(fill, dp(5)), null)
+        val icon = requireNotNull(context.getDrawable(R.drawable.ic_speaker_conversation)).mutate().apply {
+            setTintList(ColorStateList(checkedStates, intArrayOf(palette.onPrimary.toArgb(), palette.text.toArgb())))
+        }
+        speakers.foreground = InsetDrawable(icon, dp(12))
         waveform.applyPalette(palette)
     }
 
@@ -162,7 +179,10 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         val capturing = snapshot.phase == CapturePhase.CAPTURING
         waveform.visibility = if (capturing) View.VISIBLE else View.GONE
         waveform.isEnabled = capturing
-        speakers.visibility = if (capturing && speakerControl != null) View.VISIBLE else View.GONE
+        val showSpeakers = capturing && speakerControl != null
+        speakers.visibility = if (showSpeakers) View.VISIBLE else View.GONE
+        val titleGutter = if (showSpeakers) dp(48) else 0
+        if (title.paddingLeft != titleGutter) title.setPadding(titleGutter, 0, titleGutter, 0)
         processing.visibility = if (capturing) View.GONE else View.VISIBLE
         waveform.levels = snapshot.waveform
         title.text = context.getString(when (snapshot.phase) {

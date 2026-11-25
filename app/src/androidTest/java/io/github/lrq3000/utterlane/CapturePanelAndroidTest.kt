@@ -18,6 +18,85 @@ import androidx.compose.ui.graphics.toArgb
 
 @RunWith(AndroidJUnit4::class)
 class CapturePanelAndroidTest {
+    @Test fun speakerToggleFitsTheListeningHeaderWithoutIncreasingPanelHeight() = runBlocking {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val app = instrumentation.targetContext.applicationContext as UtterlaneApp
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        val metrics = CaptureMetrics().apply { started() }
+        val control = io.github.lrq3000.utterlane.asr.LiveSpeakerControl()
+        lateinit var without: RecordingPanel
+        lateinit var with: RecordingPanel
+        try {
+            instrumentation.runOnMainSync {
+                without = RecordingPanel(app, {}, {}).also { it.bind(scope, metrics.state) }
+                with = RecordingPanel(app, {}, {}).also { it.bind(scope, metrics.state, control) }
+            }
+            awaitPanel { with.findViewById<View>(R.id.recording_speakers).visibility == View.VISIBLE &&
+                without.findViewById<View>(R.id.recording_done).visibility == View.VISIBLE }
+            instrumentation.runOnMainSync {
+                val width = (360 * app.resources.displayMetrics.density).toInt()
+                for (panel in listOf(without, with)) {
+                    panel.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                        View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                    panel.layout(0, 0, width, panel.measuredHeight)
+                }
+                assertEquals("Speaker control must not add height", without.height, with.height)
+                val button = with.findViewById<android.widget.ToggleButton>(R.id.recording_speakers)
+                val finish = with.findViewById<View>(R.id.recording_done)
+                val buttonBounds = android.graphics.Rect(0, 0, button.width, button.height)
+                with.offsetDescendantRectToMyCoords(button, buttonBounds)
+                assertTrue("Control belongs above the waveform", buttonBounds.bottom <= finish.top)
+                assertTrue(button.tooltipText?.isNotBlank() == true)
+                assertTrue("The icon must not carry a visible text label", button.text.isNullOrEmpty())
+                assertTrue(button.performClick())
+                assertEquals(true, control.state.value)
+            }
+        } finally {
+            instrumentation.runOnMainSync { without.release(); with.release() }
+            scope.cancel()
+        }
+    }
+
+    @Test fun speakerToggleUsesNeutralAndSelectedColorsInBothThemes() = runBlocking {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val app = instrumentation.targetContext.applicationContext as UtterlaneApp
+        val settings = app.settingsRepository
+        val previous = settings.themeMode.first()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        val metrics = CaptureMetrics().apply { started() }
+        val control = io.github.lrq3000.utterlane.asr.LiveSpeakerControl()
+        lateinit var panel: RecordingPanel
+        lateinit var button: android.widget.ToggleButton
+        try {
+            instrumentation.runOnMainSync {
+                panel = RecordingPanel(app, {}, {}).also { it.bind(scope, metrics.state, control) }
+                button = panel.findViewById(R.id.recording_speakers)
+            }
+            fun color(): Int {
+                val size = (48 * app.resources.displayMetrics.density).toInt()
+                val drawable = button.background
+                drawable.setBounds(0, 0, size, size)
+                val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+                try {
+                    drawable.draw(android.graphics.Canvas(bitmap))
+                    return bitmap.getPixel(size / 2, size / 2)
+                } finally { bitmap.recycle() }
+            }
+            for (dark in listOf(false, true)) {
+                settings.setThemeMode(if (dark) "dark" else "light")
+                val palette = io.github.lrq3000.utterlane.ui.theme.BlueHarmony.palette(dark)
+                control.set(false)
+                awaitPanel { !button.isChecked && color() == palette.outlineVariant.toArgb() }
+                control.set(true)
+                awaitPanel { button.isChecked && color() == palette.primary.toArgb() }
+            }
+        } finally {
+            instrumentation.runOnMainSync { panel.release() }
+            scope.cancel()
+            settings.setThemeMode(previous)
+        }
+    }
+
     @Test fun actualInputAndRedWarningSurvivePanelRecreationWithStatisticsOff() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp

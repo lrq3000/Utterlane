@@ -170,10 +170,14 @@ class OnboardingControllerAndroidTest {
                 services.voice!!.callbacks.onText("Recognized during capture. Final words.")
                 services.voice!!.callbacks.onComplete(null)
             }
-            ui.scrollTo("onboarding_transcript", backwards = true)
-            instrumentation.runOnMainSync {
-                assertNull(activity.findViewById<View>(R.id.recording_done))
+            withTimeout(5000) {
+                var removed = false
+                while (!removed) {
+                    instrumentation.runOnMainSync { removed = activity.findViewById<View>(R.id.recording_done) == null }
+                    if (!removed) delay(20)
+                }
             }
+            ui.scrollTo("onboarding_transcript", backwards = true)
             val result = ui.node("onboarding_transcript")
             try {
                 assertEquals("Typed before dictation. Recognized during capture. Final words.", result.text.toString())

@@ -474,6 +474,7 @@
     <string name="home_speakers_global">Default for live recordings</string>
     <string name="live_speakers_on">Speakers: on</string>
     <string name="live_speakers_off">Speakers: off</string>
+    <string name="live_speakers_tooltip">Add speaker labels (diarization) to upcoming speech</string>
     <string name="live_speakers_unavailable">Speaker labels are unavailable. Recording and transcription can continue without them.</string>
     <string name="home_speaker_setup">Set up speaker labels</string>
     <string name="home_model_missing">You can record now. Choose or install a speech model to transcribe your audio.</string>
