@@ -31,7 +31,7 @@ data class TranscriptionDialogState(
     val deletion: DialogDeletionRequest? = null, val checkingDeletion: Boolean = false,
     val deleting: Boolean = false, val finished: Boolean = false,
     val exitRequest: DialogExitRequest? = null, val checkingExit: Boolean = false, val exited: Boolean = false,
-    val audioExporting: Boolean = false, val speakerWarning: String? = null,
+    val audioExporting: Boolean = false, val speakerWarning: SpeakerWarning? = null,
     val completion: TranscriptCompletion = TranscriptCompletion.UNKNOWN
 ) {
     val partial: Boolean get() = !running && transcriptBytes > 0 && completion == TranscriptCompletion.INCOMPLETE
@@ -284,8 +284,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                             }
                         }
                         session = app.recognizerManager.createSession(options, onProcessed = metrics::processed,
-                            speakerOverride = input.fileOptions?.speakerLabels ?: source.fileSpeakerLabels, onSpeakerUnavailable = {
-                                mutable.update { it.copy(speakerWarning = app.getString(R.string.file_speakers_unavailable)) }
+                             speakerOverride = input.fileOptions?.speakerLabels ?: source.fileSpeakerLabels, onSpeakerUnavailable = { warning ->
+                                 mutable.update { it.copy(speakerWarning = warning) }
                             }) {
                             val current = checkNotNull(session)
                             // A checkpoint taken while processing must describe

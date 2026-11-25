@@ -25,7 +25,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
+import io.github.lrq3000.utterlane.asr.SpeakerWarning
 import io.github.lrq3000.utterlane.history.RecordingRecovery
+import io.github.lrq3000.utterlane.settings.SpeakerModelNotice
 
 /** D: infrequent audio actions above the document, common text actions by the
  * user's thumbs. The reader alone consumes the remaining height and scrolls. */
@@ -113,8 +115,13 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                             state.audio!!.temporary -> R.string.dialog_temporary_info
                             else -> R.string.dialog_audio_saved
                         }), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        state.speakerWarning?.let { Text(it, style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error) }
+                        when (state.speakerWarning) {
+                            SpeakerWarning.MODEL_NEEDED -> SpeakerModelNotice()
+                            SpeakerWarning.PROCESSING_FAILED -> Text(
+                                stringResource(R.string.speaker_file_processing_failed), style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error)
+                            null -> Unit
+                        }
                         if (state.partial) Text(stringResource(R.string.transcript_partial),
                             style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.testTag("transcript_partial"))

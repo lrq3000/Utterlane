@@ -139,6 +139,14 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
         val file = File(directory(model), it.localName); file.isFile && file.length() == it.bytes
     }
     fun checkModelStatus() { _downloadState.value = if (isModelReady()) DownloadState.Ready else DownloadState.NotStarted }
+
+    /** An entry-point resume cannot overwrite a transfer or turn rejected weights into Ready using sizes alone. */
+    fun refreshModelStatus() {
+        if (!operation.tryLock()) return
+        try {
+            if (_downloadState.value !is DownloadState.Error) checkModelStatus()
+        } finally { operation.unlock() }
+    }
     suspend fun ensureVerified(): Boolean = withContext(Dispatchers.IO) {
         initializeSelection()
         if (!isModelReady()) return@withContext false

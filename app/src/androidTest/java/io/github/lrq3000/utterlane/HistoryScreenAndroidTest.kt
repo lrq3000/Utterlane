@@ -7,7 +7,7 @@ import android.util.TypedValue
 import android.view.KeyEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.github.lrq3000.utterlane.history.RecordingRecovery
+import io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator
 import io.github.lrq3000.utterlane.history.HistoryActivity
 import io.github.lrq3000.utterlane.history.HistoryRetention
 import io.github.lrq3000.utterlane.settings.SettingsActivity
@@ -129,6 +129,8 @@ class HistoryScreenAndroidTest {
         try {
             val title = app.getString(if (transcripts) R.string.transcript_history_title else R.string.history_title)
             val link = if (transcripts) "settings_transcript_history" else "settings_audio_history"
+            ui.scrollTo("settings_open_storage")
+            ui.click("settings_open_storage")
             ui.scrollTo(link)
             ui.click(link)
             history = monitor.waitForActivityWithTimeout(5000)
@@ -163,10 +165,8 @@ class HistoryScreenAndroidTest {
     private fun openSettings(): Activity {
         // An explicit existing entry avoids changing the user's onboarding state.
         val activity = instrumentation.startActivitySync(Intent(app, SettingsActivity::class.java)
-            .putExtra(RecordingRecovery.EXTRA_MODELS, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        ui.textNode(app.getString(R.string.model_choose)).recycle()
-        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-        instrumentation.waitForIdleSync()
+            .putExtra(HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        ui.node("settings_page_root").recycle()
         return activity
     }
 }

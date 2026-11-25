@@ -71,6 +71,36 @@ class RecordingFirstAndroidTest {
         }
     }
 
+    @Test fun missingSpeakerModelIsReportedBeforeCaptureStops() = runBlocking {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as UtterlaneApp
+        assertFalse(app.diarizationModels.isModelReady())
+        val settings = app.settingsRepository
+        val count = settings.speakerCount.first()
+        val default = settings.diarizationEnabled.first()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        val closed = CompletableDeferred<Unit>()
+        val source = CountingCapture()
+        val session = MicrophoneSession(app, scope, onText = { _, _ -> }, onComplete = { _, _ -> },
+            recorder = source, onSessionClosed = { closed.complete(Unit) })
+        try {
+            settings.setSpeakerCount(0)
+            settings.setDiarizationEnabled(false)
+            session.start()
+            assertTrue(source.sent.await(5, TimeUnit.SECONDS))
+            assertFalse(session.metrics.state.value.speakerModelNeeded)
+            session.speakerControl.set(true)
+            val warning = withTimeout(5000) { session.metrics.state.first { it.speakerModelNeeded } }
+            assertEquals(CapturePhase.CAPTURING, warning.phase)
+            assertFalse(app.diarizationModels.isTransferring)
+        } finally {
+            session.cancel()
+            withTimeoutOrNull(10000) { closed.await() }
+            scope.cancel()
+            settings.setSpeakerCount(count)
+            settings.setDiarizationEnabled(default)
+        }
+    }
+
     @Test fun preparationAndFailureRemainVisibleWhileRecordingWithStatisticsOff() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp

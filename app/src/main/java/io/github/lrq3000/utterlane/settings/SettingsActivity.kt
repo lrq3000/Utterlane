@@ -4,6 +4,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 
 import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -13,7 +16,7 @@ import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
-import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -60,15 +63,43 @@ import io.github.lrq3000.utterlane.ui.BrandHeader
 import io.github.lrq3000.utterlane.ui.BrandSection
 import io.github.lrq3000.utterlane.onboarding.OnboardingActivity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.semantics.testTagsAsResourceId
+import io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator
+import io.github.lrq3000.utterlane.history.RecordingRecovery
 import io.github.lrq3000.utterlane.home.HomeActivity
 import io.github.lrq3000.utterlane.home.HomeNavigationBar
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class SettingsActivity : LocalizedActivity() {
+    companion object {
+        private const val SPEAKER_SETTINGS = "io.github.lrq3000.utterlane.SPEAKER_SETTINGS"
+        private const val STATE_PAGE = "settings_page"
+        private const val STATE_DIRECT_ENTRY = "settings_direct_entry"
+
+        fun speakerSettingsIntent(context: Context): Intent = Intent(context, SettingsActivity::class.java)
+            .setAction(SPEAKER_SETTINGS).putExtra(HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true)
+
+        fun openSpeakerSettings(context: Context) {
+            val activity = activityFor(context)?.takeUnless { it.isFinishing || it.isDestroyed }
+            val target = speakerSettingsIntent(context)
+            if (activity == null) target.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try { (activity ?: context).startActivity(target) }
+            catch (e: SecurityException) { Toast.makeText(context, R.string.diarization_install_first, Toast.LENGTH_LONG).show() }
+        }
+
+        private tailrec fun activityFor(context: Context): Activity? = when (context) {
+            is Activity -> context
+            is ContextWrapper -> activityFor(context.baseContext)
+            else -> null
+        }
+    }
 
     private val refreshTrigger = mutableStateOf(0)
     private val modelSelectionRequested = mutableStateOf(false)
+    private var page by mutableStateOf(SettingsPage.ROOT)
+    private var directEntry by mutableStateOf(false)
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -133,9 +164,9 @@ class SettingsActivity : LocalizedActivity() {
         super.onCreate(savedInstanceState)
         if (forwardLegacyLauncher(intent)) return
         UtterlaneApp.instance.historyCleanup.userEntry(intent, savedInstanceState)
-        modelSelectionRequested.value = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS, false)
-        val recovery = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_RECOVERY, false)
-        if (recovery || intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS, false)) {
+        readEntry(intent, savedInstanceState)
+        val recovery = intent.getBooleanExtra(RecordingRecovery.EXTRA_RECOVERY, false)
+        if (recovery || modelSelectionRequested.value || directEntry) {
             showSettings()
             // Keep legacy notification/shortcut intents valid, but do not launch
             // another child when this underlying Settings Activity is recreated.
@@ -146,6 +177,29 @@ class SettingsActivity : LocalizedActivity() {
         // Explicit settings/recovery entry remains available before onboarding.
         // The automatic gate belongs only to the launcher Home surface.
         lifecycleScope.launch { UtterlaneApp.instance.modelManager.initializeSelection(); showSettings() }
+    }
+
+    private fun readEntry(intent: Intent, saved: Bundle? = null) {
+        val speechModel = intent.getBooleanExtra(RecordingRecovery.EXTRA_MODELS, false)
+        val speakerModel = intent.action == SPEAKER_SETTINGS
+        modelSelectionRequested.value = speechModel
+        page = SettingsPage.fromRoute(saved?.getString(STATE_PAGE)) ?: when {
+            speakerModel -> SettingsPage.SPEAKERS
+            speechModel -> SettingsPage.SPEECH
+            else -> SettingsPage.ROOT
+        }
+        // A shortcut from a file/recording should return there, not force an extra stop in Settings.
+        directEntry = saved?.getBoolean(STATE_DIRECT_ENTRY) ?: (speakerModel || speechModel)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(STATE_PAGE, page.route)
+        outState.putBoolean(STATE_DIRECT_ENTRY, directEntry)
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun backFromPage() {
+        if (directEntry) finish() else page = SettingsPage.ROOT
     }
 
     private fun forwardLegacyLauncher(intent: Intent): Boolean {
@@ -173,7 +227,15 @@ class SettingsActivity : LocalizedActivity() {
             UtterlaneTheme(
                 darkTheme = isDarkTheme ?: androidx.compose.foundation.isSystemInDarkTheme()
             ) {
+                BackHandler(enabled = page != SettingsPage.ROOT) { backFromPage() }
                 SettingsScreen(
+                    page = page,
+                    showHomeTabs = !directEntry,
+                    onOpenPage = { page = it },
+                    onBack = {
+                        if (page != SettingsPage.ROOT) backFromPage()
+                        else { startActivity(HomeActivity.intent(this)); finish() }
+                    },
                     refreshTrigger = refreshTrigger.value,
                     onRequestMicPermission = { requestMicPermission() },
                     onRequestOverlayPermission = { requestOverlayPermission() },
@@ -206,7 +268,8 @@ class SettingsActivity : LocalizedActivity() {
         // Trigger permission state refresh in Compose
         refreshTrigger.value++
 
-        AppEntryServices.restore(this)
+        if (directEntry) UtterlaneApp.instance.diarizationModels.refreshModelStatus()
+        else AppEntryServices.restore(this)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -214,7 +277,7 @@ class SettingsActivity : LocalizedActivity() {
         setIntent(intent)
         if (forwardLegacyLauncher(intent)) return
         UtterlaneApp.instance.historyCleanup.userEntry(intent, null)
-        modelSelectionRequested.value = intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_MODELS, false)
+        readEntry(intent)
         if (intent.getBooleanExtra(io.github.lrq3000.utterlane.history.RecordingRecovery.EXTRA_RECOVERY, false)) openAudioHistory()
     }
 
@@ -324,9 +387,13 @@ class SettingsActivity : LocalizedActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
-fun SettingsScreen(
+private fun SettingsScreen(
+    page: SettingsPage,
+    showHomeTabs: Boolean,
+    onOpenPage: (SettingsPage) -> Unit,
+    onBack: () -> Unit,
     refreshTrigger: Int,
     onRequestMicPermission: () -> Unit,
     onRequestOverlayPermission: () -> Unit,
@@ -346,7 +413,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val scrollState = rememberScrollState()
+    val scrollState = key(page) { rememberScrollState() }
     LaunchedEffect(openModelSelection) { if (openModelSelection) scrollState.scrollTo(0) }
     val settingsRepository = UtterlaneApp.instance.settingsRepository
     val modelManager = UtterlaneApp.instance.modelManager
@@ -399,11 +466,8 @@ fun SettingsScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = { BrandHeader(onBack = {
-            context.startActivity(HomeActivity.intent(context))
-            (context as? android.app.Activity)?.finish()
-        }) },
-        bottomBar = { HomeNavigationBar(selected = null, onSelect = { destination ->
+        topBar = { BrandHeader(title = stringResource(page.title), onBack = onBack) },
+        bottomBar = { if (showHomeTabs) HomeNavigationBar(selected = null, onSelect = { destination ->
             context.startActivity(HomeActivity.intent(context, destination))
             (context as? android.app.Activity)?.finish()
         }) }
@@ -412,11 +476,13 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .semantics { testTagsAsResourceId = true }
+                .testTag("settings_page_${page.route}")
                 .verticalScroll(scrollState)
                 .padding(vertical = 8.dp)
         ) {
             // Speech Model (required for all voice input)
-            SettingsSection(title = stringResource(R.string.section_speech_model)) {
+            if (page == SettingsPage.SPEECH) SettingsSection(title = stringResource(R.string.section_speech_model)) {
                 ModelSelector(openModelSelection, onModelSelectionOpened)
                 ModelSettingItem(
                     isCustom = selectedModel.isCustom,
@@ -545,7 +611,7 @@ fun SettingsScreen(
             }
 
             // Microphone Permission (required for all voice input)
-            SettingsSection(title = stringResource(R.string.section_microphone)) {
+            if (page == SettingsPage.VOICE) SettingsSection(title = stringResource(R.string.section_microphone)) {
                 PermissionItem(
                     title = stringResource(R.string.permission_mic_title),
                     subtitle = if (hasMicPermission.value) stringResource(R.string.permission_granted_manage) else stringResource(R.string.permission_required_voice),
@@ -557,14 +623,14 @@ fun SettingsScreen(
                 AudioInputSettings()
             }
 
-            SettingsSection(title = stringResource(R.string.histories_section)) {
+            if (page == SettingsPage.STORAGE) SettingsSection(title = stringResource(R.string.histories_section)) {
                 io.github.lrq3000.utterlane.history.HistorySettings()
                 io.github.lrq3000.utterlane.archive.ArchivalSettingsSection()
                 io.github.lrq3000.utterlane.archive.AudioQualitySection()
             }
 
             // Keyboard Integration Section
-            SettingsSection(title = stringResource(R.string.section_keyboard)) {
+            if (page == SettingsPage.VOICE) SettingsSection(title = stringResource(R.string.section_keyboard)) {
                 PermissionItem(
                     title = stringResource(R.string.keyboard_voice_ime),
                     subtitle = if (hasVoiceImeEnabled.value)
@@ -578,7 +644,7 @@ fun SettingsScreen(
             }
 
             // Accessibility Service
-            SettingsSection(title = stringResource(R.string.section_accessibility)) {
+            if (page == SettingsPage.VOICE) SettingsSection(title = stringResource(R.string.section_accessibility)) {
                 PermissionItem(
                     title = stringResource(R.string.accessibility_text_injection),
                     subtitle = if (hasAccessibilityEnabled.value)
@@ -598,7 +664,7 @@ fun SettingsScreen(
             }
 
             // Accessibility Disclosure Dialog
-            if (showAccessibilityDisclosure) {
+            if (page == SettingsPage.VOICE && showAccessibilityDisclosure) {
                 AlertDialog(
                     onDismissRequest = { showAccessibilityDisclosure = false },
                     icon = { Icon(Icons.Default.Accessibility, contentDescription = null) },
@@ -629,7 +695,7 @@ fun SettingsScreen(
             }
 
             // Optional Floating Mic Button
-            SettingsSection(title = stringResource(R.string.section_floating_mic)) {
+            if (page == SettingsPage.VOICE) SettingsSection(title = stringResource(R.string.section_floating_mic)) {
                 SwitchSettingItem(
                     title = stringResource(R.string.floating_enable),
                     subtitle = when {
@@ -667,7 +733,7 @@ fun SettingsScreen(
             }
 
             // Transcription Section
-            SettingsSection(title = stringResource(R.string.section_transcription)) {
+            if (page == SettingsPage.FILES) SettingsSection(title = stringResource(R.string.section_transcription)) {
                 PermissionItem(
                     title = stringResource(R.string.transcription_audio_access),
                     subtitle = if (hasAudioPermission.value) stringResource(R.string.permission_granted_manage) else stringResource(R.string.permission_required_audio),
@@ -782,7 +848,7 @@ fun SettingsScreen(
             }
 
             // Word Corrections Section
-            SettingsSection(title = stringResource(R.string.section_word_corrections)) {
+            if (page == SettingsPage.SPEECH) SettingsSection(title = stringResource(R.string.section_word_corrections)) {
                 SwitchSettingItem(
                     title = stringResource(R.string.corrections_enable),
                     subtitle = if (dictionaryEnabled) stringResource(R.string.corrections_enabled_desc) else stringResource(R.string.corrections_disabled_desc),
@@ -807,7 +873,7 @@ fun SettingsScreen(
             }
 
             // Dictionary Dialog
-            if (showDictionaryDialog) {
+            if (page == SettingsPage.SPEECH && showDictionaryDialog) {
                 DictionaryDialog(
                     rules = replacementRules,
                     onDismiss = { showDictionaryDialog = false },
@@ -824,12 +890,12 @@ fun SettingsScreen(
                 )
             }
 
-            DiarizationSettings(onPickModelFolder)
+            if (page == SettingsPage.SPEAKERS) DiarizationSettings(onPickModelFolder)
 
-            AdvancedRecognitionSettings(settingsRepository)
+            if (page == SettingsPage.SPEECH) AdvancedRecognitionSettings(settingsRepository)
 
             // Appearance Section
-            SettingsSection(title = stringResource(R.string.section_appearance)) {
+            if (page == SettingsPage.APPEARANCE) SettingsSection(title = stringResource(R.string.section_appearance)) {
                 AppLanguageSetting()
                 VisualRefreshSetting(settingsRepository)
                 ThemeSettingItem(
@@ -851,7 +917,8 @@ fun SettingsScreen(
                 )
             }
 
-            ListItem(
+            if (page == SettingsPage.ROOT) SettingsDirectory(onOpenPage)
+            if (page == SettingsPage.ROOT) ListItem(
                 headlineContent = { Text(stringResource(R.string.onboarding_run_again)) },
                 leadingContent = { Icon(Icons.Default.AutoFixHigh, contentDescription = null) },
                 modifier = Modifier.testTag("settings_onboarding").clickable {
@@ -862,7 +929,7 @@ fun SettingsScreen(
 
             // A persistent in-app policy link is also required for Play's Data
             // safety disclosure. Opening it is explicit and uses the user's browser.
-            ListItem(
+            if (page == SettingsPage.ROOT) ListItem(
                 headlineContent = { Text(stringResource(R.string.privacy_policy)) },
                 leadingContent = { Icon(Icons.Default.PrivacyTip, contentDescription = null) },
                 modifier = Modifier.clickable {

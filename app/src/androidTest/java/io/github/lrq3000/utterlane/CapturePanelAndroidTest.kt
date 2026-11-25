@@ -18,6 +18,35 @@ import androidx.compose.ui.graphics.toArgb
 
 @RunWith(AndroidJUnit4::class)
 class CapturePanelAndroidTest {
+    @Test fun speakerSettingsShortcutExplicitlyFinishesBeforeItCanNavigate() = runBlocking {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val app = instrumentation.targetContext.applicationContext as UtterlaneApp
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        val metrics = CaptureMetrics().apply { started(); speakerModelNeeded() }
+        val control = io.github.lrq3000.utterlane.asr.LiveSpeakerControl()
+        var stops = 0
+        lateinit var panel: RecordingPanel
+        try {
+            instrumentation.runOnMainSync {
+                panel = RecordingPanel(app, { stops++; metrics.captureEnded() }, {}).also {
+                    it.bind(scope, metrics.state, control)
+                }
+            }
+            awaitPanel { panel.findViewById<View>(R.id.recording_speaker_settings).visibility == View.VISIBLE }
+            instrumentation.runOnMainSync {
+                val action = panel.findViewById<TextView>(R.id.recording_speaker_settings)
+                assertEquals(0, stops)
+                assertEquals(app.getString(R.string.finish_and_open_speaker_settings), action.text)
+                assertTrue(action.performClick())
+                assertEquals(1, stops)
+                assertTrue(control.settingsRequested)
+                assertFalse(action.isEnabled)
+                assertTrue(control.takeSettingsRequest())
+                assertFalse("A completed request cannot be consumed again", control.takeSettingsRequest())
+            }
+        } finally { instrumentation.runOnMainSync { panel.release() }; scope.cancel() }
+    }
+
     @Test fun speakerToggleFitsTheListeningHeaderWithoutIncreasingPanelHeight() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp

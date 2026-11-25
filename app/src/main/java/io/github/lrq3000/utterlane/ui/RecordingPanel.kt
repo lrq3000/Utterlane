@@ -47,6 +47,22 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
     }
     val statusText = label(15f, foreground).apply { id = R.id.recording_status; maxLines = 3; ellipsize = android.text.TextUtils.TruncateAt.END }
+    private val speakerWarning = label(13f, foreground).apply {
+        text = context.getString(R.string.speaker_model_needed)
+        accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+    }
+    private val speakerSettings = Button(context).apply {
+        id = R.id.recording_speaker_settings
+        isAllCaps = false
+        setOnClickListener {
+            if (speakerControl?.requestSettingsAfterDelivery() == true) {
+                showSpeakerSettingsAction(capturing = false)
+                // Leaving a keyboard or onboarding window now would invalidate its text destination.
+                // This action explicitly finishes capture, then its owner opens Settings after delivery.
+                if (waveform.visibility == View.VISIBLE) onStop()
+            }
+        }
+    }
     private val waveform = WaveformButton(context).apply {
         id = R.id.recording_done
         setOnClickListener { onStop() }
@@ -96,6 +112,8 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         processing.addView(bar, LayoutParams(LayoutParams.MATCH_PARENT, dp(16)).apply { topMargin = dp(16) })
         addView(processing, LayoutParams(LayoutParams.MATCH_PARENT, dp(136)).apply { topMargin = dp(12) })
         addView(statusText, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+        addView(speakerWarning)
+        addView(speakerSettings, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         addView(cancelButton, LayoutParams(LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(12) })
         applyPalette(initialPalette)
         render(CaptureSnapshot())
@@ -154,6 +172,10 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         cancelButton.backgroundTintList = null
         cancelButton.background = NativeBrandStyle.tonalButton(palette, dp(12).toFloat())
         cancelButton.setTextColor(palette.onContainer.toArgb())
+        speakerWarning.setTextColor(palette.text.toArgb())
+        speakerSettings.backgroundTintList = null
+        speakerSettings.background = NativeBrandStyle.tonalButton(palette, dp(12).toFloat())
+        speakerSettings.setTextColor(palette.onContainer.toArgb())
         speakers.backgroundTintList = null
         val checkedStates = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
         val fill = GradientDrawable().apply {
@@ -181,6 +203,11 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         waveform.isEnabled = capturing
         val showSpeakers = capturing && speakerControl != null
         speakers.visibility = if (showSpeakers) View.VISIBLE else View.GONE
+        val showSpeakerWarning = snapshot.speakerModelNeeded && speakerControl != null &&
+            snapshot.phase in setOf(CapturePhase.CAPTURING, CapturePhase.STOPPING, CapturePhase.PROCESSING)
+        speakerWarning.visibility = if (showSpeakerWarning) View.VISIBLE else View.GONE
+        speakerSettings.visibility = speakerWarning.visibility
+        if (showSpeakerWarning) showSpeakerSettingsAction(capturing)
         val titleGutter = if (showSpeakers) dp(48) else 0
         if (title.paddingLeft != titleGutter) title.setPadding(titleGutter, 0, titleGutter, 0)
         processing.visibility = if (capturing) View.GONE else View.VISIBLE
@@ -217,6 +244,16 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
             percent.text = "$progress% · " + context.getString(R.string.capture_eta, kotlin.math.ceil(it).toInt())
         }
         if (snapshot.error != null) statusText.text = snapshot.error
+    }
+
+    private fun showSpeakerSettingsAction(capturing: Boolean) {
+        val requested = speakerControl?.settingsRequested == true
+        val label = if (requested) R.string.speaker_settings_queued
+            else if (capturing) R.string.finish_and_open_speaker_settings
+            else R.string.speaker_settings_after_transcription
+        val text = context.getString(label)
+        if (speakerSettings.text != text) speakerSettings.text = text
+        speakerSettings.isEnabled = !requested
     }
     private fun label(size: Float, color: Int) = TextView(context).apply { textSize = size; setTextColor(color); gravity = Gravity.CENTER }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()

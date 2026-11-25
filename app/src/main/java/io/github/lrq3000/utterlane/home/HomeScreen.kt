@@ -40,6 +40,9 @@ import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.asr.CapturePhase
 import io.github.lrq3000.utterlane.asr.CaptureSignal
+import io.github.lrq3000.utterlane.asr.ModelManager
+import io.github.lrq3000.utterlane.asr.SpeakerWarning
+import io.github.lrq3000.utterlane.settings.SpeakerModelNotice
 import io.github.lrq3000.utterlane.history.RecordingRecovery
 import io.github.lrq3000.utterlane.transcribe.TranscriptReader
 import io.github.lrq3000.utterlane.transcribe.TranscriptTransferActions
@@ -54,14 +57,14 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
-internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad: () -> Unit, onSettings: () -> Unit) {
+internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad: () -> Unit) {
     val state by controller.state.collectAsStateWithLifecycle()
     val app = UtterlaneApp.instance
     val context = LocalContext.current
     val speakers by app.settingsRepository.diarizationEnabled.collectAsStateWithLifecycle(false)
     val speakerCount by app.settingsRepository.speakerCount.collectAsStateWithLifecycle(0)
     val speakerDownload by app.diarizationModels.downloadState.collectAsStateWithLifecycle()
-    val speakerReady = remember(speakerDownload) { app.diarizationModels.isModelReady() }
+    val speakerReady = speakerDownload == ModelManager.DownloadState.Ready
     val modelDownload by app.modelManager.downloadState.collectAsStateWithLifecycle()
     val modelReady = remember(modelDownload) { app.modelManager.isModelReady() }
     var menu by remember { mutableStateOf(false) }
@@ -121,17 +124,18 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
                     app.applicationScope.launch { app.settingsRepository.setDiarizationEnabled(enabled) }
                 }, modifier = Modifier.testTag("home_speakers"))
             }
-            if (!state.capture.active && speakers && speakerCount != 1 && !speakerReady) {
-                HomeNotice(stringResource(R.string.diarization_install_first), stringResource(R.string.home_speaker_setup), onSettings)
-            }
+            val showSpeakerSetup = state.result.speakerWarning == SpeakerWarning.MODEL_NEEDED ||
+                (!speakerReady && speakerCount != 1 && (state.metrics.speakerModelNeeded || (!state.capture.active && speakers)))
+            if (showSpeakerSetup) SpeakerModelNotice()
             if (!modelReady) {
                 HomeNotice(stringResource(R.string.home_model_missing), stringResource(R.string.recording_choose_model)) {
                     context.startActivity(RecordingRecovery.modelIntent(context))
                 }
             }
             HomeCaptureControl(state, onRecord, controller::setLiveSpeakers)
-            state.result.speakerWarning?.let { Text(it, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error) }
+            if (state.result.speakerWarning == SpeakerWarning.PROCESSING_FAILED)
+                Text(stringResource(R.string.speaker_file_processing_failed), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error)
             io.github.lrq3000.utterlane.archive.ArchivalStatusControls()
             PrivacyNote()
             HomeFeedback(state, onModels = { context.startActivity(RecordingRecovery.modelIntent(context)) }, onRetry = controller::retry)

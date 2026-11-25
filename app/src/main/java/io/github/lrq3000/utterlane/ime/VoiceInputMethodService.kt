@@ -14,6 +14,7 @@ import android.view.inputmethod.InputConnection
 import io.github.lrq3000.utterlane.service.StreamingTextTarget
 import io.github.lrq3000.utterlane.service.TranscriptRecovery
 import io.github.lrq3000.utterlane.ui.RecordingUIBuilder
+import io.github.lrq3000.utterlane.settings.speakerSettingsAction
 import kotlinx.coroutines.*
 
 /** Auxiliary voice IME. Shared recording UI and bounded microphone pipeline. */
@@ -113,8 +114,9 @@ class VoiceInputMethodService : InputMethodService() {
         microphoneSession = UtterlaneApp.instance.microphoneSessions.create(this, UtterlaneApp.instance.applicationScope,
             onText = { delta, store -> target.accept(store); statusText?.text = delta.takeLast(100) },
             onComplete = { store, error ->
+                val openSettings = microphoneSession?.speakerControl?.speakerSettingsAction(this)
                 isRecording = false; microphoneSession = null
-                target.finish(store, preserve = error != null)
+                target.finish(store, preserve = error != null, afterDelivery = openSettings)
                 error?.let { Toast.makeText(this, it.message, Toast.LENGTH_LONG).show(); store?.let { result -> TranscriptRecovery.show(this, result) } }
                 if (editorActive) switchBackToPreviousKeyboard()
             }, onCaptureEnded = { isRecording = false; statusText?.text = getString(R.string.state_processing) },

@@ -65,6 +65,7 @@ class MicrophoneSession(
             var ticker: Job? = null
             var rollingMaintenance: Job? = null
             var visualOptionsObserver: Job? = null
+            var speakerAvailabilityObserver: Job? = null
             var archival: io.github.lrq3000.utterlane.archive.ArchivalCoordinator.Producer? = null
             try {
                 power = TranscriptionPower(context) { recorder.resumeAfterSleep() }
@@ -86,6 +87,20 @@ class MicrophoneSession(
                 val captureOptions = app.settingsRepository.runtimeOptions.first()
                 // Initialize the control without waiting for model preparation or delaying microphone capture.
                 launch { speakerControl.initialize(app.settingsRepository.diarizationEnabled.first()) }
+                // A short take might not reach an ASR window before Stop. Surface known missing models as soon as labels are requested, without verifying weights on the capture path.
+                speakerAvailabilityObserver = launch {
+                    try {
+                        if (app.settingsRepository.speakerCount.first() != 1) {
+                            kotlinx.coroutines.flow.combine(speakerControl.state, app.diarizationModels.downloadState) { requested, model ->
+                                requested to model
+                            }.collect { (requested, model) ->
+                                if (model == ModelManager.DownloadState.Ready) metrics.speakerModelNeeded(false)
+                                else if (requested == true) metrics.speakerModelNeeded()
+                            }
+                        }
+                    } catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { Log.w("MicrophoneSession", "Unable to observe the speaker model", e) }
+                }
                 val microphoneOptions = app.settingsRepository.microphoneSettings.first().options
                 recorder.configureMicrophone(microphoneOptions)
                 val gain = io.github.lrq3000.utterlane.audio.TranscriptionGain(microphoneOptions.gain)
@@ -166,8 +181,9 @@ class MicrophoneSession(
                             // a reader's submitted offset, behind durable progress.
                             saved.rolling?.commitAsr(samples, (16000 * (captureOptions.asrWindowSeconds +
                                 captureOptions.asrLeftContextSeconds + captureOptions.asrRightContextSeconds)).toLong())
-                        }, onSpeakerUnavailable = {
-                            scope.launch(Dispatchers.Main) { if (!cancelled) onWarning(context.getString(R.string.live_speakers_unavailable)) }
+                        }, onSpeakerUnavailable = { reason ->
+                            if (reason == SpeakerWarning.MODEL_NEEDED) metrics.speakerModelNeeded()
+                            else scope.launch(Dispatchers.Main) { if (!cancelled) onWarning(context.getString(R.string.live_speakers_unavailable)) }
                         }) { delta ->
                             speakerLabels = session!!.hasSpeakerLabels
                             if (!cancelled) withContext(Dispatchers.Main) { onText(delta, session!!.store) }
@@ -243,6 +259,7 @@ class MicrophoneSession(
                 ticker?.cancel()
                 rollingMaintenance?.cancel()
                 visualOptionsObserver?.cancel()
+                speakerAvailabilityObserver?.cancel()
                 activityObserver?.cancel()
                 diagnosticObserver?.cancel()
                 try {

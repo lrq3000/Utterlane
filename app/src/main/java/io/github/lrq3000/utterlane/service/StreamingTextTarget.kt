@@ -62,8 +62,8 @@ class StreamingTextTarget(
         else { observer?.close(); observer = null }
     }
 
-    fun finish(store: TranscriptStore?, preserve: Boolean = false) {
-        if (store == null) { close(); return }
+    fun finish(store: TranscriptStore?, preserve: Boolean = false, afterDelivery: (() -> Unit)? = null) {
+        if (store == null) { close(); afterDelivery?.invoke(); return }
         if (finishing) return
         finishing = true
         UtterlaneApp.instance.applicationScope.launch {
@@ -94,6 +94,7 @@ class StreamingTextTarget(
                     } finally { close() }
                 }
             }
+            afterDelivery?.invoke()
         }
     }
 }

@@ -120,11 +120,7 @@ When a new transcription is interrupted before it has processed the whole source
 
 ## Microphone input and Bluetooth
 
-Open **Settings → Microphone → Audio input → Change** to choose the phone microphone
-or an available external microphone. Compatible Bluetooth, wired and USB inputs
-appear when Android makes them available; a paired speaker without a recording
-input is not a microphone option. Pair/connect headsets through Android settings.
-Utterlane uses audio-routing APIs without scanning for or pairing Bluetooth devices.
+Open **Settings → Voice input → Microphone → Audio input → Change** to choose the phone microphone or an available external microphone. Compatible Bluetooth, wired and USB inputs appear when Android makes them available; a paired speaker without a recording input is not a microphone option. Pair/connect headsets through Android settings. Utterlane uses audio-routing APIs without scanning for or pairing Bluetooth devices.
 
 **Always prefer a Bluetooth microphone** is off by default. When enabled, a connected
 Bluetooth microphone is selected automatically for the next recording, including
@@ -159,7 +155,7 @@ claim that recording continues. Stop and Cancel always take precedence over reco
 
 ### Microphone processing presets
 
-**Settings → Microphone → Microphone processing** offers three choices:
+**Settings → Voice input → Microphone → Microphone processing** offers three choices:
 
 - **HFP preset (default):** `VOICE_RECOGNITION` audio source,
   `HFP_VOICE_RECOGNITION` Bluetooth route, requested `NORMAL` audio mode,
@@ -288,12 +284,11 @@ models cannot be used for speech input. See the
 
 ## Word corrections
 
-Use your own whole-word replacement rules to fix recurring names and recognition
-mistakes. Corrections are applied after speech recognition.
+Under **Settings → Speech recognition → Word Corrections**, use your own whole-word replacement rules to fix recurring names and recognition mistakes. Corrections are applied after speech recognition.
 
 ## Speaker labels
 
-Turn on **Speaker labels** in the file setup dialog for a shared or picked recording. For live recordings, use the waveform toggle, or enable **Speaker diarization → Add speaker labels** in Settings to start each recording with labels on. For multiple speakers, download or import the separate NVIDIA Nemotron-3-Diarization model (107 MB); it does not replace your speech model.
+Turn on **Speaker labels** in the file setup dialog for a shared or picked recording. While dictating, use the conversation icon next to **Listening — speak now**. To start new recordings with labels on, open **Settings → Speaker labels (diarization)** and enable **Add speaker labels**. For multiple speakers, download or import the separate NVIDIA Nemotron-3-Diarization model (107 MB) on that page. When the model is missing, the warning can take you directly there without starting a download.
 
 In Settings, choose **Auto (up to 8)** or **1–8** speakers; this count is used whenever a new transcription requests labels. Labels are included in copied/shared transcripts and text inserted into other apps. If the speaker cannot be identified reliably, the transcript can show **Unknown speaker**. The same speaker number may mean a different person after you turn labels off and on within a live recording.
 
@@ -305,10 +300,7 @@ instead of cutting speech into tiny pieces for additional recognition passes.
 
 ## Advanced recognition options
 
-Expand **Advanced recognition → Runtime options** to edit grouped settings.
-The section starts collapsed. Each group has contextual help, saved/default
-values, a validated draft, and reset controls. Related values are applied
-together; active operations retain their starting snapshot.
+Open **Settings → Speech recognition** and expand **Advanced recognition → Runtime options** to edit grouped settings. The section starts collapsed. Each group has contextual help, saved/default values, a validated draft, and reset controls. Related values are applied together; active operations retain their starting snapshot.
 
 - **Recovery:** worker connection timeout (30 s), model preparation and inference
   without-progress limits (300 s each), and an optional absolute operation limit
