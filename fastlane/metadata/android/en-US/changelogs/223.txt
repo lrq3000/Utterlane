@@ -1,0 +1,1 @@
+The speaker toggle now fits beside the Listening title without making the recording panel taller. Settings groups existing options into six pages. Missing speaker-model warnings go straight to Download and Import, and Back preserves your selected audio file and speaker choice.

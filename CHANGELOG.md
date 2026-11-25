@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.2.3] - 2026-11-25
+
+### Changed
+- Settings now groups existing controls into six pages. The dedicated **Speaker labels (diarization)** page puts model download and local import at the top.
+
+### Fixed
+- The live speaker toggle is now a compact conversation icon beside the listening title, so it no longer makes the normal recording panel taller. Long-press it for an explanation.
+- Missing or unverified speaker-model warnings link directly to the speaker settings. Returning from Settings preserves the selected audio file and its speaker-label choice. Recordings can continue without labels, and fixed one-speaker mode does not need the auxiliary model.
+
 ## [2.2.1] - 2026-11-25
 
 ### Fixed
