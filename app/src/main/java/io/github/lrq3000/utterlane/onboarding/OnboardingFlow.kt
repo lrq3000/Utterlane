@@ -1,5 +1,7 @@
 package io.github.lrq3000.utterlane.onboarding
 
+import android.os.Build
+
 enum class ModelTier { COMPACT, BALANCED, FULL }
 
 object ModelRecommendation {
@@ -74,9 +76,14 @@ data class OnboardingPermissions(
     val overlay: Boolean = false,
     val accessibility: Boolean = false,
     val keyboard: Boolean = false,
-    val floatingRunning: Boolean = false
+    val floatingRunning: Boolean = false,
+    val accessibilityConfigured: Boolean = false
 ) {
     fun canRecord(modelReady: Boolean) = modelReady && microphone
     fun canFloat(modelReady: Boolean) = canRecord(modelReady) && overlay && accessibility
     fun canMonitor(modelReady: Boolean, hasFolder: Boolean) = modelReady && audioFiles && hasFolder
+
+    // The installer is a hint, not a permission check: unknown installs also get optional help.
+    internal fun shouldShowRestrictedSettingsHelp(sdkInt: Int, installerPackage: String?): Boolean =
+        sdkInt >= Build.VERSION_CODES.TIRAMISU && installerPackage != "com.android.vending" && (!overlay || !accessibilityConfigured)
 }

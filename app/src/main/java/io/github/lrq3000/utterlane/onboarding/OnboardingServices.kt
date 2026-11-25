@@ -27,7 +27,8 @@ data class OnboardingDeviceState(
     val preferences: OnboardingPreferences = OnboardingPreferences(),
     val permissions: OnboardingPermissions = OnboardingPermissions(),
     val speechTransfer: OnboardingTransfer = OnboardingTransfer(),
-    val speakerTransfer: OnboardingTransfer = OnboardingTransfer()
+    val speakerTransfer: OnboardingTransfer = OnboardingTransfer(),
+    val showRestrictedSettingsHelp: Boolean = false
 )
 
 /** The wizard knows capabilities, not the app's recognizer engines or Settings UI. */

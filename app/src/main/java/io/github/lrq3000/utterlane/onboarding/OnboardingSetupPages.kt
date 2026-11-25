@@ -132,6 +132,14 @@ internal fun InputSetupPage(page: OnboardingPage, state: OnboardingUiState, acti
     SetupCard(Icons.Default.Keyboard, R.string.onboarding_keyboard, R.string.onboarding_keyboard_body) {
         StatusOrAction(granted.keyboard, R.string.onboarding_keyboard_action, { action(OnboardingAction.Settings(AndroidSetup.KEYBOARD)) })
     }
+    if (state.device.showRestrictedSettingsHelp) {
+        SetupCard(Icons.Default.Shield, R.string.onboarding_restricted_settings, R.string.onboarding_restricted_settings_body) {
+            TextButton(onClick = { action(OnboardingAction.Settings(AndroidSetup.APP)) },
+                modifier = Modifier.testTag("onboarding_open_app_info")) {
+                Text(stringResource(R.string.onboarding_open_app_info))
+            }
+        }
+    }
     SetupCard(Icons.Default.Accessibility, R.string.onboarding_accessibility, R.string.onboarding_accessibility_body) {
         StatusOrAction(granted.accessibility, R.string.onboarding_accessibility_action, { action(OnboardingAction.Settings(AndroidSetup.ACCESSIBILITY)) })
     }

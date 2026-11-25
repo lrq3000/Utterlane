@@ -78,6 +78,29 @@ class OnboardingFlowTest {
         assertTrue(permissions.copy(audioFiles = true).canMonitor(true, true))
     }
 
+    @Test fun restrictedSettingsHelpStartsOnAndroid13AndIsHiddenForPlayInstalls() {
+        val missing = OnboardingPermissions()
+        assertFalse(missing.shouldShowRestrictedSettingsHelp(32, "com.android.packageinstaller"))
+        assertTrue(missing.shouldShowRestrictedSettingsHelp(33, "com.android.packageinstaller"))
+        assertTrue(missing.shouldShowRestrictedSettingsHelp(36, "org.fdroid.fdroid"))
+        assertTrue(missing.shouldShowRestrictedSettingsHelp(33, null))
+        assertFalse(missing.shouldShowRestrictedSettingsHelp(33, "com.android.vending"))
+        assertFalse(missing.shouldShowRestrictedSettingsHelp(36, "com.android.vending"))
+    }
+
+    @Test fun restrictedSettingsHelpStaysUntilBothOptionalPermissionsAreEnabled() {
+        val permissions = OnboardingPermissions()
+        assertTrue(permissions.copy(overlay = true).shouldShowRestrictedSettingsHelp(33, null))
+        assertTrue(permissions.copy(accessibilityConfigured = true).shouldShowRestrictedSettingsHelp(33, null))
+        assertFalse(permissions.copy(overlay = true, accessibilityConfigured = true).shouldShowRestrictedSettingsHelp(33, null))
+    }
+
+    @Test fun configuredAccessibilityHidesHelpWithoutPrematurelyEnablingFloatingMic() {
+        val permissions = OnboardingPermissions(microphone = true, overlay = true, accessibilityConfigured = true)
+        assertFalse(permissions.shouldShowRestrictedSettingsHelp(33, null))
+        assertFalse(permissions.canFloat(modelReady = true))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun duplicateStepIdsAreRejected() {
         OnboardingFlow(listOf(OnboardingStep.WELCOME, OnboardingStep.WELCOME))

@@ -2,6 +2,8 @@ package io.github.lrq3000.utterlane.onboarding
 
 import android.Manifest
 import android.app.ActivityManager
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -29,6 +31,21 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+internal fun Context.onboardingInstallerPackage(): String? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
+    return try {
+        packageManager.getInstallSourceInfo(packageName).installingPackageName
+    } catch (_: PackageManager.NameNotFoundException) {
+        null
+    }
+}
+
+internal fun Context.isOnboardingAccessibilityConfigured(): Boolean {
+    val service = ComponentName(this, TextInjectionService::class.java)
+    return Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+        .orEmpty().splitToSequence(':').any { ComponentName.unflattenFromString(it) == service }
+}
+
 /** Only this adapter translates between the standalone guide and app internals. */
 class AppOnboardingServices(private val app: UtterlaneApp) : OnboardingServices {
     private val settings = app.settingsRepository
@@ -49,6 +66,7 @@ class AppOnboardingServices(private val app: UtterlaneApp) : OnboardingServices 
     private val ram = ActivityManager.MemoryInfo().also {
         app.getSystemService(ActivityManager::class.java).getMemoryInfo(it)
     }.totalMem
+    private val installerPackage by lazy { app.onboardingInstallerPackage() }
 
     private fun option(model: ModelDefinition, name: String = model.name,
         explanation: ModelExplanation = ModelExplanation.CURRENT, tier: ModelTier? = null) =
@@ -68,7 +86,8 @@ class AppOnboardingServices(private val app: UtterlaneApp) : OnboardingServices 
             OnboardingDeviceState(models = if (selected.id in featuredIds) featured else featured + option(selected),
                 selectedModelId = selected.id, ramBytes = ram, speakerBytes = DiarizationModel.definition.downloadBytes,
                 preferences = prefs, permissions = granted, speechTransfer = transferState(download),
-                speakerTransfer = transferState(speakerDownload))
+                speakerTransfer = transferState(speakerDownload),
+                showRestrictedSettingsHelp = granted.shouldShowRestrictedSettingsHelp(Build.VERSION.SDK_INT, installerPackage))
         }.combine(ready) { state, initialized -> state.copy(initialized = initialized) }
             .stateIn(scope, SharingStarted.Eagerly, OnboardingDeviceState())
     }
@@ -89,7 +108,9 @@ class AppOnboardingServices(private val app: UtterlaneApp) : OnboardingServices 
             overlay = Settings.canDrawOverlays(app),
             accessibility = TextInjectionService.isEnabled(),
             keyboard = app.getSystemService(InputMethodManager::class.java).enabledInputMethodList.any { it.packageName == app.packageName },
-            floatingRunning = floatingServiceRunning()
+            floatingRunning = floatingServiceRunning(),
+            // Settings can return before Android binds the service. The help card cares about the saved choice, not the binder connection.
+            accessibilityConfigured = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && app.isOnboardingAccessibilityConfigured()
         )
     }
 

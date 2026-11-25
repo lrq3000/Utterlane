@@ -98,6 +98,9 @@
     <string name="onboarding_keyboard">Your keyboard mic</string>
     <string name="onboarding_keyboard_body">Use Utterlane from a compatible keyboard, such as HeliBoard.</string>
     <string name="onboarding_keyboard_action">Enable voice input</string>
+    <string name="onboarding_restricted_settings">Blocked by Android?</string>
+    <string name="onboarding_restricted_settings_body">If Android blocks accessibility or display over other apps, open App info (Settings → Apps → Utterlane). Tap the three-dot menu (⋮) → Allow restricted settings, then return here and retry. If the menu option is missing, try granting the permission first; check App info again if Android says the setting is restricted. Only allow this if you trust the app’s source. You can also set up shortcuts later.</string>
+    <string name="onboarding_open_app_info">Open Utterlane app info</string>
     <string name="onboarding_floating">A floating microphone</string>
     <string name="onboarding_floating_needs_setup">Floating microphone · needs setup</string>
     <string name="onboarding_floating_body">Keep a mic above your other apps. Needs microphone, overlay and accessibility access.</string>
