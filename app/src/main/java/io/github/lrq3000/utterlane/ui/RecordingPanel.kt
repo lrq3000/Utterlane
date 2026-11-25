@@ -3,11 +3,7 @@ package io.github.lrq3000.utterlane.ui
 import android.content.Context
 import android.content.res.Configuration
 import android.content.res.ColorStateList
-import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.InsetDrawable
-import android.graphics.drawable.RippleDrawable
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -75,9 +71,11 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         contentDescription = text
     }
     private var speakerControl: LiveSpeakerControl? = null
-    private val speakers = SpeakerToggleButton(context).apply {
+    private val speakers = ToggleButton(context).apply {
         id = R.id.recording_speakers
         stateListAnimator = null
+        buttonDrawable = null
+        foreground = null
         textOn = ""; textOff = ""; text = ""
         contentDescription = context.getString(R.string.home_speakers)
         tooltipText = context.getString(R.string.live_speakers_tooltip)
@@ -187,19 +185,7 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         speakerSettings.background = NativeBrandStyle.tonalButton(palette, dp(12).toFloat())
         speakerSettings.setTextColor(palette.onContainer.toArgb())
         speakers.backgroundTintList = null
-        val checkedStates = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
-        val fill = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            color = ColorStateList(checkedStates, intArrayOf(palette.container.toArgb(), Color.TRANSPARENT))
-        }
-        val rippleMask = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(Color.WHITE)
-        }
-        // Match Home's 40 dp circle without shrinking the 48 dp touch target. The mask keeps ripple feedback even when the fill is transparent.
-        speakers.background = RippleDrawable(ColorStateList.valueOf(0x33FFFFFF),
-            InsetDrawable(fill, dp(4)), InsetDrawable(rippleMask, dp(4)))
-        speakers.setIconTint(ColorStateList(checkedStates, intArrayOf(palette.primary.toArgb(), 0xC7FFFFFF.toInt())))
+        speakers.background = waveformSpeakerBackground(context, palette)
         waveform.applyPalette(palette)
     }
 
@@ -270,28 +256,4 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
     }
     private fun label(size: Float, color: Int) = TextView(context).apply { textSize = size; setTextColor(color); gravity = Gravity.CENTER }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
-}
-
-/** The glyph is button content, independent of any foreground set by a native dialog or IME theme. */
-private class SpeakerToggleButton(context: Context) : ToggleButton(context) {
-    private val glyph = requireNotNull(context.getDrawable(R.drawable.ic_speaker_conversation)).mutate()
-
-    fun setIconTint(colors: ColorStateList) {
-        glyph.setTintList(colors)
-        invalidate()
-    }
-
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        val size = minOf(w, h, glyph.intrinsicWidth, glyph.intrinsicHeight)
-        val left = (w - size) / 2
-        val top = (h - size) / 2
-        glyph.setBounds(left, top, left + size, top + size)
-    }
-
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        glyph.state = drawableState
-        glyph.draw(canvas)
-    }
 }

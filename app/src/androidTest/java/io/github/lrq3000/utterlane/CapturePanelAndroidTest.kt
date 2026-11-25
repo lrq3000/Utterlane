@@ -275,15 +275,19 @@ class CapturePanelAndroidTest {
                 awaitPanel { !button.isChecked }
                 instrumentation.runOnMainSync {
                     assertEquals("Off must show the waveform gradient through the button",
-                        Color.TRANSPARENT, renderedBackground(.5f, .5f))
+                        Color.TRANSPARENT, renderedBackground(.5f, .23f))
+                    assertEquals("The surface visible in the IME must include the people even when unchecked",
+                        0xC7FFFFFF.toInt(), renderedBackground(.69f, .62f))
                 }
                 control.set(true)
-                awaitPanel { button.isChecked && renderedBackground(.5f, .5f) == palette.container.toArgb() }
+                awaitPanel { button.isChecked && renderedBackground(.5f, .23f) == palette.container.toArgb() }
                 instrumentation.runOnMainSync {
                     assertEquals("The checked fill must be round, not squared off",
                         Color.TRANSPARENT, renderedBackground(.16f, .16f))
                     assertEquals("Checked fill uses the same color as Home",
                         palette.container.toArgb(), renderedBackground(.5f, .23f))
+                    assertEquals("The checked surface must not produce an empty circle in the IME",
+                        palette.primary.toArgb(), renderedBackground(.69f, .62f))
                 }
             }
         } finally {

@@ -5,10 +5,12 @@ import android.content.Intent
 import android.graphics.Rect
 import android.os.ParcelFileDescriptor
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.compose.ui.graphics.toArgb
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.lrq3000.utterlane.asr.MicrophoneSession
 import io.github.lrq3000.utterlane.asr.MicrophoneSessionFactory
 import io.github.lrq3000.utterlane.ime.VoiceInputMethodService
+import io.github.lrq3000.utterlane.ui.theme.BlueHarmony
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -34,7 +36,7 @@ class VoiceImeSpeakerVisualAndroidTest {
             .associateWith { shell("settings get secure $it") }
         val ime = ComponentName(app, VoiceInputMethodService::class.java).flattenToShortString()
         try {
-            settings.setThemeMode("light")
+            settings.setThemeMode("dark")
             settings.setDiarizationEnabled(false)
             instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.RECORD_AUDIO)
             app.microphoneSessions = MicrophoneSessionFactory { fixture }
@@ -58,13 +60,12 @@ class VoiceImeSpeakerVisualAndroidTest {
                 }) { "Missing IME button. Windows=${nodes().map { it.packageName }}; ${shell("logcat -d -s VoiceInputMethodService:I").takeLast(1200)}" }
                 if (checked) check(node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
                 check(withTimeoutOrNull(5000) { while (find()?.isChecked != checked) delay(50); true } == true)
-                val bounds = Rect()
                 // A missing-model notice moves the whole IME above its previous screen coordinates.
                 // Reacquire the node after the state/layout change; the pre-tap rectangle is not current.
-                instrumentation.waitForIdleSync()
-                val finalNode = checkNotNull(find())
-                try { finalNode.getBoundsInScreen(bounds) } finally { finalNode.recycle(); node.recycle() }
-                saveSpeakerCrop("ime-$checked", bounds)
+                node.recycle()
+                verifyKeyboardSpeaker("ime-dark-$checked", {
+                    find()?.let { current -> try { Rect().also(current::getBoundsInScreen) } finally { current.recycle() } }
+                }, if (checked) BlueHarmony.Dark.primary.toArgb() else 0xC7FFFFFF.toInt())
             }
         } finally {
             val oldIme = prior.getValue("default_input_method")
