@@ -71,6 +71,30 @@ class WaveformButtonAndroidTest {
         }
     }
 
+    @Test fun fullVolumeBarsDoNotCoverAnEnlargedTwoLineFinishCaption() = onMain { button ->
+        button.text = "Finish\nrecording"
+        // Use an enlarged, density-relative fixture without depending on the guest's system font-scale setting.
+        button.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 22f)
+        button.plotTopInset = (56 * button.resources.displayMetrics.density).toInt()
+        button.levels = floatArrayOf()
+        val captionOnly = render(button)
+        button.levels = FloatArray(64) { 1f }
+        val withWaveform = render(button)
+        try {
+            assertEquals(2, button.layout.lineCount)
+            val captionTop = button.height - button.compoundPaddingBottom - button.layout.height
+            var changesAboveCaption = 0
+            var changesInCaption = 0
+            for (y in 0 until button.height) for (x in 0 until button.width) {
+                if (captionOnly.getPixel(x, y) != withWaveform.getPixel(x, y)) {
+                    if (y < captionTop) changesAboveCaption++ else changesInCaption++
+                }
+            }
+            assertEquals("PCM must not paint into the enlarged caption", 0, changesInCaption)
+            assertTrue("The waveform must remain visible above the caption at y=$captionTop", changesAboveCaption > 0)
+        } finally { captionOnly.recycle(); withWaveform.recycle() }
+    }
+
     private fun onMain(check: (WaveformButton) -> Unit) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {

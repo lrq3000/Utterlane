@@ -288,7 +288,7 @@ Under **Settings → Speech recognition → Word Corrections**, use your own who
 
 ## Speaker labels
 
-Turn on **Speaker labels** in the file setup dialog for a shared or picked recording. While dictating, use the conversation icon next to **Listening — speak now**. To start new recordings with labels on, open **Settings → Speaker labels (diarization)** and enable **Add speaker labels**. For multiple speakers, download or import the separate NVIDIA Nemotron-3-Diarization model (107 MB) on that page. When the model is missing, the warning can take you directly there without starting a download.
+Turn on **Speaker labels** in the file setup dialog for a shared or picked recording. While dictating, use the round speaker button in the top corner of the waveform (right in left-to-right layouts). To start new recordings with labels on, open **Settings → Speaker labels (diarization)** and enable **Add speaker labels**. For multiple speakers, download or import the separate NVIDIA Nemotron-3-Diarization model (107 MB) on that page. When the model is missing, the warning can take you directly there without starting a download.
 
 In Settings, choose **Auto (up to 8)** or **1–8** speakers; this count is used whenever a new transcription requests labels. Labels are included in copied/shared transcripts and text inserted into other apps. If the speaker cannot be identified reliably, the transcript can show **Unknown speaker**. The same speaker number may mean a different person after you turn labels off and on within a live recording.
 

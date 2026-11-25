@@ -11,10 +11,17 @@ import kotlinx.coroutines.flow.first
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.Rect
+import android.os.SystemClock
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.compose.ui.graphics.toArgb
+import io.github.lrq3000.utterlane.history.HistoryActivity
 
 @RunWith(AndroidJUnit4::class)
 class CapturePanelAndroidTest {
@@ -47,18 +54,24 @@ class CapturePanelAndroidTest {
         } finally { instrumentation.runOnMainSync { panel.release() }; scope.cancel() }
     }
 
-    @Test fun speakerToggleFitsTheListeningHeaderWithoutIncreasingPanelHeight() = runBlocking {
+    @Test fun speakerToggleFitsInsideTheWaveformAndDoesNotStopRecording() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         val metrics = CaptureMetrics().apply { started() }
         val control = io.github.lrq3000.utterlane.asr.LiveSpeakerControl()
+        var stops = 0
         lateinit var without: RecordingPanel
         lateinit var with: RecordingPanel
+        val activity = instrumentation.startActivitySync(HistoryActivity.intent(app).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         try {
             instrumentation.runOnMainSync {
-                without = RecordingPanel(app, {}, {}).also { it.bind(scope, metrics.state) }
-                with = RecordingPanel(app, {}, {}).also { it.bind(scope, metrics.state, control) }
+                without = RecordingPanel(activity, {}, {}).also { it.bind(scope, metrics.state) }
+                with = RecordingPanel(activity, { stops++ }, {}).also { it.bind(scope, metrics.state, control) }
+                activity.setContentView(FrameLayout(activity).apply {
+                    addView(with, FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                })
             }
             awaitPanel { with.findViewById<View>(R.id.recording_speakers).visibility == View.VISIBLE &&
                 without.findViewById<View>(R.id.recording_done).visibility == View.VISIBLE }
@@ -72,21 +85,59 @@ class CapturePanelAndroidTest {
                 assertEquals("Speaker control must not add height", without.height, with.height)
                 val button = with.findViewById<android.widget.ToggleButton>(R.id.recording_speakers)
                 val finish = with.findViewById<View>(R.id.recording_done)
-                val buttonBounds = android.graphics.Rect(0, 0, button.width, button.height)
-                with.offsetDescendantRectToMyCoords(button, buttonBounds)
-                assertTrue("Control belongs above the waveform", buttonBounds.bottom <= finish.top)
+                val buttonBounds = Rect(0, 0, button.width, button.height).also { with.offsetDescendantRectToMyCoords(button, it) }
+                val finishBounds = Rect(0, 0, finish.width, finish.height).also { with.offsetDescendantRectToMyCoords(finish, it) }
+                assertTrue("Control belongs inside the waveform", finishBounds.contains(buttonBounds))
+                val density = app.resources.displayMetrics.density
+                assertEquals("Home's trailing inset", 9f, (finishBounds.right - buttonBounds.right) / density, 1f)
+                assertEquals("Home's top inset", 8f, (buttonBounds.top - finishBounds.top) / density, 1f)
+                assertTrue("Speaker touch target must remain at least 48 dp", buttonBounds.width() >= (48 * density).toInt())
                 assertTrue(button.tooltipText?.isNotBlank() == true)
                 assertTrue("The icon must not carry a visible text label", button.text.isNullOrEmpty())
-                assertTrue(button.performClick())
-                assertEquals(true, control.state.value)
+                tap(with, buttonBounds)
             }
+            awaitPanel { control.state.value == true }
+            instrumentation.runOnMainSync {
+                assertEquals("Tapping the speaker toggle must not finish the recording", 0, stops)
+                val finish = with.findViewById<View>(R.id.recording_done)
+                val finishBounds = Rect(0, 0, finish.width, finish.height).also { with.offsetDescendantRectToMyCoords(finish, it) }
+                tap(with, finishBounds)
+            }
+            awaitPanel { stops == 1 }
+            instrumentation.runOnMainSync {
+                // App-language changes recreate the panel. Start with a new layout so inherited directions and relative margins resolve together.
+                with.release()
+                with = RecordingPanel(activity, { stops++ }, {}).also { it.bind(scope, metrics.state, control) }
+                activity.setContentView(FrameLayout(activity).apply {
+                    layoutDirection = View.LAYOUT_DIRECTION_RTL
+                    addView(with, FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                })
+            }
+            awaitPanel { with.findViewById<View>(R.id.recording_speakers).visibility == View.VISIBLE }
+            instrumentation.runOnMainSync {
+                val width = (360 * app.resources.displayMetrics.density).toInt()
+                with.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                with.layout(0, 0, width, with.measuredHeight)
+                val button = with.findViewById<View>(R.id.recording_speakers)
+                val finish = with.findViewById<View>(R.id.recording_done)
+                val buttonBounds = Rect(0, 0, button.width, button.height).also { with.offsetDescendantRectToMyCoords(button, it) }
+                val finishBounds = Rect(0, 0, finish.width, finish.height).also { with.offsetDescendantRectToMyCoords(finish, it) }
+                assertTrue("RTL control is still inside the waveform", finishBounds.contains(buttonBounds))
+                assertEquals("RTL mirrors the trailing inset (waveform container direction=${(finish.parent as View).layoutDirection})", 9f,
+                    (buttonBounds.left - finishBounds.left) / app.resources.displayMetrics.density, 1f)
+                tap(with, buttonBounds)
+            }
+            awaitPanel { control.state.value == false }
+            instrumentation.runOnMainSync { assertEquals("RTL speaker tap must not finish the recording", 1, stops) }
         } finally {
-            instrumentation.runOnMainSync { without.release(); with.release() }
+            instrumentation.runOnMainSync { without.release(); with.release(); activity.finish() }
             scope.cancel()
         }
     }
 
-    @Test fun speakerToggleUsesNeutralAndSelectedColorsInBothThemes() = runBlocking {
+    @Test fun speakerToggleUsesHomesTransparentAndRoundCheckedBackgroundInBothThemes() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp
         val settings = app.settingsRepository
@@ -101,23 +152,36 @@ class CapturePanelAndroidTest {
                 panel = RecordingPanel(app, {}, {}).also { it.bind(scope, metrics.state, control) }
                 button = panel.findViewById(R.id.recording_speakers)
             }
-            fun color(): Int {
+            fun renderedColor(drawable: android.graphics.drawable.Drawable, fractionX: Float, fractionY: Float): Int {
                 val size = (48 * app.resources.displayMetrics.density).toInt()
-                val drawable = button.background
                 drawable.setBounds(0, 0, size, size)
                 val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
                 try {
                     drawable.draw(android.graphics.Canvas(bitmap))
-                    return bitmap.getPixel(size / 2, size / 2)
+                    return bitmap.getPixel((size * fractionX).toInt(), (size * fractionY).toInt())
                 } finally { bitmap.recycle() }
             }
             for (dark in listOf(false, true)) {
                 settings.setThemeMode(if (dark) "dark" else "light")
                 val palette = io.github.lrq3000.utterlane.ui.theme.BlueHarmony.palette(dark)
                 control.set(false)
-                awaitPanel { !button.isChecked && color() == palette.outlineVariant.toArgb() }
+                awaitPanel { !button.isChecked }
+                instrumentation.runOnMainSync {
+                    assertEquals("Off must show the waveform gradient through the button",
+                        Color.TRANSPARENT, renderedColor(button.background, .5f, .5f))
+                    assertEquals("The speaker glyph must remain visible against the gradient while off",
+                        0xC7FFFFFF.toInt(), renderedColor(button.foreground, .69f, .62f))
+                }
                 control.set(true)
-                awaitPanel { button.isChecked && color() == palette.primary.toArgb() }
+                awaitPanel { button.isChecked && renderedColor(button.background, .5f, .5f) == palette.container.toArgb() }
+                instrumentation.runOnMainSync {
+                    assertEquals("The checked fill must be round, not squared off",
+                        Color.TRANSPARENT, renderedColor(button.background, .16f, .16f))
+                    assertEquals("Checked fill uses the same color as Home",
+                        palette.container.toArgb(), renderedColor(button.background, .5f, .23f))
+                    assertEquals("Checked glyph uses the same tint as Home",
+                        palette.primary.toArgb(), renderedColor(button.foreground, .69f, .62f))
+                }
             }
         } finally {
             instrumentation.runOnMainSync { panel.release() }
@@ -226,7 +290,10 @@ class CapturePanelAndroidTest {
                 assertTrue(texts(panel).any { it.text.toString() == app.getString(R.string.capture_no_signal) && it.visibility == View.VISIBLE })
                 val button = panel.findViewById<android.widget.Button>(R.id.recording_done)
                 assertTrue(button.isEnabled)
-                assertTrue(button.layoutParams.height >= 130 * app.resources.displayMetrics.density)
+                val density = app.resources.displayMetrics.density
+                panel.measure(View.MeasureSpec.makeMeasureSpec((360 * density).toInt(), View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                assertTrue("Finish tap area remains at least 130 dp tall", button.measuredHeight >= 130 * density)
                 button.performClick()
             }
             assertTrue(stopped)
@@ -309,5 +376,14 @@ class CapturePanelAndroidTest {
         if (view is TextView) return listOf(view)
         if (view !is ViewGroup) return emptyList()
         return (0 until view.childCount).flatMap { texts(view.getChildAt(it)) }
+    }
+
+    private fun tap(panel: RecordingPanel, bounds: Rect) {
+        val time = SystemClock.uptimeMillis()
+        for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+            val event = MotionEvent.obtain(time, time, action, bounds.exactCenterX(), bounds.exactCenterY(), 0)
+            try { assertTrue("Waveform touch must have a recipient", panel.dispatchTouchEvent(event)) }
+            finally { event.recycle() }
+        }
     }
 }

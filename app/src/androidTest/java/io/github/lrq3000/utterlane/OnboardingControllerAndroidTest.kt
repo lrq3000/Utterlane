@@ -154,7 +154,7 @@ class OnboardingControllerAndroidTest {
             } finally { liveField.recycle() }
             instrumentation.runOnMainSync {
                 val waveform = activity.findViewById<WaveformButton>(R.id.recording_done)
-                val panel = waveform.parent as RecordingPanel
+                val panel = generateSequence<View>(waveform) { it.parent as? View }.filterIsInstance<RecordingPanel>().first()
                 assertTrue("Waveform must reflect actual samples", waveform.levels.any { it > 0f })
                 assertEquals("Recognized during capture.", panel.statusText.text.toString())
                 val speakers = panel.findViewById<android.widget.ToggleButton>(R.id.recording_speakers)

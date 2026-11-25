@@ -3,6 +3,7 @@ package io.github.lrq3000.utterlane.ui
 import android.content.Context
 import android.content.res.Configuration
 import android.content.res.ColorStateList
+import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.RippleDrawable
@@ -46,6 +47,8 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         // focus from Stop or requiring the user to attend to the screen.
         accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
     }
+    private val speakerTouchSize = dp(48)
+    private val speakerTopInset = dp(8)
     val statusText = label(15f, foreground).apply { id = R.id.recording_status; maxLines = 3; ellipsize = android.text.TextUtils.TruncateAt.END }
     private val speakerWarning = label(13f, foreground).apply {
         text = context.getString(R.string.speaker_model_needed)
@@ -65,6 +68,7 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
     }
     private val waveform = WaveformButton(context).apply {
         id = R.id.recording_done
+        stateListAnimator = null
         setOnClickListener { onStop() }
         text = context.getString(R.string.capture_tap_finish)
         contentDescription = text
@@ -72,10 +76,19 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
     private var speakerControl: LiveSpeakerControl? = null
     private val speakers = ToggleButton(context).apply {
         id = R.id.recording_speakers
+        stateListAnimator = null
         textOn = ""; textOff = ""; text = ""
         contentDescription = context.getString(R.string.home_speakers)
         tooltipText = context.getString(R.string.live_speakers_tooltip)
         setOnClickListener { speakerControl?.set(isChecked) }
+    }
+    private val waveformArea = FrameLayout(context).apply {
+        addView(waveform, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        // Separate siblings keep the full waveform tappable to finish, except where the speaker button intercepts its own touches.
+        addView(speakers, FrameLayout.LayoutParams(speakerTouchSize, speakerTouchSize, Gravity.TOP or Gravity.END).apply {
+            topMargin = speakerTopInset
+            marginEnd = dp(9)
+        })
     }
     private val processing = LinearLayout(context).apply { orientation = VERTICAL; gravity = Gravity.CENTER }
     private val bar = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100 }
@@ -97,17 +110,13 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
             cornerRadii = floatArrayOf(dp(26).toFloat(), dp(26).toFloat(), dp(26).toFloat(), dp(26).toFloat(), 0f, 0f, 0f, 0f)
         }
         elevation = dp(12).toFloat()
-        // Reuse the existing header and its top padding for the touch target, not a new row below the waveform.
-        addView(FrameLayout(context).apply {
-            addView(LinearLayout(context).apply {
-                orientation = VERTICAL
-                setPadding(0, dp(16), 0, 0)
-                addView(title); addView(details); addView(recognition); addView(signal)
-                addView(input); addView(inputWarning)
-            }, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-            addView(speakers, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.END).apply { topMargin = dp(4) })
+        addView(LinearLayout(context).apply {
+            orientation = VERTICAL
+            setPadding(0, dp(16), 0, 0)
+            addView(title); addView(details); addView(recognition); addView(signal)
+            addView(input); addView(inputWarning)
         }, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-        addView(waveform, LayoutParams(LayoutParams.MATCH_PARENT, dp(136)).apply { topMargin = dp(12) })
+        addView(waveformArea, LayoutParams(LayoutParams.MATCH_PARENT, dp(136)).apply { topMargin = dp(12) })
         processing.addView(percent)
         processing.addView(bar, LayoutParams(LayoutParams.MATCH_PARENT, dp(16)).apply { topMargin = dp(16) })
         addView(processing, LayoutParams(LayoutParams.MATCH_PARENT, dp(136)).apply { topMargin = dp(12) })
@@ -179,13 +188,18 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         speakers.backgroundTintList = null
         val checkedStates = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
         val fill = GradientDrawable().apply {
-            cornerRadius = dp(10).toFloat()
-            color = ColorStateList(checkedStates, intArrayOf(palette.primary.toArgb(), palette.outlineVariant.toArgb()))
+            shape = GradientDrawable.OVAL
+            color = ColorStateList(checkedStates, intArrayOf(palette.container.toArgb(), Color.TRANSPARENT))
         }
-        speakers.background = RippleDrawable(ColorStateList.valueOf(palette.text.copy(alpha = .18f).toArgb()),
-            InsetDrawable(fill, dp(5)), null)
+        val rippleMask = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.WHITE)
+        }
+        // Match Home's 40 dp circle without shrinking the 48 dp touch target. The mask keeps ripple feedback even when the fill is transparent.
+        speakers.background = RippleDrawable(ColorStateList.valueOf(0x33FFFFFF),
+            InsetDrawable(fill, dp(4)), InsetDrawable(rippleMask, dp(4)))
         val icon = requireNotNull(context.getDrawable(R.drawable.ic_speaker_conversation)).mutate().apply {
-            setTintList(ColorStateList(checkedStates, intArrayOf(palette.onPrimary.toArgb(), palette.text.toArgb())))
+            setTintList(ColorStateList(checkedStates, intArrayOf(palette.primary.toArgb(), 0xC7FFFFFF.toInt())))
         }
         speakers.foreground = InsetDrawable(icon, dp(12))
         waveform.applyPalette(palette)
@@ -200,16 +214,17 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit)
         keepScreenOn = snapshot.phase !in listOf(CapturePhase.COMPLETE, CapturePhase.FAILED, CapturePhase.CANCELLED)
         val capturing = snapshot.phase == CapturePhase.CAPTURING
         waveform.visibility = if (capturing) View.VISIBLE else View.GONE
+        waveformArea.visibility = waveform.visibility
         waveform.isEnabled = capturing
         val showSpeakers = capturing && speakerControl != null
         speakers.visibility = if (showSpeakers) View.VISIBLE else View.GONE
+        // Keep the highest waveform peaks below the icon without increasing the panel height.
+        waveform.plotTopInset = if (showSpeakers) speakerTopInset + speakerTouchSize else 0
         val showSpeakerWarning = snapshot.speakerModelNeeded && speakerControl != null &&
             snapshot.phase in setOf(CapturePhase.CAPTURING, CapturePhase.STOPPING, CapturePhase.PROCESSING)
         speakerWarning.visibility = if (showSpeakerWarning) View.VISIBLE else View.GONE
         speakerSettings.visibility = speakerWarning.visibility
         if (showSpeakerWarning) showSpeakerSettingsAction(capturing)
-        val titleGutter = if (showSpeakers) dp(48) else 0
-        if (title.paddingLeft != titleGutter) title.setPadding(titleGutter, 0, titleGutter, 0)
         processing.visibility = if (capturing) View.GONE else View.VISIBLE
         waveform.levels = snapshot.waveform
         title.text = context.getString(when (snapshot.phase) {

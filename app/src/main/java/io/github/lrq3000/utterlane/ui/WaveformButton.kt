@@ -28,6 +28,9 @@ class WaveformButton(context: Context) : Button(context) {
     var isIdle = false
         set(value) { if (field != value) { field = value; invalidate() } }
 
+    internal var plotTopInset = 0
+        set(value) { if (field != value) { field = value; invalidate() } }
+
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; strokeCap = Paint.Cap.ROUND }
     private var appliedPalette: BrandPalette? = null
 
@@ -52,18 +55,25 @@ class WaveformButton(context: Context) : Button(context) {
         super.onDraw(canvas)
         val padding = 24 * resources.displayMetrics.density
         val available = (width - 2 * padding).coerceAtLeast(1f)
-        val center = height * 0.38f
+        // In the compact panel, reserve the actual bottom-aligned caption, including any wrapped lines at larger font sizes.
+        val plotBottom = if (plotTopInset > 0) height - compoundPaddingBottom - (layout?.height ?: 0) else height
+        val plotHeight = plotBottom - plotTopInset
+        if (plotHeight <= 0) return
+        val center = plotTopInset + plotHeight * 0.38f
+        val plotSave = if (plotTopInset > 0) canvas.save().also {
+            canvas.clipRect(0, plotTopInset, width, plotBottom)
+        } else null
         if (isIdle) {
             paint.strokeWidth = (available / 64 * 0.55f).coerceAtLeast(2f)
             canvas.drawLine(padding, center, padding + available, center, paint)
-            return
+        } else if (levels.isNotEmpty()) {
+            paint.strokeWidth = (available / levels.size * 0.55f).coerceAtLeast(2f)
+            levels.forEachIndexed { index, level ->
+                val x = padding + index * available / levels.size
+                val amplitude = level * plotHeight * 0.25f
+                canvas.drawLine(x, center - amplitude, x, center + amplitude.coerceAtLeast(1f), paint)
+            }
         }
-        if (levels.isEmpty()) return
-        paint.strokeWidth = (available / levels.size * 0.55f).coerceAtLeast(2f)
-        levels.forEachIndexed { index, level ->
-            val x = padding + index * available / levels.size
-            val amplitude = level * height * 0.25f
-            canvas.drawLine(x, center - amplitude, x, center + amplitude.coerceAtLeast(1f), paint)
-        }
+        if (plotSave != null) canvas.restoreToCount(plotSave)
     }
 }

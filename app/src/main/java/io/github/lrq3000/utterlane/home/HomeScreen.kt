@@ -21,6 +21,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -251,7 +252,7 @@ private fun HomeCaptureControl(state: HomeState, onRecord: () -> Unit, onSpeaker
                     colors = IconButtonDefaults.iconToggleButtonColors(contentColor = Color.White.copy(alpha = .78f),
                         checkedContentColor = MaterialTheme.colorScheme.primary,
                         checkedContainerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                    Icon(Icons.Outlined.People, stringResource(R.string.home_speakers))
+                    Icon(painterResource(R.drawable.ic_speaker_conversation), stringResource(R.string.home_speakers))
                 }
             }
         }
