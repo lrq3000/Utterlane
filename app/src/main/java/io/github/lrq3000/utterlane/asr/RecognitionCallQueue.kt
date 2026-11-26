@@ -1,30 +1,44 @@
 package io.github.lrq3000.utterlane.asr
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.job
 
 /** One nonpreemptible model operation at a time. Priority belongs to a ready call, never to an entire recording. */
 internal class RecognitionCallQueue {
-    private class Turn(val capture: CaptureAdmission.Lease?) {
-        val ready = CompletableDeferred<Unit>()
+    internal class Turn(val capture: CaptureAdmission.Lease?, private val worker: CoroutineScope) {
+        internal val ready = CompletableDeferred<Unit>()
+        private var reply: Deferred<*>? = null
+
+        /** The selected turn owns native dispatch and its captured inputs. Delete/Back cancels only await; reset/worker exit resolves the outstanding operation. */
+        suspend fun <T> awaitNativeReply(call: suspend () -> T): T {
+            val caller = currentCoroutineContext().job
+            check(reply?.isCompleted != false) { "A native call is already running in this turn" }
+            val operation = worker.async { caller.ensureActive(); call() }
+            reply = operation
+            return operation.await()
+        }
+
+        internal fun whenReleasable(release: () -> Unit) {
+            val operation = reply
+            if (operation == null || operation.isCompleted) release() else operation.invokeOnCompletion { release() }
+        }
     }
 
+    private val worker = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var owner: Turn? = null
     private val waiting = LinkedHashSet<Turn>()
     // Live can only become false (Stop/EOF). Keep the original arrival order in waiting so demotion costs no requeue or lost position.
     private val live = LinkedHashSet<Turn>()
 
-    /** Binder dispatch cannot be cancelled once sent. Keep this turn until the final reply, watchdog, or worker exit, then discard a cancelled owner's result. */
-    suspend fun <T> awaitNativeReply(call: () -> T): T = withContext(Dispatchers.IO) {
-        currentCoroutineContext().ensureActive()
-        call().also { currentCoroutineContext().ensureActive() }
-    }
-
-    suspend fun <T> withTurn(capture: CaptureAdmission.Lease? = null, call: suspend () -> T): T {
-        val turn = Turn(capture)
+    suspend fun <T> withTurn(capture: CaptureAdmission.Lease? = null, call: suspend Turn.() -> T): T {
+        val turn = Turn(capture, worker)
         val queued = synchronized(this) {
             if (owner == null) { owner = turn; false } else {
                 waiting.add(turn)
@@ -35,17 +49,20 @@ internal class RecognitionCallQueue {
         try {
             if (queued) turn.ready.await()
             currentCoroutineContext().ensureActive()
-            return call()
+            return turn.call()
         } finally {
-            val next = synchronized(this) {
-                // Cancellation can win while waiting, or after selection but before await resumes. Only the selected owner passes the baton.
-                waiting.remove(turn)
-                live.remove(turn)
-                if (owner === turn) selectNext().also { owner = it } else null
-            }
-            // Completing may resume user code immediately on an unconfined dispatcher; never do it inside the monitor.
-            next?.ready?.complete(Unit)
+            turn.whenReleasable { release(turn) }
         }
+    }
+
+    private fun release(turn: Turn) {
+        val next = synchronized(this) {
+            // Only choose the next owner at the actual reply boundary, not when a cancelled caller stops listening.
+            waiting.remove(turn)
+            live.remove(turn)
+            if (owner === turn) selectNext().also { owner = it } else null
+        }
+        next?.ready?.complete(Unit)
     }
 
     private fun selectNext(): Turn? {

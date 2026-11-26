@@ -59,7 +59,7 @@ class RecognizerManager(
     suspend fun initialize(): Boolean = withModelOperation { expected ->
         withContext(Dispatchers.IO) {
             val options = UtterlaneApp.instance.settingsRepository.runtimeOptions.first().requireValid()
-            calls.withTurn { initializeLocked(expected, options) }
+            calls.withTurn { awaitNativeReply { initializeLocked(expected, options) } }
         }
     }
 
@@ -194,7 +194,7 @@ class RecognizerManager(
             // close can deliver activity. Never call it while holding stateLock:
             // a concurrent observer may be waiting for this lock on its own monitor.
             if (!published) { candidate.close(); return false }
-            runInterruptible(Dispatchers.IO) { candidate.prepare() }
+            candidate.prepare() // Already on the independent turn's IO worker. Only explicit reset may abort this published candidate.
             currentCoroutineContext().ensureActive()
             val ready = synchronized(stateLock) {
                 if (expected != generation) false else {
@@ -236,7 +236,11 @@ class RecognizerManager(
         } finally {
             synchronized(stateLock) {
                 activityOperation?.let(activityOwnership::finish)
-                if (expected == generation) _isLoading.value = false
+                if (expected == generation) {
+                    _isLoading.value = false
+                    // A cancelled client may already have released its outer operation reservation while this load was still running.
+                    refreshIdleTimerLocked()
+                }
             }
         }
     }
@@ -276,7 +280,7 @@ class RecognizerManager(
                     val app = UtterlaneApp.instance
                     // Preparation, segmentation, attribution and diagnostic activity all
                     // consume the same entry-point snapshot, including while queued.
-                    check(initializeLocked(expected, options, progressOwner)) { _failure.value ?: context.getString(R.string.toast_model_load_failed) }
+                    check(awaitNativeReply { initializeLocked(expected, options, progressOwner) }) { _failure.value ?: context.getString(R.string.toast_model_load_failed) }
                     val rules = if (app.settingsRepository.dictionaryEnabled.first()) app.dictionaryManager.rules.value else emptyList()
                     var diarize = speakerOverride ?: liveSpeakers?.state?.value ?: app.settingsRepository.diarizationEnabled.first()
                     liveSpeakers?.initialize(diarize)
@@ -304,26 +308,27 @@ class RecognizerManager(
                         sessions[id] = owner
                         refreshIdleTimerLocked()
                     }
-                    TranscriptionSession(store, StreamingCorrections(rules), onSegment, decode = { window ->
-                        withSessionBackend(expected, id, options, capture, progressOwner) { backend ->
-                            backend.decodePlainWindow(window, modelManager.selected.value.isCustom)
-                        }
-                    }, onClosed = {
-                        sessionBackend.endSession(id)
-                        synchronized(stateLock) {
-                            // A late close after reset belongs to the old generation.
-                            if (sessions.containsKey(id)) {
-                                sessions.remove(id)
-                                activityOwnership.closeSession(id)
-                                refreshIdleTimerLocked()
+                    val lease = NativeSessionLease {
+                        try { sessionBackend.endSession(id) } finally {
+                            synchronized(stateLock) {
+                                if (sessions.containsKey(id)) {
+                                    sessions.remove(id)
+                                    activityOwnership.closeSession(id)
+                                    refreshIdleTimerLocked()
+                                }
                             }
                         }
-                    }, onProcessed = onProcessed,
-                        decodeSpeakers = if (hasSpeakerDecoder) { window -> withSessionBackend(expected, id, options, capture, progressOwner) { it.transcribeSpeakers(id, window, count, options) } } else null,
+                    }
+                    suspend fun <T> invokeBackend(action: (RecognitionBackend) -> T): T =
+                        withSessionBackend(expected, id, options, capture, progressOwner, lease, action)
+                    TranscriptionSession(store, StreamingCorrections(rules), onSegment, decode = { window ->
+                        invokeBackend { it.decodePlainWindow(window, modelManager.selected.value.isCustom) }
+                    }, onClosed = lease::close, onProcessed = onProcessed,
+                        decodeSpeakers = if (hasSpeakerDecoder) { window -> invokeBackend { it.transcribeSpeakers(id, window, count, options) } } else null,
                         speakerLabel = { speaker -> speakerLabels.getOrElse(speaker) { unknownSpeaker } },
                         options = options,
                         // Hold the model lease through native EOF and use the same scheduling and activity ownership as other calls.
-                        finishSpeakers = if (hasSpeakerDecoder) { { withSessionBackend(expected, id, options, capture, progressOwner) { it.finishSpeakers(id, options) } } } else null,
+                        finishSpeakers = if (hasSpeakerDecoder) { { invokeBackend { it.finishSpeakers(id, options) } } } else null,
                         speakerRequested = liveSpeakers?.let { { it.resolve(false) } },
                         speakerStart = ::speakersAvailable,
                         onSpeakersBypassed = { liveSpeakers?.unavailable(); onSpeakerUnavailable?.invoke(SpeakerWarning.PROCESSING_FAILED) }
@@ -338,13 +343,14 @@ class RecognizerManager(
         }
     }
 
-    private suspend fun <T> withSessionBackend(expected: Long, id: Long, options: RuntimeOptions, capture: CaptureAdmission.Lease?, progressOwner: Any?, action: (RecognitionBackend) -> T): T = withContext(Dispatchers.IO) {
-        calls.withTurn(capture) {
+    private suspend fun <T> withSessionBackend(expected: Long, id: Long, options: RuntimeOptions, capture: CaptureAdmission.Lease?, progressOwner: Any?,
+        lease: NativeSessionLease, action: (RecognitionBackend) -> T): T = calls.withTurn(capture) {
+        awaitNativeReply { lease.useBackend {
             val (backend, activityOperation) = synchronized(stateLock) {
                 check(expected == generation && sessions.containsKey(id)) { "Model was unloaded" }
                 checkNotNull(recognizer) to activityOwnership.begin(options, workerActivityOptions, id, progressOwner)
             }
-            val result = try { calls.awaitNativeReply { action(backend) } }
+            val result = try { action(backend) }
             catch (error: CancellationException) { throw error }
             catch (error: Exception) {
                 synchronized(stateLock) { if (expected == generation) { _failure.value = error.message; _isReady.value = false } }
@@ -353,7 +359,7 @@ class RecognizerManager(
             finally { synchronized(stateLock) { activityOwnership.finish(activityOperation) } }
             synchronized(stateLock) { check(expected == generation) { "Model was unloaded" } }
             result
-        }
+        } }
     }
 
     suspend fun selectModel(model: ModelDefinition) = withContext(Dispatchers.IO) {

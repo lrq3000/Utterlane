@@ -7,7 +7,7 @@ internal class RecognitionSessionPreparation(
     private val queue: RecognitionCallQueue,
     private val readOptions: suspend () -> RuntimeOptions
 ) {
-    suspend fun <T> prepare(provided: RuntimeOptions?, capture: CaptureAdmission.Lease? = null, block: suspend (RuntimeOptions) -> T): T {
+    suspend fun <T> prepare(provided: RuntimeOptions?, capture: CaptureAdmission.Lease? = null, block: suspend RecognitionCallQueue.Turn.(RuntimeOptions) -> T): T {
         // Select exactly once before the inference wait. An entry point's snapshot is
         // authoritative even if preferences changed before this call or while queued.
         // The manager's outer operation reservation covers this read and the whole wait.

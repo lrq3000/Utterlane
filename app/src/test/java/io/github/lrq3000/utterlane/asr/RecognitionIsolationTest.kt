@@ -13,29 +13,58 @@ class RecognitionIsolationTest {
         val dispatched = CompletableDeferred<Unit>()
         val reply = CompletableFuture<Unit>()
         val interrupted = AtomicBoolean()
+        val backendEnded = AtomicBoolean()
+        val lease = NativeSessionLease { backendEnded.set(true) }
         val events = mutableListOf<String>()
         val caller = launch(start = CoroutineStart.UNDISPATCHED) {
-            queue.withTurn {
-                queue.awaitNativeReply {
-                    dispatched.complete(Unit)
-                    // Even a client which ignores interrupt and waits for the worker must not receive one from ordinary caller cancellation.
-                    reply.join()
-                    interrupted.set(Thread.interrupted())
+            try {
+                queue.withTurn {
+                    awaitNativeReply { lease.useBackend {
+                        dispatched.complete(Unit)
+                        reply.join()
+                        interrupted.set(Thread.interrupted())
+                    } }
+                    events += "cancelled result"
                 }
-                events += "cancelled result"
-            }
+            } finally { lease.close() }
         }
         try {
             dispatched.await()
-            caller.cancel()
             launch(start = CoroutineStart.UNDISPATCHED) { queue.withTurn { events += "next file" } }
+            assertTrue("Delete/Back must finish before a hung native reply", withTimeoutOrNull(1000) { caller.cancelAndJoin(); true } == true)
             launch(start = CoroutineStart.UNDISPATCHED) { queue.withTurn(CaptureAdmission.Lease {}) { events += "live" } }
+            yield()
+            assertFalse(reply.isDone)
+            assertFalse("END_SESSION must not overtake its native inference", backendEnded.get())
             assertTrue(events.isEmpty())
         } finally { reply.complete(Unit) }
         caller.join()
         queue.withTurn { events += "done" }
         assertFalse("Cancelling a client wait would abandon the native turn before its reply", interrupted.get())
+        assertTrue(backendEnded.get())
         assertEquals(listOf("live", "next file", "done"), events)
+    }
+
+    @Test(timeout = 5000) fun cancelledPreparationFinishesOnlyItsModelAndNeverConstructsAnUnreturnedSession(): Unit = runBlocking {
+        val queue = RecognitionCallQueue()
+        val preparation = RecognitionSessionPreparation(queue) { RuntimeOptions() }
+        val started = CompletableDeferred<Unit>()
+        val reply = CompletableFuture<Unit>()
+        val prepared = AtomicBoolean()
+        val caller = launch(start = CoroutineStart.UNDISPATCHED) {
+            preparation.prepare(null) {
+                awaitNativeReply { started.complete(Unit); reply.join(); prepared.set(true) }
+                fail("Cancelled owner constructed a session")
+            }
+        }
+        try {
+            started.await()
+            assertTrue(withTimeoutOrNull(1000) { caller.cancelAndJoin(); true } == true)
+            val next = async(start = CoroutineStart.UNDISPATCHED) { queue.withTurn { prepared.get() } }
+            assertFalse("Preparation must retain its turn until readiness is published", next.isCompleted)
+            reply.complete(Unit)
+            assertTrue(next.await())
+        } finally { reply.complete(Unit) }
     }
 
     @Test fun finishedSessionCannotRelinquishHardwareAfterFailedRelease() {
@@ -66,7 +95,7 @@ class RecognitionIsolationTest {
         val waiting = async {
             runCatching {
                 queue.withTurn {
-                    queue.awaitNativeReply {
+                    awaitNativeReply {
                         val pending = requests.register(1, ProgressWatchdog(1, 0, 0, 0, false))
                         dispatched.complete(Unit)
                         pending.result.get()
