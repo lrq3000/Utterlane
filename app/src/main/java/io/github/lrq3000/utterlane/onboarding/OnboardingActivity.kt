@@ -10,7 +10,6 @@ import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.Settings
 import android.util.Log
-import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,6 +23,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
+import io.github.lrq3000.utterlane.asr.keepSetupWindowOn
 import io.github.lrq3000.utterlane.settings.LocalizedActivity
 import io.github.lrq3000.utterlane.settings.SettingsActivity
 import io.github.lrq3000.utterlane.ui.theme.UtterlaneTheme
@@ -86,10 +86,7 @@ class OnboardingActivity : LocalizedActivity() {
                 BackHandler { model.act(OnboardingAction.Back) }
                 OnboardingScreen(state, ::dispatch)
             }
-            SideEffect {
-                if (state.trial.active) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            }
+            SideEffect { window.keepSetupWindowOn(state.keepSetupScreenOn) }
             LaunchedEffect(state.finished, state.exit) {
                 if (state.finished) {
                     val target = if (intent.getBooleanExtra(EXTRA_REPLAY, false)) {

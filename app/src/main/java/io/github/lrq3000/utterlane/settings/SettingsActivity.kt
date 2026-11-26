@@ -69,6 +69,7 @@ import io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator
 import io.github.lrq3000.utterlane.history.RecordingRecovery
 import io.github.lrq3000.utterlane.home.HomeActivity
 import io.github.lrq3000.utterlane.home.HomeNavigationBar
+import io.github.lrq3000.utterlane.asr.keepModelDownloadScreenOn
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -213,7 +214,11 @@ class SettingsActivity : LocalizedActivity() {
 
     private fun showSettings() {
         setContent {
-            val settingsRepository = UtterlaneApp.instance.settingsRepository
+            val app = UtterlaneApp.instance
+            val settingsRepository = app.settingsRepository
+            val speechDownload by app.modelManager.downloadState.collectAsStateWithLifecycle()
+            val speakerDownload by app.diarizationModels.downloadState.collectAsStateWithLifecycle()
+            androidx.compose.runtime.SideEffect { window.keepModelDownloadScreenOn(speechDownload, speakerDownload) }
             val themeMode by settingsRepository.themeMode.collectAsStateWithLifecycle(
                 initialValue = SettingsRepository.THEME_SYSTEM
             )
