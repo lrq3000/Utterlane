@@ -63,7 +63,7 @@ class ArchivalCoordinator(private val app: UtterlaneApp, val journal: ArchivalJo
             mutable.update { it.copy(message = if (faults.paused) "Archival paused: $message" else message) }
         } }
         scope.launch {
-            merge(journal.revision, app.recordingHistory.revision, app.transcriptHistory.revision).collect {
+            merge(journal.revision, app.recordingHistory.revision, app.transcriptHistory.revision, app.transcriptionQueue.journal.originalReleases).collect {
                 faults.run {
                     refresh() // Independent of a drain waiting on a stuck provider.
                     val running = inFlight
