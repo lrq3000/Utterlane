@@ -21,6 +21,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -31,9 +32,9 @@ import androidx.core.content.IntentCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.repeatOnLifecycle
 import io.github.lrq3000.utterlane.history.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.combine
 import java.util.UUID
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
@@ -42,6 +43,19 @@ import io.github.lrq3000.utterlane.settings.LocalizedActivity
 import io.github.lrq3000.utterlane.settings.SettingsRepository
 import io.github.lrq3000.utterlane.settings.SpeakerModelNotice
 import io.github.lrq3000.utterlane.ui.theme.UtterlaneTheme
+
+internal enum class ImportSetupHandoff { STAY, OPEN, BACKGROUND }
+
+/** Closing releases an external Activity's transient grants. Wait for every private copy and all setup decisions, including service promotion. */
+internal fun ImportScreenState.handoff(background: Boolean, service: QueueServiceAdmission.Status, jobs: List<QueueRecord>): ImportSetupHandoff {
+    val item = receipt
+    if (busy || question != null || problem != null || item == null || !item.done || item.firstJob == null || item.accepted != item.total)
+        return ImportSetupHandoff.STAY
+    val first = jobs.firstOrNull { it.id == item.firstJob } ?: return ImportSetupHandoff.STAY
+    if (background && first.stage == QueueStage.FAILED) return ImportSetupHandoff.STAY
+    if (service != QueueServiceAdmission.Status.RUNNING && jobs.any { it.stage == QueueStage.WAITING }) return ImportSetupHandoff.STAY
+    return if (background) ImportSetupHandoff.BACKGROUND else ImportSetupHandoff.OPEN
+}
 
 /** File-only entry point. No source is copied or processed until confirmation. */
 open class FileTranscriptionSetupActivity : LocalizedActivity() {
@@ -60,7 +74,7 @@ open class FileTranscriptionSetupActivity : LocalizedActivity() {
 
     private lateinit var batchId: String
     private lateinit var session: ImportBatches.Session
-    private var returnInBackground = false
+    private var returnInBackground by mutableStateOf(false)
 
     @OptIn(ExperimentalComposeUiApi::class, ExperimentalLayoutApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -92,7 +106,9 @@ open class FileTranscriptionSetupActivity : LocalizedActivity() {
         fun close(openResult: Boolean) {
             if (isFinishing || isDestroyed) return
             val first = session.state.value.receipt?.firstJob
-            if (openResult && first != null && lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+            if (openResult && first != null) {
+                // The previous combine emission can outlive RESUMED. Retry on the next resume instead of discarding the receipt without opening its result.
+                if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
                 if (picker) setResult(RESULT_OK, Intent().putExtra(QueueNotifications.JOB, first))
                 else startActivity(QueueNotifications.intent(this, first))
             }
@@ -100,16 +116,16 @@ open class FileTranscriptionSetupActivity : LocalizedActivity() {
             finish()
         }
         lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.RESUMED) { session.state.collect { state ->
-                val receipt = state.receipt ?: return@collect
-                if (receipt.done && receipt.accepted == receipt.total && app.transcriptionQueue.let { queue ->
-                        queue.rows.value.none(queue.admission.status.value::needsResume) }) {
-                    close(!returnInBackground)
+            val queue = app.transcriptionQueue
+            combine(session.state, queue.admission.status, queue.rows, lifecycle.currentStateFlow) { state, service, jobs, lifecycleState ->
+                state.handoff(returnInBackground, service, jobs) to lifecycleState
+            }.collect { (handoff, lifecycleState) ->
+                when (handoff) {
+                    ImportSetupHandoff.OPEN -> if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) close(true)
+                    ImportSetupHandoff.BACKGROUND -> close(false)
+                    ImportSetupHandoff.STAY -> Unit
                 }
-            } }
-        }
-        lifecycleScope.launch {
-            session.state.collect { state -> if (returnInBackground && state.receipt?.done == true) close(false) }
+            }
         }
         setContent {
             val state by session.state.collectAsStateWithLifecycle()
@@ -165,10 +181,6 @@ open class FileTranscriptionSetupActivity : LocalizedActivity() {
                             }
                             if (item != null) Text(stringResource(R.string.queue_batch_count, item.accepted, item.total))
                             if (state.busy && item?.done != true) Text(stringResource(R.string.queue_import_progress, (item?.cursor ?: 0) + 1, total))
-                            if (state.busy) TextButton({
-                                // Keep this Activity's transient provider grants while it finishes staging. Only a completed private copy counts as queued.
-                                if (moveTaskToBack(true)) returnInBackground = true
-                            }) { Text(stringResource(R.string.queue_background)) }
                             if (item != null && !item.done && !state.busy && state.question == null) {
                                 val name = Uri.parse(item.uri).lastPathSegment ?: stringResource(R.string.dialog_title)
                                 Text(stringResource(when (state.problem) {
@@ -184,17 +196,27 @@ open class FileTranscriptionSetupActivity : LocalizedActivity() {
                                 val jobs by app.transcriptionQueue.rows.collectAsStateWithLifecycle()
                                 val service by app.transcriptionQueue.admission.status.collectAsStateWithLifecycle()
                                 if (jobs.any(service::needsResume)) QueueResumeAction(app.transcriptionQueue)
+                                if (returnInBackground) jobs.firstOrNull { it.id == item.firstJob && it.stage == QueueStage.FAILED }?.let { failed ->
+                                    Text(failed.message ?: stringResource(R.string.queue_failed), color = MaterialTheme.colorScheme.error)
+                                }
                                 TextButton({ close(true) }) { Text(stringResource(if (item.firstJob != null) R.string.queue_batch_view else R.string.queue_batch_close)) }
                             }
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(stringResource(R.string.home_speakers), style = MaterialTheme.typography.titleMedium)
-                                    Text(stringResource(R.string.file_setup_speaker_help), style = MaterialTheme.typography.bodySmall)
+                            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                                val beside = maxWidth >= 260.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+                                val speakers: @Composable () -> Unit = {
+                                    FileSetupOption(R.string.home_speakers, R.string.file_setup_speaker_help, "file_setup_speakers",
+                                        item?.speakers ?: labels, !submitted, beside) { labels = it }
                                 }
-                                val label = stringResource(R.string.home_speakers)
-                                Switch(item?.speakers ?: labels, { labels = it }, enabled = !submitted, modifier = Modifier.testTag("file_setup_speakers")
-                                    .semantics { contentDescription = label })
+                                val background: @Composable () -> Unit = {
+                                    FileSetupOption(R.string.import_background_switch, R.string.import_background_help, "file_setup_background",
+                                        returnInBackground, !submitted, beside) { returnInBackground = it }
+                                }
+                                if (beside) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                        Box(Modifier.weight(1f)) { speakers() }
+                                        Box(Modifier.weight(1f)) { background() }
+                                    }
+                                } else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { speakers(); background() }
                             }
                             if ((item?.speakers ?: labels) && !available) SpeakerModelNotice()
                         }
@@ -220,6 +242,24 @@ open class FileTranscriptionSetupActivity : LocalizedActivity() {
         outState.putBoolean("background", returnInBackground)
         outState.putBoolean("confirmed", session.state.value.let { it.busy || it.receipt != null })
         super.onSaveInstanceState(outState)
+    }
+}
+
+@Composable
+private fun FileSetupOption(title: Int, help: Int, tag: String, checked: Boolean, enabled: Boolean, beside: Boolean, onChange: (Boolean) -> Unit) {
+    val label = stringResource(title)
+    val control: @Composable () -> Unit = {
+        Switch(checked, onChange, enabled = enabled, modifier = Modifier.testTag(tag).semantics { contentDescription = label })
+    }
+    Column {
+        if (beside) {
+            control()
+            Text(label, style = MaterialTheme.typography.titleMedium)
+        } else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(label, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            control()
+        }
+        Text(stringResource(help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

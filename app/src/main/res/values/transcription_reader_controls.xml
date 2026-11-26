@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="reader_font_size">Transcript text size</string>
+    <string name="reader_size_sp">%1$d sp</string>
+    <string name="reader_size_default">%1$d sp (default)</string>
+    <string name="reader_pause">Pause</string>
+    <string name="reader_continue">Continue</string>
+    <string name="reader_restart">Restart</string>
+    <string name="reader_pause_transcription">Pause transcription</string>
+    <string name="reader_continue_transcription">Continue transcription</string>
+    <string name="reader_stop_transcription">Stop transcription</string>
+    <string name="reader_restart_transcription">Restart transcription</string>
+    <string name="reader_delete_job">Delete this transcription job</string>
+    <string name="reader_known_duration">(%1$s / %2$s)</string>
+    <string name="reader_estimated_duration">(%1$s / ≈ %2$s)</string>
+    <string name="import_background_switch">Run in background</string>
+    <string name="import_background_help">After the files are added, return without opening the transcript. Find it in the transcription queue.</string>
+</resources>

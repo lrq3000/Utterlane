@@ -38,6 +38,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             .associateWith { stringPreferencesKey("microphone_$it") }
         private val THEME_KEY = stringPreferencesKey("theme_mode")
         private val SHOW_TRANSCRIPTION_STREAM_STATISTICS_KEY = booleanPreferencesKey("show_transcription_stream_statistics")
+        private val TRANSCRIPT_TEXT_SIZE_KEY = intPreferencesKey("transcript_text_size_sp")
+        internal const val DEFAULT_TRANSCRIPT_TEXT_SIZE = 16
+        internal val TRANSCRIPT_TEXT_SIZES = listOf(12, 14, DEFAULT_TRANSCRIPT_TEXT_SIZE, 18, 20, 24, 28, 32)
         private val VISUAL_REFRESH_RATE_KEY = intPreferencesKey("visual_refresh_rate")
         val VISUAL_REFRESH_RATES = VisualRefreshRate.supported
         private val BUTTON_X_KEY = intPreferencesKey("button_x")
@@ -257,6 +260,15 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     suspend fun setShowTranscriptionStreamStatistics(show: Boolean) {
         dataStore.edit { it[SHOW_TRANSCRIPTION_STREAM_STATISTICS_KEY] = show }
+    }
+
+    internal val transcriptTextSize: Flow<Int> = dataStore.data.map { preferences ->
+        (preferences.asMap()[TRANSCRIPT_TEXT_SIZE_KEY] as? Int)?.takeIf { it in TRANSCRIPT_TEXT_SIZES } ?: DEFAULT_TRANSCRIPT_TEXT_SIZE
+    }
+
+    internal suspend fun setTranscriptTextSize(sizeSp: Int) {
+        require(sizeSp in TRANSCRIPT_TEXT_SIZES)
+        dataStore.edit { it[TRANSCRIPT_TEXT_SIZE_KEY] = sizeSp }
     }
 
     val visualRefreshRate: Flow<Int> = dataStore.data.map {

@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -20,6 +21,14 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.testTag as accessibilityTag
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -28,12 +37,15 @@ import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.asr.SpeakerWarning
 import io.github.lrq3000.utterlane.history.RecordingRecovery
 import io.github.lrq3000.utterlane.settings.SpeakerModelNotice
+import io.github.lrq3000.utterlane.settings.SettingsRepository
+import kotlinx.coroutines.launch
 
 /** D: infrequent audio actions above the document, common text actions by the
  * user's thumbs. The reader alone consumes the remaining height and scrolls. */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, onEmpty: () -> Unit, onBackground: (() -> Unit)? = null) {
+internal fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, onEmpty: () -> Unit,
+    onBackground: (() -> Unit)? = null, jobControls: QueueJobControls? = null) {
     val state by model.state.collectAsStateWithLifecycle()
     val app = UtterlaneApp.instance
     val context = LocalContext.current
@@ -53,6 +65,8 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
     var audioMenu by remember { mutableStateOf(false) }
     var modelMenu by remember { mutableStateOf(false) }
     var beforeModel by remember { mutableStateOf("") }
+    val queueId = model.input.queueId
+    var confirmQueueDeletion by rememberSaveable(queueId) { mutableStateOf(false) }
     // Survives process recreation too. A restored picker result must be consumed
     // (and rejected by a new model with no lease) before another picker is begun.
     var pickerPending by rememberSaveable { mutableStateOf(false) }
@@ -77,8 +91,8 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                     Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
                         DialogAction(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.dialog_back),
                             "dialog_back", !state.closing && !state.deleting, tint = MaterialTheme.colorScheme.onSurface, onClick = onClose)
-                        AutoFitDialogTitle(stringResource(R.string.dialog_title), Modifier.weight(1f).padding(end = 4.dp))
-                        Box {
+                        ReaderSizeTitle(Modifier.weight(1f).padding(end = 4.dp))
+                        if (jobControls == null || jobControls.stage == QueueStage.READY || jobControls.stage == QueueStage.FAILED) Box {
                             DialogAction(Icons.Outlined.Refresh, stringResource(R.string.dialog_retranscribe), "dialog_retranscribe",
                                 state.audio != null && !state.running && !busy, onClick = { modelMenu = true })
                             DropdownMenu(modelMenu, { modelMenu = false }) {
@@ -107,7 +121,11 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                                 })
                             }
                         }
-                        DialogDeletionControl(model, state, busy)
+                        when {
+                            jobControls != null -> QueueDeleteAction(jobControls.delete, enabled = !state.closing && !state.deleting)
+                            queueId != null -> QueueDeleteAction({ confirmQueueDeletion = true }, enabled = !state.closing && !state.deleting)
+                            else -> DialogDeletionControl(model, state, busy)
+                        }
                     }
                     Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
                         if (!state.importing) Text(stringResource(when {
@@ -128,17 +146,15 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                             modifier = Modifier.testTag("transcript_partial"))
                     }
                     Spacer(Modifier.height(8.dp))
-                    if (onBackground != null) TextButton(onClick = onBackground, modifier = Modifier.testTag("dialog_background")) {
-                        Text(stringResource(R.string.queue_background))
-                    }
                     TranscriptReader(model.document, state, Modifier.weight(1f).fillMaxWidth()) {
-                        TranscriptionProgressFooter(state, stats)
+                        TranscriptionProgressFooter(state, stats, jobControls)
                     }
                     AudioPlaybackControls(model) {
                         val hasText = state.transcriptBytes > 0
+                        if (onBackground != null) QueueBackgroundAction(onBackground)
                         DialogPinControl(model, state, busy)
                         TranscriptTransferActions(state.store, enabled = hasText && !state.deleting, iconsOnly = true)
-                        io.github.lrq3000.utterlane.archive.ManagedMarkdownAction(model, hasText && !working)
+                        io.github.lrq3000.utterlane.archive.ManagedMarkdownAction(model, hasText && !working && !model.input.unfinishedQueueView)
                     }
                     io.github.lrq3000.utterlane.archive.ArchivalStatusControls()
                 }
@@ -147,4 +163,60 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
     }
     DialogExitConfirmation(model, state)
     ImportRetentionQuestion(model)
+    // Home may borrow a queue-owned review model without mounting the queue Activity's confirmation.
+    if (queueId != null && jobControls == null && confirmQueueDeletion) {
+        QueueCancelDialog(queueId) { confirmQueueDeletion = false }
+    }
+}
+
+@Composable
+internal fun QueueBackgroundAction(onBackground: () -> Unit) {
+    DialogAction(Icons.Outlined.PictureInPictureAlt, stringResource(R.string.queue_background), "dialog_background", onClick = onBackground)
+}
+
+@Composable
+internal fun QueueDeleteAction(onDelete: () -> Unit, enabled: Boolean = true) {
+    DialogAction(Icons.Outlined.Delete, stringResource(R.string.reader_delete_job), "dialog_delete", enabled,
+        tint = MaterialTheme.colorScheme.error, onClick = onDelete)
+}
+
+/** Use the title's existing width rather than fitting a fifth full-size icon in the compact header. Only the transcript pages consume this preference. */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun ReaderSizeTitle(modifier: Modifier) {
+    val app = UtterlaneApp.instance
+    val size by app.settingsRepository.transcriptTextSize.collectAsStateWithLifecycle(SettingsRepository.DEFAULT_TRANSCRIPT_TEXT_SIZE)
+    var open by remember { mutableStateOf(false) }
+    val label = stringResource(R.string.reader_font_size)
+    val current = stringResource(R.string.reader_size_sp, size)
+    val show: () -> Unit = { open = true }
+    Box(modifier) {
+        Row(Modifier.fillMaxWidth().height(48.dp).clearAndSetSemantics {
+            // Expose a single named click target, including on older Android accessibility delegates that otherwise split off the description.
+            accessibilityTag = "dialog_title"
+            role = Role.Button
+            contentDescription = label
+            stateDescription = current
+            onClick(label) { show(); true }
+        }.clickable(onClick = show),
+            verticalAlignment = Alignment.CenterVertically) {
+            AutoFitDialogTitle(stringResource(R.string.dialog_title), Modifier.weight(1f))
+            Icon(Icons.Outlined.FormatSize, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+        }
+        DropdownMenu(open, { open = false }, modifier = Modifier.semantics { testTagsAsResourceId = true }) {
+            SettingsRepository.TRANSCRIPT_TEXT_SIZES.forEach { option ->
+                val name = stringResource(if (option == SettingsRepository.DEFAULT_TRANSCRIPT_TEXT_SIZE) R.string.reader_size_default else R.string.reader_size_sp, option)
+                val chosen = option == size
+                val choose: () -> Unit = { open = false; app.applicationScope.launch { app.settingsRepository.setTranscriptTextSize(option) }; Unit }
+                DropdownMenuItem(text = { Text(name) }, trailingIcon = { if (chosen) Icon(Icons.Outlined.Check, null) },
+                    modifier = Modifier.clearAndSetSemantics {
+                        accessibilityTag = "reader_text_size_$option"
+                        role = Role.RadioButton
+                        contentDescription = name
+                        selected = chosen
+                        onClick { choose(); true }
+                    }, onClick = choose)
+            }
+        }
+    }
 }
