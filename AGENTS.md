@@ -127,7 +127,7 @@ The NDK version must match between the fdroiddata YAML and the local SDK. `ANDRO
 ## Release Checklist
 
 When bumping a version, update all of these:
-1. `app/build.gradle.kts` — `versionCode` and `versionName`
+1. `app/build.gradle.kts` — set `versionName` according to Semantic Versioning and increment Android `versionCode` by **1** from the last assigned release code, independently of `versionName`. Never derive `versionCode` by removing the dots. See the [Android versioning policy](docs/distribution/README.md#android-versioning-for-future-releases).
 2. `CHANGELOG.md` — Add new version entry with date
 3. `fastlane/metadata/android/en-US/changelogs/{versionCode}.txt` — Short changelog for F-Droid/store
 4. `github-release.md` — Release notes for GitHub releases (gitignored, copy manually)

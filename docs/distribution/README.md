@@ -10,6 +10,12 @@ See [latest-main integration results](../qa/store-release-main-first.md) and
 [original preparation results](../qa/store-release-2.0.md) for what was actually
 tested, and the [release notes](release-notes-2.0.0.md) for the announcement.
 
+## Android versioning for future releases
+
+Keep the two values in [`app/build.gradle.kts`](../../app/build.gradle.kts) independent. `versionName` is the user-facing semantic version and determines the Git tag (`v{versionName}`). Android [`versionCode`](https://developer.android.com/studio/publish/versioning) is an integer counter: assign the next release the last assigned code **plus one**, whether the release is a patch, minor, or major bump. Never reset the counter or calculate it by removing the dots from `versionName`. For example, if `2.10.1` has code `420` and `3.0.0` is the next release, assign `421`, not `300`.
+
+Before assigning the next code, check that the last assigned value accounts for any builds already published or uploaded for the same application ID, including testing tracks. Use the chosen code in `fastlane/metadata/android/en-US/changelogs/{versionCode}.txt` and the corresponding F-Droid version-code fields. Check both values in the built artifact before publication. Do not renumber past releases; the `2.0.0` / `11` examples below describe the original submission.
+
 ## Before publication
 
 1. Review and integrate this worktree's changes. Check the English screenshots
