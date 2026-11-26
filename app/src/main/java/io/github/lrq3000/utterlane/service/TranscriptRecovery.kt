@@ -13,20 +13,45 @@ import io.github.lrq3000.utterlane.transcribe.TranscribeActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /** Recovery is available even when a background caller cannot receive a large result. */
 object TranscriptRecovery {
     fun show(context: Context, store: TranscriptStore) {
         UtterlaneApp.instance.applicationScope.launch(Dispatchers.IO) {
             if (store.file.length() == 0L || TranscriptSource.read(store.file).discarded) { store.dispose(); return@launch }
-            store.attachSource(TranscriptSource.read(store.file).copy(recovered = true))
-            store.keepForRecovery()
+            val app = UtterlaneApp.instance
+            val source = TranscriptSource.read(store.file).copy(recovered = true)
+            val queue = app.transcriptionQueue
+            val recovered = if (store.file.parentFile == queue.resultsDirectory) {
+                // Settings backgrounding uses the normal queue review route. For ordinary
+                // undelivered dictation, place its recovery in the existing private cache
+                // rather than broadening the exported transcription activity's path checks.
+                if (queue.ownsWorkingText(store.file)) { store.keepForRecovery(); return@launch }
+                try {
+                    TranscriptSource.withActiveSource(store.file) {
+                        val copy = store.snapshot(File(context.cacheDir, "transcripts"))
+                        source.write(copy)
+                        store.dispose()
+                        copy
+                    }
+                } catch (error: Exception) {
+                    android.util.Log.w("TranscriptRecovery", "Keeping original keyboard text after recovery copy failure", error)
+                    store.keepForRecovery()
+                    source.audioId?.let { io.github.lrq3000.utterlane.history.RecordingRecovery.show(context, it) }
+                    return@launch
+                }
+            } else {
+                store.attachSource(source)
+                store.keepForRecovery()
+                store.file
+            }
             // The Settings recovery action also works when notification permission is
             // denied. No transcription text is placed in the notification itself.
             context.getSharedPreferences("transcript_recovery", Context.MODE_PRIVATE).edit()
-                .putString("path", store.file.absolutePath).apply()
-            val request = store.file.name.hashCode() and Int.MAX_VALUE
-            val intent = Intent(context, TranscribeActivity::class.java).putExtra("transcript_path", store.file.absolutePath)
+                .putString("path", recovered.absolutePath).apply()
+            val request = recovered.name.hashCode() and Int.MAX_VALUE
+            val intent = Intent(context, TranscribeActivity::class.java).putExtra("transcript_path", recovered.absolutePath)
             val pending = PendingIntent.getActivity(context, request, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             withContext(Dispatchers.Main) {
                 context.getSystemService(NotificationManager::class.java).notify(request,

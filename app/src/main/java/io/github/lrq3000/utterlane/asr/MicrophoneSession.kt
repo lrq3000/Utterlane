@@ -33,6 +33,7 @@ class MicrophoneSession(
         fun resetActive() { resetTargets().forEach { it.reset() } }
     }
     private val captureLease = CaptureAdmission.Lease(::resetCapture)
+    private val settingsExit = CaptureSettingsExit()
     private fun resetCapture() {
         resetRequested = true
         cancel(discard = false)
@@ -47,9 +48,12 @@ class MicrophoneSession(
     @Volatile private var cancelled = false
     @Volatile private var resetRequested = false
     @Volatile private var discardRequested = false
+    @Volatile private var deleteDiscardedAudio = false
     @Volatile private var recordingId: String? = null
     /** Identifiers remain stable even if retention/deletion later removes the entry. */
     val audioId: String? get() = recordingId
+    @Volatile internal var captureReleased: Boolean = false
+        private set
     @Volatile var savedTranscriptId: String? = null
         private set
     @Volatile var speakerLabels: Boolean = false
@@ -89,6 +93,7 @@ class MicrophoneSession(
                     // Stop-before-start may leave a format-probe AudioRecord open even after startRecording returns.
                     admission.releaseHardware(captureLease, recorder::releaseAfterCapture)
                     hardwareClosed = true
+                    captureReleased = true
                 } catch (e: Exception) { Log.e("MicrophoneSession", "Microphone setup cleanup failed", e) }
             }
             try {
@@ -247,7 +252,7 @@ class MicrophoneSession(
                         Log.e("MicrophoneSession", "Recognition failed; continuing audio capture", error)
                         metrics.recognitionFailed(io.github.lrq3000.utterlane.util.StorageFailure.userMessage(context, error)
                             ?: error.message ?: context.getString(R.string.transcribe_error_failed))
-                    }, closeConsumer = { session?.close() })
+                    }, closeConsumer = { session?.close() }, onCaptureClosing = settingsExit::captureClosing)
                 // Reaching ASR EOF alone is not proof of a complete result. A failed capture or writer also presents EOF to its consumer.
                 session?.takeIf { it.finished }?.let { complete ->
                     try {
@@ -308,7 +313,7 @@ class MicrophoneSession(
                         speakerLabels = session?.hasSpeakerLabels == true
                         try { recording?.let { UtterlaneApp.instance.recordingHistory.setSpeakerLabels(it.entry.id, speakerLabels, speakerControl.retryPreference.value) } }
                         catch (e: Exception) { Log.e("MicrophoneSession", "Could not save speaker metadata", e) }
-                        try { if (discardRequested) recording?.let { UtterlaneApp.instance.recordingHistory.dismiss(it.entry.id) } }
+                        try { if (discardRequested) recording?.let { discardAudio(it.entry.id) } }
                         catch (e: Exception) { Log.e("MicrophoneSession", "Discard persistence failed; still finalizing audio", e) }
                         try { recording?.finish((failure != null && failure.kind != SessionFailure.Kind.NO_SPEECH) || cancelled) }
                         catch (e: Exception) {
@@ -363,17 +368,29 @@ class MicrophoneSession(
         if (cancelled) job!!.cancel()
     }
 
-    fun stop() { captureLease.stopped(); metrics.stopping(); recorder.stop() }
+    fun stop() { settingsExit.captureClosing(); captureLease.stopped(); metrics.stopping(); recorder.stop() }
+    internal fun discardWhileCapturing(): Boolean =
+        metrics.state.value.phase == CapturePhase.CAPTURING &&
+            settingsExit.confirmDiscard { cancel(discard = true, deleteSavedAudio = true) }
     private fun releaseFailureMessage() = "${context.getString(R.string.toast_recording_error)}. ${context.getString(R.string.model_force_unload)}"
-    fun cancel(discard: Boolean = true) {
+    private fun discardAudio(id: String) {
+        val history = UtterlaneApp.instance.recordingHistory
+        if (deleteDiscardedAudio) history.delete(id) else history.dismiss(id)
+    }
+
+    fun cancel(discard: Boolean = true) = cancel(discard, deleteSavedAudio = false)
+
+    private fun cancel(discard: Boolean, deleteSavedAudio: Boolean) {
+        settingsExit.captureClosing()
         captureLease.stopped()
+        if (discard && deleteSavedAudio) deleteDiscardedAudio = true
         if (discard) discardRequested = true
         cancelled = true; metrics.cancelled(); recorder.stop()
         // Persist explicit intent before cancelling processing. The finalizer
         // also checks this flag if its owner disappears during this handoff.
         if (discard && recordingId != null && job?.isActive == true) {
             UtterlaneApp.instance.applicationScope.launch(Dispatchers.IO) {
-                try { recordingId?.let { UtterlaneApp.instance.recordingHistory.dismiss(it) } }
+                try { recordingId?.let(::discardAudio) }
                 catch (e: Exception) { Log.e("MicrophoneSession", "Could not persist discard intent", e) }
                 finally { job?.cancel() }
             }

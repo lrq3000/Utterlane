@@ -62,35 +62,43 @@ class StreamingTextTarget(
         else { observer?.close(); observer = null }
     }
 
-    fun finish(store: TranscriptStore?, preserve: Boolean = false, afterDelivery: (() -> Unit)? = null) {
+    fun finish(store: TranscriptStore?, preserve: Boolean = false, afterDelivery: (() -> Unit)? = null,
+        editorReceivedResult: (() -> Unit)? = null) {
         if (store == null) { close(); afterDelivery?.invoke(); return }
         if (finishing) return
         finishing = true
         UtterlaneApp.instance.applicationScope.launch {
             TranscriptionPower(context).use {
                 mutex.withLock {
+                    var recoveryPosted = false
+                    fun recover() {
+                        if (!recoveryPosted) {
+                            recoveryPosted = true
+                            TranscriptRecovery.show(context, store)
+                        }
+                    }
                     try {
                         drain(store)
                         if ((!cursor.hasPending(store) && !preserve) || store.file.length() == 0L) {
+                            editorReceivedResult?.invoke()
                             withContext(Dispatchers.IO) { store.dispose() }
                         } else {
-                            // Recovery is published even if clipboard delivery is
-                            // blocked by the lock screen or the clipboard throws.
-                            TranscriptRecovery.show(context, store)
-                            if (DeviceWakeObserver.canDeliver(context)) {
-                                val text = withContext(Dispatchers.IO) { store.readForTransfer() }
-                                if (text != null) {
-                                    (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Transcription", text))
-                                    Toast.makeText(context, context.getString(R.string.toast_no_field_clipboard), Toast.LENGTH_LONG).show()
+                            try {
+                                if (DeviceWakeObserver.canDeliver(context)) {
+                                    val text = withContext(Dispatchers.IO) { store.readForTransfer() }
+                                    if (text != null) {
+                                        (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Transcription", text))
+                                        Toast.makeText(context, context.getString(R.string.toast_no_field_clipboard), Toast.LENGTH_LONG).show()
+                                    }
                                 }
-                            }
+                            } finally { recover() } // The recovery copy may retire this source; finish reading it first.
                         }
                     } catch (e: kotlinx.coroutines.CancellationException) {
-                        TranscriptRecovery.show(context, store)
+                        recover()
                         throw e
                     } catch (e: Exception) {
                         android.util.Log.e("StreamingTextTarget", "Preserving undelivered transcript", e)
-                        TranscriptRecovery.show(context, store)
+                        recover()
                     } finally { close() }
                 }
             }

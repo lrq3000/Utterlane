@@ -69,6 +69,8 @@ the original Parakeet v3. A recommendation does not guarantee memory availabilit
 are shown on a separate page. **Import from folder** supports offline setup,
 including the optional speaker model.
 
+While a speech or speaker model is downloading on screen, Utterlane prevents automatic screen timeout. You can still lock the device yourself. If a download is interrupted, use **Retry** or **Download** to reuse verified files and resume a partial file when the server supports it. Explicitly canceling the download removes its partial files.
+
 Microphone access is optional for people who only transcribe files. Keyboard,
 floating-mic and accessibility shortcuts can be configured later. Folder
 monitoring requests audio access only when selected; choose a supported local
@@ -282,9 +284,17 @@ device memory. Missing companions are not downloaded automatically. TTS/music
 models cannot be used for speech input. See the
 [developer guide](development.md#custom-models) for supported formats and behavior.
 
+## Settings from keyboard dictation
+
+Tap the top-right gear in the keyboard’s Utterlane dictation panel. While the microphone is listening, **Keep recording** closes the warning, and **Stop and discard** stops the microphone, discards the current recording, and opens Settings. Text already inserted into the editor remains there.
+
+After recording stops, **Back to transcription** keeps the panel open. **Continue in background** opens Settings and lets Utterlane finish the same transcription. Open the result from **Transcripts** or the completion notification, if notifications are enabled.
+
 ## Word corrections
 
 Under **Settings → Speech recognition → Word Corrections**, use your own whole-word replacement rules to fix recurring names and recognition mistakes. Corrections are applied after speech recognition.
+
+If you have not saved any custom rules, Utterlane starts with a removable correction for the spelling `Utterlane`. Existing dictionaries, including an explicitly cleared dictionary, are not changed.
 
 ## Speaker labels
 
