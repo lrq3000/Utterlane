@@ -112,7 +112,7 @@ class UtterlaneApp : Application() {
         recordingHistory = RecordingHistory(File(filesDir, "microphone-history"), archiveJobs,
             io.github.lrq3000.utterlane.archive.AndroidAudioAssetIO(this))
         transcriptHistory = io.github.lrq3000.utterlane.history.TranscriptHistory(File(noBackupFilesDir, "transcript-history"), archiveJobs)
-        recordingHistory.awaitingQueueReview = transcriptionQueue.journal::protectsAudio
+        recordingHistory.awaitingQueueReview = transcriptionQueue::protectsAudio
         transcriptHistory.awaitingQueueReview = transcriptionQueue.journal::protectsText
         archival = io.github.lrq3000.utterlane.archive.ArchivalCoordinator(this, archiveJobs)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {

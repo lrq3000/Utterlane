@@ -113,7 +113,8 @@ open class HomeActivity : LocalizedActivity() {
                         tabs.SaveableStateProvider(destination.name) {
                             when (destination) {
                                 HomeDestination.RECORD -> HomeScreen(app.homeController, ::record,
-                                     onLoad = { audioPicker.launch(arrayOf("audio/*")) })
+                                     onLoad = { audioPicker.launch(arrayOf("audio/*")) },
+                                     reopenImport = { fileSetup.launch(FileTranscriptionSetupActivity.resume(this@HomeActivity, it)) })
                                 HomeDestination.AUDIO -> HistoryScreen(audio, false, ::backFromWorkspace)
                                 HomeDestination.TRANSCRIPTS -> HistoryScreen(text, true, ::backFromWorkspace)
                             }

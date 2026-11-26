@@ -39,7 +39,8 @@ fun ImportRetentionQuestion(model: TranscriptionDialogModel) {
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-internal fun ImportRetentionQuestion(request: ImportRetentionRequest, answer: (ImportRetentionChoice, Boolean) -> Unit, cancel: () -> Unit) {
+internal fun ImportRetentionQuestion(request: ImportRetentionRequest, answer: (ImportRetentionChoice, Boolean) -> Unit, cancel: () -> Unit,
+    applyToBatch: Boolean = false) {
     var remember by rememberSaveable(request.category.name, request.metadata.displayName) { mutableStateOf(false) }
     AlertDialog(onDismissRequest = cancel,
         modifier = Modifier.semantics { testTagsAsResourceId = true }.testTag("import_retention_question"),
@@ -50,6 +51,7 @@ internal fun ImportRetentionQuestion(request: ImportRetentionRequest, answer: (I
                 Text(stringResource(if (request.category == ImportRetentionCategory.DURATION)
                     R.string.import_retention_duration else R.string.import_retention_size))
                 Text(stringResource(R.string.import_retention_explanation), Modifier.padding(top = 8.dp))
+                if (applyToBatch) Text(stringResource(R.string.queue_batch_retention), Modifier.padding(top = 8.dp))
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp).testTag("import_remember")
                     .toggleable(remember, role = Role.Checkbox, onValueChange = { remember = it }),
                     verticalAlignment = Alignment.CenterVertically) {

@@ -4,7 +4,13 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -24,9 +30,11 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import io.github.lrq3000.utterlane.history.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.first
+import java.util.UUID
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.asr.ModelManager
@@ -36,7 +44,7 @@ import io.github.lrq3000.utterlane.settings.SpeakerModelNotice
 import io.github.lrq3000.utterlane.ui.theme.UtterlaneTheme
 
 /** File-only entry point. No source is copied or processed until confirmation. */
-class FileTranscriptionSetupActivity : LocalizedActivity() {
+open class FileTranscriptionSetupActivity : LocalizedActivity() {
     companion object {
         internal fun forPicker(context: Context, uri: Uri): Intent =
             Intent(context, FileTranscriptionSetupActivity::class.java).setAction(Intent.ACTION_PICK).setData(uri)
@@ -45,19 +53,28 @@ class FileTranscriptionSetupActivity : LocalizedActivity() {
                 uris.drop(1).forEach { clip.addItem(android.content.ClipData.Item(it)) }
             }
         }
+        private const val RECEIPT = "import_batch_receipt"
+        internal fun resume(context: Context, id: String) = Intent(context, ImportRecoveryActivity::class.java)
+            .setAction("resume_import").putExtra(RECEIPT, id)
     }
 
-    private var submitted by mutableStateOf(false)
-    private var index by mutableIntStateOf(0)
-    private var question by mutableStateOf<ImportRetentionRequest?>(null)
-    private var answer: CompletableDeferred<Pair<ImportRetentionChoice, Boolean>?>? = null
+    private lateinit var batchId: String
+    private lateinit var session: ImportBatches.Session
+    private var returnInBackground = false
 
     @OptIn(ExperimentalComposeUiApi::class, ExperimentalLayoutApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setFinishOnTouchOutside(false)
         val app = UtterlaneApp.instance
-        val picker = intent.action == Intent.ACTION_PICK && callingActivity?.packageName == packageName
+        val internal = callingActivity?.packageName == packageName
+        val recovering = this is ImportRecoveryActivity
+        val picker = internal && (intent.action == Intent.ACTION_PICK || recovering)
+        batchId = savedInstanceState?.getString(RECEIPT) ?: (if (recovering) intent.getStringExtra(RECEIPT) else null) ?: UUID.randomUUID().toString()
+        returnInBackground = savedInstanceState?.getBoolean("background") == true
+        val previouslyConfirmed = savedInstanceState?.getBoolean("confirmed") == true
+        session = app.transcriptionQueue.imports.session(batchId)
+        session.attach()
         val clips = intent.clipData?.let { clip -> (0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri } }.orEmpty()
         val uris = runCatching {
             when (intent.action) {
@@ -72,7 +89,44 @@ class FileTranscriptionSetupActivity : LocalizedActivity() {
         }.getOrDefault(emptyList()).distinct().filter { it.scheme == "content" || (it.scheme == "file" &&
             it.path?.let { p -> java.io.File(p).canonicalFile.toPath().startsWith(android.os.Environment.getExternalStorageDirectory().canonicalFile.toPath()) } == true) }
 
+        fun close(openResult: Boolean) {
+            if (isFinishing || isDestroyed) return
+            val first = session.state.value.receipt?.firstJob
+            if (openResult && first != null && lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+                if (picker) setResult(RESULT_OK, Intent().putExtra(QueueNotifications.JOB, first))
+                else startActivity(QueueNotifications.intent(this, first))
+            }
+            session.forget()
+            finish()
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) { session.state.collect { state ->
+                val receipt = state.receipt ?: return@collect
+                if (receipt.done && receipt.accepted == receipt.total && app.transcriptionQueue.let { queue ->
+                        queue.rows.value.none(queue.admission.status.value::needsResume) }) {
+                    close(!returnInBackground)
+                }
+            } }
+        }
+        lifecycleScope.launch {
+            session.state.collect { state -> if (returnInBackground && state.receipt?.done == true) close(false) }
+        }
         setContent {
+            val state by session.state.collectAsStateWithLifecycle()
+            val item = state.receipt
+            val submitted = item != null || state.busy
+            val total = item?.total ?: uris.size
+            var selecting by rememberSaveable { mutableStateOf<String?>(null) }
+            val select = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                val expected = selecting
+                selecting = null
+                if (uri != null && expected != null) session.replace(uri, expected)
+            }
+            fun cancel() {
+                if (submitted) session.stop() else session.detachDraft()
+                finish()
+            }
+            BackHandler { cancel() }
             val theme by app.settingsRepository.themeMode.collectAsStateWithLifecycle(SettingsRepository.THEME_SYSTEM)
             val dark = when (theme) {
                 SettingsRepository.THEME_DARK -> true
@@ -87,6 +141,10 @@ class FileTranscriptionSetupActivity : LocalizedActivity() {
             val textEnabled by app.settingsRepository.transcriptHistoryEnabled.collectAsStateWithLifecycle(true)
             val audioRetention by app.settingsRepository.audioHistoryRetention.collectAsStateWithLifecycle(HistoryRetention.NONE)
             val textRetention by app.settingsRepository.transcriptHistoryRetention.collectAsStateWithLifecycle(HistoryRetention.NONE)
+            var canNotify by remember { mutableStateOf(getSystemService(android.app.NotificationManager::class.java).areNotificationsEnabled()) }
+            val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+                canNotify = getSystemService(android.app.NotificationManager::class.java).areNotificationsEnabled()
+            }
             UtterlaneTheme(dark) {
                 Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface,
                     modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth()
@@ -94,12 +152,40 @@ class FileTranscriptionSetupActivity : LocalizedActivity() {
                     Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(stringResource(R.string.transcribe_title), style = MaterialTheme.typography.headlineSmall)
-                        if (uris.isEmpty()) Text(stringResource(R.string.transcribe_error_no_audio))
+                        if ((recovering || previouslyConfirmed) && item == null) Text(stringResource(if (state.loaded) R.string.queue_batch_finished else R.string.queue_preparing_service))
+                        else if (uris.isEmpty() && item == null) Text(stringResource(R.string.transcribe_error_no_audio))
                         else {
-                            if (uris.size > 1) Text(stringResource(R.string.queue_import_count, uris.size))
+                            if (total > 1) Text(stringResource(R.string.queue_import_count, total))
                             if (!audioEnabled || audioRetention == HistoryRetention.NONE) Text(stringResource(R.string.queue_warn_audio))
                             if (!textEnabled || textRetention == HistoryRetention.NONE) Text(stringResource(R.string.queue_warn_text))
-                            if (submitted) Text(stringResource(R.string.queue_import_progress, index + 1, uris.size))
+                            if (!canNotify) {
+                                Text(stringResource(R.string.queue_no_notifications))
+                                if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+                                    TextButton({ askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text(stringResource(R.string.queue_enable_notifications)) }
+                            }
+                            if (item != null) Text(stringResource(R.string.queue_batch_count, item.accepted, item.total))
+                            if (state.busy && item?.done != true) Text(stringResource(R.string.queue_import_progress, (item?.cursor ?: 0) + 1, total))
+                            if (state.busy) TextButton({
+                                // Keep this Activity's transient provider grants while it finishes staging. Only a completed private copy counts as queued.
+                                if (moveTaskToBack(true)) returnInBackground = true
+                            }) { Text(stringResource(R.string.queue_background)) }
+                            if (item != null && !item.done && !state.busy && state.question == null) {
+                                val name = Uri.parse(item.uri).lastPathSegment ?: stringResource(R.string.dialog_title)
+                                Text(stringResource(when (state.problem) {
+                                    ImportScreenState.Problem.DUPLICATE -> R.string.queue_batch_duplicate
+                                    ImportScreenState.Problem.FILE -> R.string.queue_batch_unreadable
+                                    else -> R.string.queue_batch_interrupted
+                                }, item.cursor + 1, name))
+                                TextButton(session::resume) { Text(stringResource(R.string.queue_batch_continue)) }
+                                TextButton({ selecting = item.jobId; select.launch(arrayOf("audio/*")) }) { Text(stringResource(R.string.queue_batch_reselect)) }
+                                TextButton(session::skip) { Text(stringResource(R.string.queue_batch_skip)) }
+                            }
+                            if (item?.done == true) {
+                                val jobs by app.transcriptionQueue.rows.collectAsStateWithLifecycle()
+                                val service by app.transcriptionQueue.admission.status.collectAsStateWithLifecycle()
+                                if (jobs.any(service::needsResume)) QueueResumeAction(app.transcriptionQueue)
+                                TextButton({ close(true) }) { Text(stringResource(if (item.firstJob != null) R.string.queue_batch_view else R.string.queue_batch_close)) }
+                            }
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Column(Modifier.weight(1f)) {
@@ -107,63 +193,35 @@ class FileTranscriptionSetupActivity : LocalizedActivity() {
                                     Text(stringResource(R.string.file_setup_speaker_help), style = MaterialTheme.typography.bodySmall)
                                 }
                                 val label = stringResource(R.string.home_speakers)
-                                Switch(labels, { labels = it }, enabled = !submitted, modifier = Modifier.testTag("file_setup_speakers")
+                                Switch(item?.speakers ?: labels, { labels = it }, enabled = !submitted, modifier = Modifier.testTag("file_setup_speakers")
                                     .semantics { contentDescription = label })
                             }
-                            if (labels && !available) SpeakerModelNotice()
+                            if ((item?.speakers ?: labels) && !available) SpeakerModelNotice()
                         }
+                        if (state.problem == ImportScreenState.Problem.STORAGE) Text(stringResource(R.string.queue_batch_storage))
                         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-                            TextButton(::finish, Modifier.testTag("file_setup_cancel")) { Text(stringResource(R.string.action_cancel)) }
-                            Button(onClick = { confirm(uris, picker, FileTranscriptionOptions(labels)) },
-                                enabled = uris.isNotEmpty() && !submitted, modifier = Modifier.testTag("file_setup_start")) {
+                            if (item?.done != true) TextButton(::cancel, Modifier.testTag("file_setup_cancel")) {
+                                Text(stringResource(if (state.busy) R.string.queue_batch_stop_after else if (submitted) R.string.queue_batch_stop else R.string.action_cancel))
+                            }
+                            if (!submitted && !recovering && !previouslyConfirmed) Button(onClick = { session.start(uris, picker, labels) },
+                                enabled = uris.isNotEmpty() && state.loaded, modifier = Modifier.testTag("file_setup_start")) {
                                 Text(stringResource(R.string.file_setup_transcribe))
                             }
                         }
                     }
                 }
-                question?.let { ImportRetentionQuestion(it, { choice, remember -> answer?.complete(choice to remember) }, { answer?.complete(null) }) }
+                state.question?.let { ImportRetentionQuestion(it, session::choose, session::skip, applyToBatch = total > 1) }
             }
         }
     }
 
-    private fun confirm(uris: List<Uri>, picker: Boolean, options: FileTranscriptionOptions) {
-        if (submitted) return
-        submitted = true
-        val app = application as UtterlaneApp
-        lifecycleScope.launch {
-            val preferences = app.settingsRepository.importRetentionPreferences.first()
-            val batch = mutableMapOf<ImportRetentionCategory, ImportRetentionChoice>()
-            var first: String? = null
-            var failures = 0
-            for ((position, uri) in uris.withIndex()) {
-                index = position
-                try {
-                    val source = withContext(Dispatchers.IO) { DialogAudioActions(app).inspect(uri, null) }
-                    val decision = ImportRetentionPolicy.decide(source.metadata.durationMs, source.metadata.sourceBytes, preferences)
-                    val choice = when (decision) {
-                        is ImportRetentionDecision.Use -> decision.choice
-                        is ImportRetentionDecision.Ask -> batch[decision.category] ?: run {
-                            val pending = CompletableDeferred<Pair<ImportRetentionChoice, Boolean>?>()
-                            answer = pending; question = ImportRetentionRequest(decision.category, source.metadata)
-                            val result = try { pending.await() } finally { question = null; answer = null }
-                            if (result != null) {
-                                batch[decision.category] = result.first
-                                if (result.second) app.settingsRepository.rememberImportRetention(decision.category, result.first)
-                            }
-                            result?.first
-                        }
-                    } ?: continue
-                    val row = app.transcriptionQueue.enqueue(source, choice, options)
-                    if (first == null) first = row.id
-                    app.transcriptionQueue.wake()
-                } catch (e: CancellationException) { throw e }
-                catch (e: Exception) { failures++; android.util.Log.w("TranscriptionQueue", "File import failed", e) }
-            }
-            if (failures > 0) android.widget.Toast.makeText(this@FileTranscriptionSetupActivity,
-                getString(R.string.queue_failed_count, failures), android.widget.Toast.LENGTH_LONG).show()
-            if (picker) setResult(RESULT_OK, Intent().putExtra(QueueNotifications.JOB, first))
-            else if (first != null) startActivity(QueueNotifications.intent(this@FileTranscriptionSetupActivity, first))
-            finish()
-        }
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(RECEIPT, batchId)
+        outState.putBoolean("background", returnInBackground)
+        outState.putBoolean("confirmed", session.state.value.let { it.busy || it.receipt != null })
+        super.onSaveInstanceState(outState)
     }
 }
+
+/** Private target of immutable recovery notifications; exported share intents must not be able to select an existing receipt by ID. */
+class ImportRecoveryActivity : FileTranscriptionSetupActivity()

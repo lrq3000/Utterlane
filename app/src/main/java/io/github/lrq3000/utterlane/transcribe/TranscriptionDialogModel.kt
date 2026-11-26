@@ -153,10 +153,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                 }
                 withContext(Dispatchers.IO) { refreshAudio() }
                 mutable.update { it.copy(importing = false) }
-                if (input.automatic && ownedAudioId != null) {
-                    val target = input.queueId?.let { QueueTranscriptTarget(app.transcriptionQueue.target(it)) }
-                    if (target == null) transcribe(archival = archival) else withContext(target) { transcribe(archival = archival) }
-                }
+                if (input.automatic && ownedAudioId != null && input.queueId == null) transcribe(archival = archival)
                 else mutable.value.audio?.takeIf {
                     // Recovery protection also owns successful temporary results;
                     // only a real failure/interruption warrants recovery wording.
@@ -231,11 +228,25 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         refreshTranscript()
     }
 
-    fun retry(useCurrentModel: Boolean = false) {
+    fun enqueueRetry(useCurrentModel: Boolean = false, onQueued: (String) -> Unit = {}) {
         if (state.value.exitRequest != null || state.value.checkingExit || state.value.running || state.value.importing || state.value.saving || state.value.closing || state.value.deleting || operation?.isActive == true) return
-        if (input.queueId != null) {
-            ownedAudioId?.let { app.transcriptionQueue.retry(it, input.fileOptions?.speakerLabels ?: false) }
-        } else operation = viewModelScope.launch { transcribe(useCurrentModel) }
+        ownedAudioId?.let { id ->
+            val speakers = input.fileOptions?.speakerLabels ?: state.value.audio?.fileSpeakerLabels
+            viewModelScope.launch {
+                app.transcriptionQueue.retry(id, speakers ?: app.settingsRepository.diarizationEnabled.first(),
+                    modelId = if (useCurrentModel) app.modelManager.selected.value.id else resultModelId ?: app.modelManager.selected.value.id,
+                    accepted = onQueued)
+            }
+        }
+    }
+
+    /** Execute on the attached owner once its queue slot is granted. UI retries use enqueueRetry so each receives a fresh attempt identity. */
+    internal fun retry(useCurrentModel: Boolean = false) {
+        if (state.value.exitRequest != null || state.value.checkingExit || state.value.running || state.value.importing || state.value.saving || state.value.closing || operation?.isActive == true) return
+        operation = viewModelScope.launch {
+            val target = input.queueId?.let { QueueTranscriptTarget(app.transcriptionQueue.target(it)) }
+            if (target == null) transcribe(useCurrentModel) else withContext(target) { transcribe(useCurrentModel) }
+        }
     }
 
     internal suspend fun awaitOperation() { operation?.join() }

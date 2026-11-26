@@ -387,6 +387,8 @@ instead of reading every transcript while you explore a large history.
 
 You can dictate while a file is processing. The microphone captures immediately once available; ready live speech gets the next turn on the shared recognizer after the current operation finishes. After Stop, remaining recognition can continue in the background while you start another recording. With history off or Immediate retention, each queued result is held for review. Closing the result applies the separate audio and text policies; backgrounding the app or swiping away a notification does not discard either.
 
+If Android interrupts processing, review the partial result and retry from its retained audio. Retrying creates a separate result. If access to an imported file expires before its private copy is complete, reopen the pending import on Home and select that file again. Files already accepted from that batch do not need to be submitted again.
+
 ### Saved audio quality and background archival
 
 Open the initially collapsed **Saved audio quality** section in Settings.

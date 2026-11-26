@@ -1,5 +1,7 @@
 <resources>
     <string name="queue_title">Transcription queue</string>
+    <string name="queue_no_notifications">Notifications are off. Open Transcription queue on Home to review your results.</string>
+    <string name="queue_enable_notifications">Enable notifications</string>
     <string name="queue_waiting">Queued</string>
     <string name="queue_ready">Ready · Open transcript</string>
     <string name="queue_failed">Needs attention · Open result</string>
@@ -8,6 +10,7 @@
     <string name="queue_review">Awaiting review</string>
     <string name="queue_missing">This result is no longer awaiting review.</string>
     <string name="queue_import_count">%1$d audio files selected</string>
+    <string name="queue_batch_retention">This choice also applies to other files in this batch that meet the same size or duration condition.</string>
     <string name="queue_import_progress">Preparing file %1$d of %2$d…</string>
     <string name="queue_warn_audio">Audio history is off or set to Immediate. Each private audio copy is available until you review and close its result.</string>
     <string name="queue_warn_text">Transcript history is off or set to Immediate. Pin or export any text you need before closing its result.</string>

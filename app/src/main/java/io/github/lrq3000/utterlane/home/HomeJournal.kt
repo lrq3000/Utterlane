@@ -9,6 +9,7 @@ import io.github.lrq3000.utterlane.transcribe.FileTranscriptionOptions
 
 /** Only stable local identifiers are journaled; transcript/audio contents stay on disk. */
 internal class HomeJournal(context: Context) {
+    companion object { private val publication = Any() }
     private val prefs = context.getSharedPreferences("home_workspace", Context.MODE_PRIVATE)
     private var previous: DialogInput? = null
 
@@ -20,7 +21,7 @@ internal class HomeJournal(context: Context) {
             // Checkpoint the committed-text flag, never the requested setting.
             metadata = TranscriptMetadata(speakerLabels = speakerLabels), queueId = queueId))
     }
-    fun write(input: DialogInput) {
+    fun write(input: DialogInput): Unit = synchronized(publication) {
         if (input == previous) return
         previous = input
         val metadata = input.metadata
@@ -46,5 +47,8 @@ internal class HomeJournal(context: Context) {
             fileOptions = if (prefs.contains("file_speaker_labels")) FileTranscriptionOptions(prefs.getBoolean("file_speaker_labels", false)) else null)
         return input.takeIf { it.audioId != null || it.transcriptId != null || it.transcriptPath != null }
     }
-    fun clear() { previous = null; prefs.edit().clear().apply() }
+    fun clear() = synchronized(publication) { previous = null; prefs.edit().clear().apply() }
+    fun clearIfQueue(id: String) = synchronized(publication) {
+        if (prefs.getString("queue", null) == id) { previous = null; check(prefs.edit().clear().commit()) }
+    }
 }

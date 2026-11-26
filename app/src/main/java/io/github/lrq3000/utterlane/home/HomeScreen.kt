@@ -60,7 +60,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
-internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad: () -> Unit) {
+internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad: () -> Unit, reopenImport: (String) -> Unit) {
     val state by controller.state.collectAsStateWithLifecycle()
     val app = UtterlaneApp.instance
     val context = LocalContext.current
@@ -81,6 +81,7 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             HomeIntro(enabled = true, onLoad = onLoad)
+            io.github.lrq3000.utterlane.transcribe.ImportRecoveryControls(app.transcriptionQueue, reopenImport)
             val jobs by app.transcriptionQueue.rows.collectAsStateWithLifecycle()
             if (jobs.isNotEmpty()) {
                 var expanded by rememberSaveable { mutableStateOf(false) }
@@ -177,7 +178,8 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
                     color = MaterialTheme.colorScheme.error)
             io.github.lrq3000.utterlane.archive.ArchivalStatusControls()
             PrivacyNote()
-            HomeFeedback(state, onModels = { context.startActivity(RecordingRecovery.modelIntent(context)) }, onRetry = controller::retry)
+            HomeFeedback(state, onModels = { context.startActivity(RecordingRecovery.modelIntent(context)) },
+                onRetry = { controller.retry { context.startActivity(QueueNotifications.intent(context, it)) } })
             if (model != null && !state.busy && state.result.audio != null) {
                 Text(stringResource(if (state.result.audio!!.temporary) R.string.home_temporary_audio else R.string.dialog_retained_info),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

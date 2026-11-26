@@ -21,24 +21,34 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
     private val root = File(app.noBackupFilesDir, "transcription-queue")
     val resultsDirectory = File(root, "results")
     val journal = QueueJournal(root)
+    val batchStore = ImportBatchStore(root)
+    val imports = ImportBatches(app, batchStore)
+    val admission = QueueServiceAdmission()
+    private var staging = 0
+    fun protectsAudio(id: String) = journal.protectsAudio(id) || batchStore.protectsAudio(id)
     private val mutable = MutableStateFlow<List<QueueRecord>>(emptyList())
     val rows = mutable.asStateFlow()
+    private val hydrated = MutableStateFlow(false)
+    val loaded = hydrated.asStateFlow()
+    private val serviceOwner = MutableStateFlow<TranscriptionQueueService?>(null)
+    val foreground = serviceOwner.asStateFlow()
+    fun attached(service: TranscriptionQueueService) { serviceOwner.value = service }
+    fun detached(service: TranscriptionQueueService) { serviceOwner.compareAndSet(service, null) }
     private val reviewedIds = MutableSharedFlow<String>()
     val reviewed = reviewedIds.asSharedFlow()
     private val current = MutableStateFlow<Pair<String, TranscriptionDialogModel>?>(null)
     val active = current.asStateFlow()
     private val changed = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
     private var runner: Job? = null
+    private val startupCheckpoint = io.github.lrq3000.utterlane.home.HomeJournal(app).restore()
     private val init = app.applicationScope.async(Dispatchers.IO, start = CoroutineStart.LAZY) {
-        // Android may terminate the entire process. Never start another append producer on a partially written attempt.
-        journal.records().filter { it.stage == QueueStage.PROCESSING || it.stage == QueueStage.DRAINING }.forEach { row ->
-            app.recordingHistory.initialize()
-            val audio = runCatching { app.recordingHistory.get(row.audio) }.getOrNull()
-            val complete = audio?.status == "saved" && target(row.id).let { it.isFile && TranscriptSource.read(it).completion == TranscriptCompletion.COMPLETE }
-            journal.update(row.copy(stage = if (complete) QueueStage.READY else QueueStage.FAILED,
-                message = if (complete) null else app.getString(R.string.queue_interrupted)))
-        }
+        batchStore.reconcile(journal)
+        imports.refresh()
+        val repaired = QueueRecovery(journal, app.recordingHistory, ::target).restore(startupCheckpoint,
+            app.getString(R.string.dialog_title), app.getString(R.string.queue_interrupted))
+        if (repaired.isNotEmpty()) QueueNotifications(app).let { notices -> repaired.forEach { notices.post(it) } }
         refresh()
+        hydrated.value = true
     }
     fun target(id: String): File {
         require(UUID.fromString(id).toString() == id)
@@ -46,54 +56,81 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
     }
     @Synchronized private fun refresh() { mutable.value = journal.records(); changed.trySend(Unit) }
     fun visible() {
-        app.applicationScope.launch {
-            init.await()
-            if (rows.value.any { it.stage == QueueStage.WAITING }) wake()
+        init.start()
+    }
+    suspend fun initialized() { init.await() }
+    fun wake(): Boolean = admission.request {
+        checkNotNull(ContextCompat.startForegroundService(app, Intent(app, TranscriptionQueueService::class.java)))
+    }.also { if (!it) serviceRefused() }
+    fun serviceRefused() {
+        admission.refused()
+        rows.value.firstOrNull { it.stage == QueueStage.WAITING }?.let { ImportRecoveryNotice(app).waiting(it) }
+    }
+    /** Call on Main at the visible submission/resume click, before copying. The runner must not exit in the empty interval between two accepted files. */
+    fun beginStaging() { staging++; wake() }
+    fun endStaging() { staging--; changed.trySend(Unit) }
+
+    suspend fun resumeStaged(item: ImportReceipt): Boolean {
+        journal.find(item.jobId)?.let { batchStore.advance(item, accepted = true); return true }
+        val staged = app.recordingHistory.stagedImport(item.jobId) ?: return false
+        staged.lease.use { publishImport(item, staged.entry) }
+        return true
+    }
+    suspend fun enqueue(item: ImportReceipt, source: DialogAudioActions.InspectedSource, choice: ImportRetentionChoice) {
+        val owned = try { DialogAudioActions(app).import(source, choice, FileTranscriptionOptions(item.speakers), item.jobId) }
+        catch (e: Exception) {
+            // A provider may fail to close after the completed copy was published. Adopt it before deciding the source has failed.
+            if (resumeStaged(item)) return
+            throw ImportSourceFailure(e)
         }
+        owned.lease.use { publishImport(item, owned.entry) }
     }
-    fun wake(): Boolean = try {
-        ContextCompat.startForegroundService(app, Intent(app, TranscriptionQueueService::class.java))
-        true
-    } catch (e: RuntimeException) {
-        android.util.Log.w("TranscriptionQueue", "Processing service unavailable; pending work is preserved", e)
-        false
-    }
-
-    suspend fun enqueue(source: DialogAudioActions.InspectedSource, choice: ImportRetentionChoice, options: FileTranscriptionOptions): QueueRecord {
-        init.await()
-        val archive = app.archival.producer(userInitiated = true)
-        return try { withContext(Dispatchers.IO) {
-            val owned = DialogAudioActions(app).import(source, choice, options)
-            owned.lease.use {
-                val row = journal.add(owned.entry.id, source.metadata.displayName ?: app.getString(R.string.dialog_title), options.speakerLabels)
-                app.recordingHistory.refreshQueueHold(row.audio)
-                refresh()
-                archive.audio(row.audio)
-                row
+    private suspend fun publishImport(item: ImportReceipt, entry: HistoryEntry) {
+        val archive = app.archival.producer()
+        try {
+            val row = synchronized(journal) {
+                journal.add(entry.id, entry.importMetadata?.displayName ?: app.getString(R.string.dialog_title), item.speakers, id = item.jobId)
+                    .also { batchStore.advance(item, accepted = true) }
             }
-        } } finally { archive.close() }
+            app.recordingHistory.refreshQueueHold(row.audio)
+            refresh()
+            if (admission.status.value.needsResume(row)) ImportRecoveryNotice(app).waiting(row)
+            archive.audio(row.audio)
+        } finally { archive.close() }
     }
 
-    fun retry(audio: String, speakers: Boolean) {
+    fun retry(audio: String, speakers: Boolean, modelId: String? = null, accepted: (String) -> Unit = {}) {
         app.applicationScope.launch {
             init.await()
             try {
-                withContext(Dispatchers.IO) {
+                val job = withContext(Dispatchers.IO) {
                     app.recordingHistory.acquire(audio, true).use {
                         val entry = app.recordingHistory.get(audio)
-                        journal.add(audio, entry.importMetadata?.displayName ?: app.getString(R.string.dialog_title), speakers)
+                        val row = journal.add(audio, entry.importMetadata?.displayName ?: app.getString(R.string.dialog_title), speakers,
+                            modelId = modelId)
                         app.recordingHistory.refreshQueueHold(audio); refresh()
+                        row
                     }
                 }
                 wake()
+                accepted(job.id)
             } catch (e: Exception) { app.homeController.showMessage(e.message ?: app.getString(R.string.transcribe_error_failed)) }
         }
     }
 
-    suspend fun captureEnded(id: String, audio: String, label: String) {
+    suspend fun captureStarted(id: String, audio: String, label: String) {
         init.await()
         withContext(Dispatchers.IO) {
-            val row = journal.add(audio, label, false, QueueStage.DRAINING, id)
+            if (journal.find(id) == null) journal.add(audio, label, false, QueueStage.CAPTURING, id)
+            app.recordingHistory.refreshQueueHold(audio); refresh()
+        }
+    }
+    suspend fun captureEnded(id: String, audio: String, label: String, speakers: Boolean) {
+        init.await()
+        withContext(Dispatchers.IO) {
+            val current = journal.find(id)
+            val row = if (current == null) journal.add(audio, label, speakers, QueueStage.DRAINING, id)
+                else current.copy(stage = QueueStage.DRAINING, speakers = speakers).also(journal::update)
             app.recordingHistory.refreshQueueHold(audio); refresh()
             QueueNotifications(app).post(row)
         }
@@ -109,6 +146,7 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
     }
     suspend fun acknowledge(id: String) = withContext(Dispatchers.IO) {
         val row = journal.find(id) ?: return@withContext
+        if (row.stage.reviewable) io.github.lrq3000.utterlane.home.HomeJournal(app).clearIfQueue(id)
         if (journal.acknowledge(id)) {
             app.recordingHistory.refreshQueueHold(row.audio)
             app.transcriptHistory.refreshQueueHold(row.textId)
@@ -132,8 +170,16 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
             init.await()
             while (isActive) {
                 val row = rows.value.firstOrNull { it.stage == QueueStage.WAITING }
-                if (row != null) { process(row); continue }
-                if (rows.value.none { it.stage == QueueStage.DRAINING }) break
+                if (row != null) {
+                    // An explicitly requested model switch cannot evict a live or draining capture. Keep its place and wake on capture completion rather than failing the queued retry.
+                    if (row.modelId != null && row.modelId != app.modelManager.selected.value.id &&
+                        rows.value.any { it.stage == QueueStage.CAPTURING || it.stage == QueueStage.DRAINING }) {
+                        changed.receive()
+                        continue
+                    }
+                    process(row); continue
+                }
+                if (staging == 0 && rows.value.none { it.stage == QueueStage.DRAINING }) break
                 changed.receive()
             }
             idle()
@@ -149,8 +195,11 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
             val model = ViewModelProvider(owner, object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T = TranscriptionDialogModel(app,
-                    DialogInput(audioId = row.audio, automatic = true, fileOptions = FileTranscriptionOptions(row.speakers), queueId = row.id)) as T
+                    DialogInput(audioId = row.audio, automatic = true, fileOptions = FileTranscriptionOptions(row.speakers), queueId = row.id,
+                        modelId = row.modelId)) as T
             })[TranscriptionDialogModel::class.java]
+            model.awaitOperation()
+            model.retry()
             current.value = row.id to model
             coroutineScope {
                 val progress = launch {

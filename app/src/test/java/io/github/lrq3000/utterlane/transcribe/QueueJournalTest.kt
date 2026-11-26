@@ -54,4 +54,13 @@ class QueueJournalTest {
         assertTrue(journal.protectsText(a.textId))
         assertFalse(journal.protectsText(b.textId))
     }
+    @Test fun newAttemptReopensWithRequestedModelAndSpeakerSetting() {
+        val initial = QueueJournal(temp.root)
+        val old = initial.add("recording", "Interview", true, QueueStage.READY)
+        val retry = initial.add(old.audio, old.label, true, modelId = "selected-for-this-attempt")
+        val restored = QueueJournal(temp.root)
+        assertEquals("selected-for-this-attempt", restored.find(retry.id)?.modelId)
+        assertEquals(true, restored.find(retry.id)?.speakers)
+        assertEquals(QueueStage.READY, restored.find(old.id)?.stage)
+    }
 }

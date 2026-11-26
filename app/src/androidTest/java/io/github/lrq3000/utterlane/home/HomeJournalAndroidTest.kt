@@ -13,6 +13,20 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class HomeJournalAndroidTest {
+    @Test fun coldQueueReviewOnlyRetiresTheMatchingHomeCheckpoint() {
+        val base = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "queue-home-${UUID.randomUUID()}"
+        val context = object : ContextWrapper(base) {
+            override fun getSharedPreferences(ignored: String, mode: Int) = base.getSharedPreferences(name, mode)
+        }
+        try {
+            HomeJournal(context).write(DialogInput(audioId = "new-audio", queueId = "new-job"))
+            HomeJournal(context).clearIfQueue("older-job")
+            assertEquals("new-job", HomeJournal(context).restore()?.queueId)
+            HomeJournal(context).clearIfQueue("new-job")
+            assertNull(HomeJournal(context).restore())
+        } finally { base.deleteSharedPreferences(name) }
+    }
     @Test fun liveCheckpointUpdatesTheCommittedSpeakerFlagBeforeAudioFinalization() {
         val base = InstrumentationRegistry.getInstrumentation().targetContext
         val name = "home-journal-live-${UUID.randomUUID()}"

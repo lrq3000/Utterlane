@@ -20,15 +20,16 @@ internal class QueueNotifications(private val app: UtterlaneApp) {
         private const val CHANNEL = "transcription_jobs"
         fun intent(context: Context, id: String) = Intent(context, TranscribeActivity::class.java)
             .setData(Uri.Builder().scheme("utterlane").authority("transcription").appendPath(id).build()).putExtra(JOB, id)
+            .putExtra(io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true)
     }
-    private val manager = app.getSystemService(NotificationManager::class.java)
-    private fun builder(): NotificationCompat.Builder {
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, app.getString(R.string.queue_title), NotificationManager.IMPORTANCE_LOW))
-        return NotificationCompat.Builder(app, CHANNEL).setSmallIcon(R.drawable.ic_utterlane_notification)
+    private val manager = app.getSystemService(NotificationManager::class.java).also {
+        it.createNotificationChannel(NotificationChannel(CHANNEL, app.getString(R.string.queue_title), NotificationManager.IMPORTANCE_LOW))
+    }
+    private fun builder(): NotificationCompat.Builder =
+        NotificationCompat.Builder(app, CHANNEL).setSmallIcon(R.drawable.ic_utterlane_notification)
             .setOnlyAlertOnce(true).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-    }
     fun serviceNotification(): Notification = builder().setContentTitle(app.getString(R.string.queue_title))
-        .setContentText(app.getString(R.string.home_notification_processing)).setOngoing(true)
+        .setContentText(app.getString(R.string.queue_preparing_service)).setOngoing(true)
         .setContentIntent(PendingIntent.getActivity(app, 1031, HomeActivity.intent(app), PendingIntent.FLAG_IMMUTABLE)).build()
     fun notification(row: QueueRecord, percent: Int? = null): Notification {
         val open = PendingIntent.getActivity(app, 0, intent(app, row.id), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -44,6 +45,7 @@ internal class QueueNotifications(private val app: UtterlaneApp) {
 
 internal fun QueueStage.label() = when (this) {
     QueueStage.WAITING -> R.string.queue_waiting
+    QueueStage.CAPTURING -> R.string.home_recording
     QueueStage.PROCESSING, QueueStage.DRAINING -> R.string.home_notification_processing
     QueueStage.READY -> R.string.queue_ready
     QueueStage.FAILED -> R.string.queue_failed
@@ -79,18 +81,28 @@ class TranscriptionQueueService : Service() {
         latestStart = startId
         val app = application as UtterlaneApp
         val queue = app.transcriptionQueue
-        try { if (observer == null) foreground(queue.rows.value.firstOrNull { !it.stage.reviewable }) } catch (e: RuntimeException) {
+        try { if (observer == null) foreground(queue.rows.value.firstOrNull { it.stage.needsProcessingService }) } catch (e: RuntimeException) {
             android.util.Log.w("TranscriptionQueue", "Foreground service refused; queued inputs remain available", e)
+            queue.serviceRefused()
             stopSelf(startId)
             return START_NOT_STICKY
         }
+        queue.admission.running()
+        ImportRecoveryNotice(app).clearWaiting()
+        queue.attached(this)
         if (observer == null) observer = scope.launch {
             queue.rows.collect { rows ->
-                val next = rows.firstOrNull { it.id == anchor?.id && !it.stage.reviewable } ?: rows.firstOrNull { !it.stage.reviewable }
-                if (next?.id != anchor?.id && next != null) { detach(rows); foreground(next) }
+                val next = rows.firstOrNull { it.id == anchor?.id && it.stage.needsProcessingService } ?: rows.firstOrNull { it.stage.needsProcessingService }
+                if (next?.id != anchor?.id && next != null) try { detach(rows); foreground(next) }
+                catch (e: RuntimeException) {
+                    android.util.Log.w("TranscriptionQueue", "Foreground promotion failed", e)
+                    queue.serviceRefused(); scope.cancel(); stopSelf()
+                }
             }
         }
         queue.run(scope) {
+            queue.admission.refused()
+            queue.detached(this)
             detach(queue.rows.value)
             observer?.cancel(); observer = null
             stopSelfResult(latestStart)
@@ -98,6 +110,10 @@ class TranscriptionQueueService : Service() {
         return START_NOT_STICKY
     }
     override fun onTimeout(startId: Int, fgsType: Int) { detach((application as UtterlaneApp).transcriptionQueue.rows.value); scope.cancel(); stopSelf() }
-    override fun onDestroy() { scope.cancel(); super.onDestroy() }
+    override fun onDestroy() {
+        val queue = (application as UtterlaneApp).transcriptionQueue
+        if (queue.admission.status.value == QueueServiceAdmission.Status.RUNNING) queue.serviceRefused()
+        queue.detached(this); scope.cancel(); super.onDestroy()
+    }
     override fun onBind(intent: Intent?): IBinder? = null
 }

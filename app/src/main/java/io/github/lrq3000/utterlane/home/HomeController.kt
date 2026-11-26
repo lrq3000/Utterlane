@@ -60,7 +60,6 @@ class HomeController(private val app: UtterlaneApp) {
     @Volatile private var slot: ResultOwner? = null
     @Volatile private var fileCandidate: ResultOwner? = null
     private var pendingFile: DialogInput? = null
-    private var pendingRetry = false
     private val service = HomeServiceConnection()
     private val journal = HomeJournal(app)
     private val captureOwner = HomeCaptureOwner<CaptureResult>(
@@ -117,12 +116,9 @@ class HomeController(private val app: UtterlaneApp) {
         }
     }
 
-    fun retry() {
+    fun retry(onQueued: (String) -> Unit = {}) {
         if (state.value.busy || slot == null) return
-        pendingRetry = true
-        mutable.update { it.prepareFileOperation() }
-        try { requestService(microphone = false) }
-        catch (error: Exception) { pendingRetry = false; mutable.update { it.copy(preparing = false) }; showError(error) }
+        slot?.model?.enqueueRetry(useCurrentModel = true, onQueued = onQueued)
     }
 
     fun showMessage(message: String) { mutable.update { it.copy(message = message) } }
@@ -160,12 +156,6 @@ class HomeController(private val app: UtterlaneApp) {
                     onRejected = { rejectFile(candidate, if (candidate.model.state.value.importCancelled) null
                         else it ?: app.getString(R.string.transcribe_error_failed)) })
             }
-            pendingRetry -> {
-                pendingRetry = false
-                val model = slot?.model
-                HomeRetryHandoff.run(mutable, retry = { model?.retry(useCurrentModel = true) },
-                    snapshot = { model?.state?.value ?: mutable.value.result })
-            }
             // A direct result retry attaches a processing service without a
             // pendingRetry flag. It is never a new request to open the microphone.
             else -> if (captureOwner.state.value.active) captureDriver?.begin()
@@ -177,7 +167,7 @@ class HomeController(private val app: UtterlaneApp) {
     internal fun serviceFailed(token: String, error: Exception) {
         if (!ownsService(token)) return
         service.detached(token)
-        pendingFile = null; pendingRetry = false
+        pendingFile = null
         captureDriver?.reject(error.message ?: app.getString(R.string.toast_recording_error))
         val candidate = fileCandidate
         if (candidate != null) rejectFile(candidate, error.message ?: app.getString(R.string.transcribe_error_failed))
@@ -208,6 +198,9 @@ class HomeController(private val app: UtterlaneApp) {
     private inner class CaptureDriver(private val events: HomeCaptureOwner.Events<CaptureResult>) : HomeCaptureOwner.Driver {
         private val queueId = UUID.randomUUID().toString()
         private var handoff: Deferred<Boolean>? = null
+        private var registering: Deferred<Unit>? = null
+        private val title by lazy { app.getString(R.string.queue_recording, java.text.DateFormat.getDateTimeInstance().format(java.util.Date())) }
+        private var queueOwnsTail = false
         private var detached = false
         fun detachTail() {
             detached = true
@@ -244,9 +237,10 @@ class HomeController(private val app: UtterlaneApp) {
                     val audio = session?.audioId
                     if (audio != null) handoff = scope.async {
                         try {
-                            val time = java.text.DateFormat.getDateTimeInstance().format(java.util.Date())
-                            app.transcriptionQueue.captureEnded(queueId, audio, app.getString(R.string.queue_recording, time))
+                            registering?.await()
+                            app.transcriptionQueue.captureEnded(queueId, audio, title, session?.speakerControl?.state?.value == true)
                             app.transcriptionQueue.wake()
+                            queueOwnsTail = true
                             if (isCurrent() && !delivered && inputAccepted) mutable.update { it.copy(queuedTail = true) }
                             true
                         } catch (e: Exception) { showError(e); false }
@@ -315,6 +309,11 @@ class HomeController(private val app: UtterlaneApp) {
             val preview = store?.preview().orEmpty()
             if (!events.input(spooledSamples, preview)) return
             inputAccepted = true
+            val audio = session?.audioId
+            if (audio != null && registering == null && handoff == null) registering = scope.async {
+                app.transcriptionQueue.captureStarted(queueId, audio, title)
+            }
+            if (queueOwnsTail && !delivered) mutable.update { it.copy(queuedTail = true) }
             rawStore = store
             if (store != null) {
                 if (state.value.result.store !== store) liveDocument.show(store) else liveDocument.refresh()

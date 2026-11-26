@@ -150,6 +150,7 @@
                 <data android:mimeType="audio/*" />
             </intent-filter>
         </activity>
+        <activity android:name=".transcribe.ImportRecoveryActivity" android:exported="false" android:theme="@style/Theme.Utterlane.Dialog" />
         <activity
             android:name=".transcribe.TranscribeActivity"
             android:exported="false"

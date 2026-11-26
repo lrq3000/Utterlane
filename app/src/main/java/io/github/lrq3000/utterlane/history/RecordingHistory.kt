@@ -361,18 +361,18 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
      * complete copy. The caller must publish/close it on IO before a cancellable
      * dispatch; there is no prune window between return and viewer acquisition. */
     fun importAudioOwned(input: InputStream, extension: String, metadata: AudioImportMetadata,
-         retention: ImportRetentionChoice, speakerLabels: Boolean? = null): OwnedImport = copyImport(input, extension,
+         retention: ImportRetentionChoice, speakerLabels: Boolean? = null, importId: String? = null): OwnedImport = copyImport(input, extension,
         metadata.mimeType ?: metadata.trackMimeType ?: "audio/*", metadata.durationMs ?: 0, retention, metadata,
-         protectFromPruning = true, speakerLabels = speakerLabels) { entry, lease ->
+         protectFromPruning = true, speakerLabels = speakerLabels, importId = importId) { entry, lease ->
         OwnedImport(entry, checkNotNull(lease))
     }
 
     private fun <T> copyImport(input: InputStream, extension: String, mime: String, durationMs: Long,
-         retention: ImportRetentionChoice?, metadata: AudioImportMetadata?, protectFromPruning: Boolean, speakerLabels: Boolean?,
+         retention: ImportRetentionChoice?, metadata: AudioImportMetadata?, protectFromPruning: Boolean, speakerLabels: Boolean?, importId: String? = null,
         publish: (HistoryEntry, AudioLease?) -> T): T {
         val entry = synchronized(this) {
             initialize()
-            val id = UUID.randomUUID().toString()
+            val id = importId?.also { require(UUID.fromString(it).toString() == it) } ?: UUID.randomUUID().toString()
             val directory = File(root, id)
             check(directory.mkdir())
             val suffix = extension.filter { it.isLetterOrDigit() }.take(8).ifEmpty { "audio" }

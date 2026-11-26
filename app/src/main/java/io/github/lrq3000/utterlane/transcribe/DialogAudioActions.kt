@@ -70,10 +70,10 @@ class DialogAudioActions(private val app: UtterlaneApp) {
 
     /** Byte-for-byte, bounded copy. The returned owner protects ordinary retained
      * history from pruning through model preparation and transcription. */
-    fun import(source: InspectedSource, retention: ImportRetentionChoice, options: FileTranscriptionOptions? = null): RecordingHistory.OwnedImport {
+    fun import(source: InspectedSource, retention: ImportRetentionChoice, options: FileTranscriptionOptions? = null, importId: String? = null): RecordingHistory.OwnedImport {
         val raw = checkNotNull(app.contentResolver.openInputStream(source.uri)) { "Cannot open audio" }
         val extension = source.metadata.displayName?.substringAfterLast('.', "audio") ?: "audio"
-        return copyImportedAudio(app.recordingHistory, raw, extension, source.metadata, retention, options?.speakerLabels)
+        return copyImportedAudio(app.recordingHistory, raw, extension, source.metadata, retention, options?.speakerLabels, importId)
     }
 
     fun share(id: String): Intent {

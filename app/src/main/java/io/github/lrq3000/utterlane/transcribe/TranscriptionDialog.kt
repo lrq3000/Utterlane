@@ -37,6 +37,7 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
     val state by model.state.collectAsStateWithLifecycle()
     val app = UtterlaneApp.instance
     val context = LocalContext.current
+    val openRetry: (String) -> Unit = { id -> context.startActivity(QueueNotifications.intent(context, id)) }
     val view = LocalView.current
     val busy = state.importing || state.saving || state.closing || state.deleting || state.checkingExit
     val working = busy || state.running || state.checkingDeletion
@@ -56,7 +57,7 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
     // (and rejected by a new model with no lease) before another picker is begun.
     var pickerPending by rememberSaveable { mutableStateOf(false) }
     val chooser = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if (app.modelManager.selected.value.id != beforeModel) model.retry(useCurrentModel = true)
+        if (app.modelManager.selected.value.id != beforeModel) model.enqueueRetry(useCurrentModel = true, onQueued = openRetry)
     }
     val file = rememberLauncherForActivityResult(AudioExportContract()) { uri ->
         pickerPending = false
@@ -81,7 +82,7 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                             DialogAction(Icons.Outlined.Refresh, stringResource(R.string.dialog_retranscribe), "dialog_retranscribe",
                                 state.audio != null && !state.running && !busy, onClick = { modelMenu = true })
                             DropdownMenu(modelMenu, { modelMenu = false }) {
-                                DropdownMenuItem(text = { Text(stringResource(R.string.dialog_same_model)) }, onClick = { modelMenu = false; model.retry() })
+                                DropdownMenuItem(text = { Text(stringResource(R.string.dialog_same_model)) }, onClick = { modelMenu = false; model.enqueueRetry(onQueued = openRetry) })
                                 DropdownMenuItem(text = { Text(stringResource(R.string.recording_choose_model)) }, onClick = {
                                     modelMenu = false; beforeModel = app.modelManager.selected.value.id
                                     chooser.launch(RecordingRecovery.modelIntent(context))

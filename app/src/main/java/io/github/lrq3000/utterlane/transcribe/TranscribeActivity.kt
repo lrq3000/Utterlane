@@ -80,8 +80,10 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
     private fun showQueueJob(app: UtterlaneApp, id: String) {
         val queue = app.transcriptionQueue
         queue.visible()
+        lifecycleScope.launch { queue.reviewed.collect { reviewed -> if (reviewed == id) finish() } }
         setContent {
             val rows by queue.rows.collectAsStateWithLifecycle()
+            val loaded by queue.loaded.collectAsStateWithLifecycle()
             val active by queue.active.collectAsStateWithLifecycle()
             val record = rows.firstOrNull { it.id == id }
             var review by remember { mutableStateOf<TranscriptionDialogModel?>(null) }
@@ -110,7 +112,9 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
                 } else Surface {
                     Column(Modifier.padding(20.dp)) {
                         record?.let { Text(it.label) }
-                        Text(stringResource(record?.stage?.label() ?: R.string.queue_missing))
+                        val service by queue.admission.status.collectAsStateWithLifecycle()
+                        if (record != null && service.needsResume(record)) QueueResumeAction(queue)
+                        Text(stringResource(record?.stage?.label() ?: if (loaded) R.string.queue_missing else R.string.state_processing))
                         TextButton(hide) { Text(stringResource(R.string.queue_background)) }
                     }
                 }
