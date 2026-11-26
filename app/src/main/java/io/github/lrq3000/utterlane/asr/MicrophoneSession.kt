@@ -32,7 +32,15 @@ class MicrophoneSession(
         internal fun resetTargets(): List<CaptureAdmission.Lease> = admission.resetTargets()
         fun resetActive() { resetTargets().forEach { it.reset() } }
     }
-    private val captureLease = CaptureAdmission.Lease { resetRequested = true; cancel(discard = false) }
+    private val captureLease = CaptureAdmission.Lease(::resetCapture)
+    private fun resetCapture() {
+        resetRequested = true
+        cancel(discard = false)
+        if (admission.needsReleaseRetry(captureLease)) UtterlaneApp.instance.applicationScope.launch(Dispatchers.IO) {
+            try { admission.releaseHardware(captureLease, recorder::releaseAfterCapture) }
+            catch (e: Exception) { Log.e("MicrophoneSession", "Reset could not release microphone", e) }
+        }
+    }
     @Volatile private var job: Job? = null
     val metrics = CaptureMetrics()
     val speakerControl = LiveSpeakerControl()
@@ -50,7 +58,10 @@ class MicrophoneSession(
     @OptIn(ExperimentalCoroutinesApi::class)
     fun start() {
         check(job == null)
-        if (!admission.acquire(captureLease)) { onComplete(null, SessionFailure(SessionFailure.Kind.BUSY, context.getString(R.string.stream_busy))); return }
+        if (!admission.acquire(captureLease)) {
+            val message = if (admission.releaseFailed()) releaseFailureMessage() else context.getString(R.string.stream_busy)
+            onComplete(null, SessionFailure(SessionFailure.Kind.BUSY, message)); return
+        }
         // Even reset-before-dispatch must enter try/finally so all five callers
         // receive their cleanup callback and release their local session reference.
         job = scope.launch(Dispatchers.IO, start = CoroutineStart.ATOMIC) {
@@ -75,8 +86,7 @@ class MicrophoneSession(
                 captureLease.stopped()
                 try {
                     // Stop-before-start may leave a format-probe AudioRecord open even after startRecording returns.
-                    recorder.releaseAfterCapture()
-                    admission.hardwareClosed(captureLease)
+                    admission.releaseHardware(captureLease, recorder::releaseAfterCapture)
                     hardwareClosed = true
                 } catch (e: Exception) { Log.e("MicrophoneSession", "Microphone setup cleanup failed", e) }
             }
@@ -90,12 +100,7 @@ class MicrophoneSession(
                 catch (e: CancellationException) { throw e }
                 catch (e: Exception) { Log.w("MicrophoneSession", "Could not pause app playback; continuing microphone capture", e) }
                 archival = app.archival.producer(userInitiated = true)
-                activityObserver = launch {
-                    app.recognizerManager.activity.collect {
-                        // Ignore a previous operation's resting status at subscription time.
-                        if (it.active || metrics.state.value.recognition.active) metrics.recognition(it)
-                    }
-                }
+                activityObserver = app.recognizerManager.observeSessionActivity(this, captureLease, metrics::recognition)
                 // Capture, queue and every wake reopen retain one immutable snapshot.
                 // Preferences changed during recording take effect only next session.
                 val captureOptions = app.settingsRepository.runtimeOptions.first()
@@ -224,7 +229,11 @@ class MicrophoneSession(
                     onCaptureEnded = {
                         releaseRecorder()
                         metrics.captureEnded()
-                        withContext(Dispatchers.Main) { if (!cancelled) onCaptureEnded() }
+                        withContext(Dispatchers.Main) {
+                            if (!cancelled) {
+                                if (hardwareClosed) onCaptureEnded() else onWarning(releaseFailureMessage())
+                            }
+                        }
                     },
                     onProcessingFailed = { error ->
                         Log.e("MicrophoneSession", "Recognition failed; continuing audio capture", error)
@@ -281,6 +290,8 @@ class MicrophoneSession(
                     recorder.stop()
                     withContext(NonCancellable + Dispatchers.IO) {
                         releaseRecorder()
+                        if (!hardwareClosed) failure = SessionFailure(SessionFailure.Kind.AUDIO,
+                            listOfNotNull(failure?.message, releaseFailureMessage()).joinToString("\n"))
                         rollingMaintenance?.join()
                         try { session?.close() } catch (e: Exception) { Log.e("MicrophoneSession", "Recognition cleanup failed", e) }
                         session?.store?.finishProducing()
@@ -321,7 +332,8 @@ class MicrophoneSession(
                         if (cancelled) metrics.cancelled() else metrics.completed(failure?.message)
                         captureDiagnostics?.record(metrics.state.value)
                         if (!cancelled) finalizationWarning?.let { onWarning(it) }
-                        if (resetRequested) onComplete(session?.store, SessionFailure(SessionFailure.Kind.MODEL, context.getString(R.string.model_reset_done)))
+                        if (resetRequested) onComplete(session?.store, if (!hardwareClosed) failure else
+                            SessionFailure(SessionFailure.Kind.MODEL, context.getString(R.string.model_reset_done)))
                         else if (!cancelled) onComplete(session?.store, failure)
                         else session?.store?.let {
                             if (discardRequested) withContext(Dispatchers.IO) { it.dispose() }
@@ -342,6 +354,7 @@ class MicrophoneSession(
     }
 
     fun stop() { captureLease.stopped(); metrics.stopping(); recorder.stop() }
+    private fun releaseFailureMessage() = "${context.getString(R.string.toast_recording_error)}. ${context.getString(R.string.model_force_unload)}"
     fun cancel(discard: Boolean = true) {
         captureLease.stopped()
         if (discard) discardRequested = true

@@ -8,6 +8,7 @@ internal class CaptureAdmission {
         fun stopped() { isLive = false }
     }
     private var hardware: Lease? = null
+    private var failedRelease: Lease? = null
     private val sessions = mutableSetOf<Lease>()
 
     @Synchronized fun acquire(lease: Lease): Boolean {
@@ -17,17 +18,24 @@ internal class CaptureAdmission {
         return true
     }
 
-    @Synchronized fun hardwareClosed(lease: Lease) {
+    // The capture worker (or a later retry) is the only caller allowed to close hardware. No admission monitor is held across the platform call.
+    fun releaseHardware(lease: Lease, close: () -> Unit): Unit = synchronized(lease) {
+        if (synchronized(this) { hardware !== lease }) return
         lease.stopped()
-        if (hardware === lease) hardware = null
+        try { close() } catch (error: Exception) {
+            synchronized(this) { failedRelease = lease }
+            throw error
+        }
+        synchronized(this) { hardware = null; failedRelease = null }
     }
 
     @Synchronized fun finish(lease: Lease) {
-        hardwareClosed(lease)
         sessions.remove(lease)
     }
 
-    @Synchronized fun resetTargets(): List<Lease> = sessions.toList()
+    @Synchronized fun needsReleaseRetry(lease: Lease): Boolean = failedRelease === lease
+    @Synchronized fun releaseFailed(): Boolean = failedRelease != null
+    @Synchronized fun resetTargets(): List<Lease> = (sessions + listOfNotNull(hardware)).toList()
     @Synchronized fun isBusy(): Boolean = hardware != null
-    @Synchronized fun hasSessions(): Boolean = sessions.isNotEmpty()
+    @Synchronized fun hasSessions(): Boolean = sessions.isNotEmpty() || hardware != null
 }

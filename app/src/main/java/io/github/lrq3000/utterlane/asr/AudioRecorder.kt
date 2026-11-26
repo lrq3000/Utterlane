@@ -57,15 +57,15 @@ class AudioRecorder : AudioCapture {
             check(minimum > 0)
             val selected = CaptureConfiguration(requested, options, minimum)
             val record = createRecorder(selected)
-            if (record.state != AudioRecord.STATE_INITIALIZED || record.sampleRate != requested.sampleRate || record.channelCount != requested.channels) {
-                record.release(); error("Requested microphone format is unsupported")
-            }
             audioRecord = record
+            if (record.state != AudioRecord.STATE_INITIALIZED || record.sampleRate != requested.sampleRate || record.channelCount != requested.channels) {
+                closeRecorder(); error("Requested microphone format is unsupported")
+            }
             preparedConfiguration = selected
         } catch (e: SecurityException) { throw e
         } catch (_: IllegalArgumentException) { captureFormat = io.github.lrq3000.utterlane.archive.PcmFormat()
         } catch (_: IllegalStateException) { captureFormat = io.github.lrq3000.utterlane.archive.PcmFormat() }
-        if (captureFormat != requested) preparedConfiguration = configuration(options)
+        if (captureFormat != requested) { closeRecorder(); preparedConfiguration = configuration(options) }
         return captureFormat
     }
     private fun configuration(options: RuntimeOptions) = CaptureConfiguration(captureFormat, options,
@@ -174,8 +174,7 @@ class AudioRecorder : AudioCapture {
 
         if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
             Log.e(TAG, "AudioRecord failed to initialize")
-            audioRecord?.release()
-            audioRecord = null
+            closeRecorder()
             error("AudioRecord failed to initialize")
         }
 
@@ -215,7 +214,6 @@ class AudioRecorder : AudioCapture {
         // Only the capture worker owns release. A concurrent stop never frees
         // AudioRecord while a read is using native resources.
         val record = audioRecord ?: return
-        audioRecord = null
         try {
             route?.detach(record)
             try { if (record.recordingState == AudioRecord.RECORDSTATE_RECORDING) record.stop() }
@@ -223,7 +221,12 @@ class AudioRecorder : AudioCapture {
             if (android.os.Build.VERSION.SDK_INT >= 29) platformCallback?.let { record.unregisterAudioRecordingCallback(it) }
         } finally {
             platformCallback = null
-            try { effects?.close() } finally { effects = null; effectInputId = null; record.release() }
+            try { effects?.close() } finally {
+                effects = null; effectInputId = null
+                record.release()
+                check(record.state == AudioRecord.STATE_UNINITIALIZED) { "Microphone release was not confirmed" }
+                audioRecord = null // A failure retains the actual handle for releaseAfterCapture/reset to retry.
+            }
         }
     }
 

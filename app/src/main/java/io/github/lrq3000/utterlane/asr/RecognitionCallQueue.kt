@@ -3,6 +3,8 @@ package io.github.lrq3000.utterlane.asr
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** One nonpreemptible model operation at a time. Priority belongs to a ready call, never to an entire recording. */
 internal class RecognitionCallQueue {
@@ -14,6 +16,12 @@ internal class RecognitionCallQueue {
     private val waiting = LinkedHashSet<Turn>()
     // Live can only become false (Stop/EOF). Keep the original arrival order in waiting so demotion costs no requeue or lost position.
     private val live = LinkedHashSet<Turn>()
+
+    /** Binder dispatch cannot be cancelled once sent. Keep this turn until the final reply, watchdog, or worker exit, then discard a cancelled owner's result. */
+    suspend fun <T> awaitNativeReply(call: () -> T): T = withContext(Dispatchers.IO) {
+        currentCoroutineContext().ensureActive()
+        call().also { currentCoroutineContext().ensureActive() }
+    }
 
     suspend fun <T> withTurn(capture: CaptureAdmission.Lease? = null, call: suspend () -> T): T {
         val turn = Turn(capture)

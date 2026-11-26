@@ -282,7 +282,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         val textDuration = app.settingsRepository.transcriptHistoryRetention.first()
                         diagnosticSession = app.recognitionDiagnostics.capture(options)
                         diagnostics = viewModelScope.launch { metrics.state.collect { diagnosticSession?.record(it) } }
-                        activity = viewModelScope.launch { app.recognizerManager.activity.collect { metrics.recognition(it) } }
+                        activity = app.recognizerManager.observeSessionActivity(viewModelScope, sink = metrics::recognition)
                         presenter = viewModelScope.launch {
                             while (isActive) {
                                 metrics.tick()

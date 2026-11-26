@@ -12,15 +12,16 @@ class CaptureAdmissionTest {
         old.stopped()
         assertFalse(old.isLive)
         assertFalse(admission.acquire(next))
-        admission.hardwareClosed(old)
+        admission.releaseHardware(old) {}
         assertFalse(admission.isBusy())
         assertTrue(admission.hasSessions())
         assertTrue(admission.acquire(next))
-        admission.hardwareClosed(old)
+        admission.releaseHardware(old) { fail("Stale callback cannot touch hardware") }
         admission.finish(old)
         assertTrue(admission.isBusy())
         assertTrue(next.isLive)
         assertFalse(admission.acquire(CaptureAdmission.Lease {}))
+        admission.releaseHardware(next) {}
         admission.finish(next)
         assertFalse(admission.hasSessions())
         assertFalse(admission.isBusy())
@@ -33,13 +34,14 @@ class CaptureAdmissionTest {
         val draining = CaptureAdmission.Lease { reset += "draining" }
         val current = CaptureAdmission.Lease { reset += "current" }
         assertTrue(admission.acquire(first))
+        admission.releaseHardware(first) {}
         admission.finish(first)
         assertTrue(admission.acquire(draining))
-        admission.hardwareClosed(draining)
+        admission.releaseHardware(draining) {}
         assertFalse(draining.isLive)
         assertTrue(admission.acquire(current))
         val toReset = admission.resetTargets()
-        admission.hardwareClosed(current)
+        admission.releaseHardware(current) {}
         assertTrue(admission.acquire(CaptureAdmission.Lease { reset += "after reset" }))
         toReset.forEach { it.reset() }
         assertEquals(listOf("current", "draining"), reset.sorted())
