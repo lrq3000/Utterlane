@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.3.0] - 2026-11-26
+
+### Added
+- Select multiple audio files and queue them for offline transcription. Continue in the background and open each result from its own notification or from the Home queue.
+- Keep dictating through the microphone while a file is processing. Live speech gets the next turn on the shared recognizer, and a new recording can start while the previous one finishes.
+- With history turned off or set to Immediate, queued audio and text stay available until you review and explicitly close that result. Backgrounding the app or dismissing a notification does not discard it.
+
+### Fixed
+- Interrupted imports preserve accepted files and let you retry unreadable sources without resubmitting the batch. Interrupted transcriptions retain available audio and partial text for recovery.
+
 ## [2.2.6] - 2026-11-26
 
 ### Fixed

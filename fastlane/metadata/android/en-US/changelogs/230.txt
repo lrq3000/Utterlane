@@ -1,0 +1,3 @@
+Queue multiple audio files and transcribe offline in the background. Each result has its own notification.
+Keep dictating while the queue runs, and start another recording while the previous one finishes.
+With Immediate retention or history off, queued results remain available until you review and explicitly close them.
