@@ -50,7 +50,6 @@ import io.github.lrq3000.utterlane.transcribe.QueueCancelDialog
 import io.github.lrq3000.utterlane.transcribe.QueueNotifications
 import io.github.lrq3000.utterlane.home.HomeHeader
 import io.github.lrq3000.utterlane.settings.SettingsActivity
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -151,13 +150,11 @@ private class HistoryLabels(private val context: Context) {
 internal fun HistoryScreen(model: HistoryViewModel, transcripts: Boolean, onBack: () -> Unit) {
     val context = LocalContext.current
     val rows = model.pages.collectAsLazyPagingItems()
-    val jobSource = if (transcripts) UtterlaneApp.instance.transcriptionQueue else null
-    val jobs = jobSource?.rows?.collectAsStateWithLifecycle()?.value.orEmpty()
     val scope = rememberCoroutineScope()
-    val queue = remember(jobs) { QueueHistoryIndex(jobs) }
+    val queue = model.queueIndex?.collectAsStateWithLifecycle()?.value
     val snapshot = rows.itemSnapshotList
     val extraJobs = remember(queue, snapshot) {
-        if (jobs.isEmpty()) emptyList() else queue.withoutHistoryRows(snapshot.items.mapTo(HashSet()) { it.id })
+        queue?.withoutHistoryRows(snapshot.items.mapTo(HashSet()) { it.id }).orEmpty()
     }
     var cancelId by rememberSaveable { mutableStateOf<String?>(null) }
     val locale = LocalConfiguration.current.locales.toLanguageTags()
@@ -198,7 +195,7 @@ internal fun HistoryScreen(model: HistoryViewModel, transcripts: Boolean, onBack
                     item(key = "history_prepend") { HistoryLoadStatus(rows.loadState.prepend, rows::retry) }
                     items(count = rows.itemCount, key = rows.itemKey { it.id }) { index ->
                         val entry = rows[index] ?: return@items
-                        val job = queue.jobForText(entry.id)
+                        val job = queue?.jobForText(entry.id)
                         if (job != null) QueueJobRow(job, onCancel = { cancelId = job.id }, preview = entry.detail,
                             modifier = Modifier.retentionState(entry), recovered = entry.recovery) {
                             HistoryEntryMetadata(entry, labels)
@@ -206,12 +203,9 @@ internal fun HistoryScreen(model: HistoryViewModel, transcripts: Boolean, onBack
                             val saved = Intent(context, TranscribeActivity::class.java)
                                 .putExtra(if (transcripts) TranscribeActivity.EXTRA_TRANSCRIPT_ID else TranscribeActivity.EXTRA_AUDIO_ID, entry.id)
                                 .putExtra(HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true)
-                            if (jobSource == null || jobSource.loaded.value && jobSource.rows.value === jobs) context.startActivity(saved)
+                            if (!transcripts) context.startActivity(saved)
                             else scope.launch {
-                                // A cold History pager can win the race against queue recovery. Resolve the tapped text ID before treating its saved row as independent.
-                                try { jobSource.initialized() } catch (cancelled: CancellationException) { throw cancelled }
-                                catch (_: Exception) { /* An unavailable queue must not also break the exact saved transcript. */ }
-                                val exact = jobSource.rows.value.firstOrNull { it.textId == entry.id }
+                                val exact = model.jobForTranscript(entry.id)
                                 context.startActivity(exact?.let { QueueNotifications.intent(context, it.id) } ?: saved)
                             }
                         }

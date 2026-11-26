@@ -107,7 +107,7 @@ class QueueAttemptDeletionTest {
         val job = row(ImportRetentionChoice.KEEP)
         val source = recordings.get(job.audio)
         assertNull(deletion.confirm(question(job), true, ::stopped, ::acknowledge))
-        assertFalse("Audio still on disk after last cancellation: ${source.directory.list()?.toList()}, queue=${journal.records()}, audio=${recordings.list()}", source.directory.exists())
+        assertFalse(source.directory.exists())
         assertEquals("external original", external.readText())
         assertNull(journal.find(job.id))
     }
@@ -144,6 +144,7 @@ class QueueAttemptDeletionTest {
         val two = async(start = CoroutineStart.UNDISPATCHED) {
             gate.run { otherDialog.confirm(secondQuestion, false, ::stopped, ::acknowledge) }
         }
+        assertEquals("B must not change its disposition until A's durable row is retired", QueueStage.WAITING, journal.find(b.id)?.stage)
         releaseAck.complete(Unit)
         assertNull(one.await()); assertNull(two.await())
         assertTrue(journal.records().isEmpty())

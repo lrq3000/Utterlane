@@ -55,7 +55,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     private val importRetention = ImportRetentionGate(
         question = { request -> mutable.update { it.copy(importQuestion = request) } },
         remember = app.settingsRepository::rememberImportRetention)
-    private val linkedHistory = LinkedHistory(app.recordingHistory, app.transcriptHistory)
+    private val linkedHistory = LinkedHistory(app.recordingHistory, app.transcriptHistory, app.transcriptionQueue.journal, app.transcriptionQueue::target)
     private val historyOwners = DialogHistoryOwners(app.recordingHistory, app.transcriptHistory)
     private val exitRetention = DialogExitRetention(app, input.queueId)
     val document = TranscriptPager(viewModelScope)
@@ -705,22 +705,19 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     }
 
     private fun deletionPlan(): HistoryDeletionPlan {
-        val plan = linkedHistory.plan(ownedAudioId, mutable.value.transcriptId, input.transcriptOrigin, workingTranscriptId())
-        if (!plan.allLinked) return plan
-        // Earlier unsaved attempts also belong to this recording. Count each
-        // identity once, even if history and recovery both contain a copy.
-        val ids = plan.transcriptIds.toMutableSet()
-        workingFiles().filter { it.isFile && it.length() > 0 && !TranscriptSource.read(it).discarded }
-            .forEach { ids.add(workingId(it)) }
-        linkedWorkingCopies().forEach { ids.add(it.id) }
-        return plan.copy(transcriptIds = ids.toSet())
+        // Pass working copies into the same exact-ID filter as saved history; appending them afterward could reintroduce a paused producer's append target or its Keep alias.
+        val ids = if (input.transcriptOrigin) emptySet() else buildSet {
+            workingFiles().filter { it.isFile && it.length() > 0 && !TranscriptSource.read(it).discarded }.forEach { add(workingId(it)) }
+            linkedWorkingCopies().forEach { add(it.id) }
+        }
+        return linkedHistory.plan(ownedAudioId, mutable.value.transcriptId, input.transcriptOrigin, workingTranscriptId(), ids)
     }
 
     private fun deleteWorkingCopies(ids: Set<String>) {
-        val selected = workingFiles().filter { it.isFile && workingId(it) in ids }
+        val selected = workingFiles().filter { it.isFile && workingId(it) in ids && !linkedHistory.isQueueTarget(it) }
         // A saved transcript can also have recovery copies from an earlier dialog.
         // Mark all confirmed identities before deleting the authoritative history.
-        val copies = cachedWorkingCopies().filter { it.id in ids }.map { it.file }
+        val copies = cachedWorkingCopies().filter { it.id in ids && !linkedHistory.isQueueTarget(it.file) }.map { it.file }
         (selected + copies).toSet().forEach(TranscriptStore::deleteArtifacts)
         synchronized(temporaryResults) { temporaryResults.removeAll(selected.toSet()) }
     }
@@ -761,7 +758,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                     val fresh = linkedHistory.confirmDeletion(request.plan, target, ::deletionPlan) { ids ->
                         // Snapshot selection before the durable marker makes the
                         // current source unavailable to subsequent availability IO.
-                        discardedCurrent = workingTranscriptId() in ids
+                        discardedCurrent = workingTranscriptId() in ids && currentStore?.let { !linkedHistory.isQueueTarget(it.file) } == true
                         deleteWorkingCopies(ids)
                     }
                     if (fresh != null) {
@@ -771,7 +768,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                     }
                     if (discardedCurrent) {
                         document.show(null)
-                        currentStore?.dispose(); currentStore = null; latestPreview = ""
+                        currentStore?.keepForRecovery(); currentStore = null; latestPreview = "" // Release the owner; the confirmed files already have a discard marker.
                         mutable.update { it.copy(store = null, preview = "", transcriptBytes = 0, transcriptId = null,
                             transcriptPinned = false, fileProgress = null) }
                     }
@@ -779,7 +776,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                     refreshAudio(); refreshTranscript()
                     val empty = deletionPlan().choices.isEmpty()
                     if (empty) {
-                        workingFiles().forEach(TranscriptStore::deleteArtifacts)
+                        // Empty means no *deletable* items. The transaction already marked its selected files; other viewed files can still belong to a queue attempt.
                         input.queueId?.let { app.transcriptionQueue.acknowledge(it) }
                     }
                     mutable.update { it.copy(finished = empty, message = app.getString(R.string.dialog_deleted)) }

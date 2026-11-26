@@ -2,6 +2,13 @@ package io.github.lrq3000.utterlane.history
 
 import io.github.lrq3000.utterlane.asr.TranscriptSource
 import io.github.lrq3000.utterlane.asr.TranscriptStore
+import io.github.lrq3000.utterlane.transcribe.QueueJournal
+import io.github.lrq3000.utterlane.transcribe.QueueRetryRegistration
+import io.github.lrq3000.utterlane.transcribe.QueueStage
+import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -33,6 +40,80 @@ class LinkedHistoryTest {
             recordings.setPinned(id, true, HistoryRetention.DAY, "launch")
             assertEquals(HistoryDeletionTarget.entries.toList(), linked.plan(id, saved.id, true).choices)
         }
+    }
+
+    @Test fun aPausedSiblingInvalidatesOpenHistoryAudioOrBothConsentBeforeAnyRemoval() {
+        val recordings = RecordingHistory(folder.newFolder())
+        val texts = TranscriptHistory(folder.newFolder())
+        val queue = QueueJournal(folder.newFolder())
+        recordings.awaitingQueueReview = queue::protectsAudio
+        val source = audio(recordings)
+        val saved = text(texts, source, "ordinary-history")
+        val history = LinkedHistory(recordings, texts)
+        fun plan() = history.plan(source.id, saved.id, transcriptOrigin = true)
+        val open = plan()
+        assertEquals(HistoryDeletionTarget.entries.toList(), open.choices)
+        // Keep the source-registration monitor until the other thread has started confirming the already-open question. Both operations use the live repositories.
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val started = CountDownLatch(1)
+            val answer = synchronized(recordings) {
+                val future = pool.submit<HistoryDeletionPlan?> {
+                    started.countDown()
+                    history.confirmDeletion(open, HistoryDeletionTarget.BOTH, ::plan) { fail("A stale Both selection must not discard the displayed text") }
+                }
+                assertTrue(started.await(5, TimeUnit.SECONDS))
+                val sibling = QueueRetryRegistration(recordings, queue).add(source.id, false, null, "sibling")
+                queue.update(sibling.copy(stage = QueueStage.PAUSED))
+                future
+            }
+            assertEquals(listOf(HistoryDeletionTarget.TRANSCRIPTS), answer.get(5, TimeUnit.SECONDS)?.choices)
+            assertEquals(listOf(HistoryDeletionTarget.TRANSCRIPTS), plan().choices)
+            for (target in listOf(HistoryDeletionTarget.AUDIO, HistoryDeletionTarget.BOTH)) {
+                assertThrows(IllegalStateException::class.java) { history.delete(open, target) }
+            }
+            assertTrue(saved.file.exists()); assertTrue(source.part(0).exists())
+            assertNull(history.confirmDeletion(plan(), HistoryDeletionTarget.TRANSCRIPTS, ::plan) {})
+            assertFalse(saved.file.exists()); assertTrue(source.part(0).exists())
+        } finally { pool.shutdownNow() }
+    }
+
+    @Test fun ordinaryAllLinkedDeletionCannotRemoveNewQueueTargetOrItsKeepAlias() {
+        val recordings = RecordingHistory(folder.newFolder())
+        val texts = TranscriptHistory(folder.newFolder())
+        val queue = QueueJournal(folder.newFolder())
+        val results = folder.newFolder()
+        fun target(id: String) = File(results, "$id.txt")
+        val history = LinkedHistory(recordings, texts, queue, ::target)
+        recordings.awaitingQueueReview = queue::protectsAudio
+        val audio = audio(recordings)
+        val ordinary = text(texts, audio, "ordinary")
+        val id = java.util.UUID.randomUUID().toString()
+        val store = TranscriptStore(target(id)).also { it.append("queue partial") }
+        val deterministic = texts.save(store.file, "model", audio.id)
+        val manual = texts.saveWorking(store, "model", audio.id, null, TranscriptMetadata())
+        val aliasView = folder.newFile().apply { writeText("queue partial"); TranscriptSource(audio.id, manual.id).write(this) }
+        try {
+            fun plan() = history.plan(audio.id, ordinary.id, false, linkedWorkingIds = setOf(manual.id, deterministic.id))
+            val opened = plan()
+            assertEquals(setOf(ordinary.id, manual.id, deterministic.id), opened.transcriptIds)
+            // The recording-origin view was already open when the queue published this exact attempt.
+            queue.add(audio.id, "active", false, QueueStage.PAUSED, id)
+            assertTrue(history.isQueueTarget(store.file))
+            assertFalse(history.isQueueTarget(File(aliasView.parentFile, store.file.name)))
+            assertThrows(IllegalStateException::class.java) { history.delete(opened, HistoryDeletionTarget.TRANSCRIPTS) }
+            val renewed = history.confirmDeletion(opened, HistoryDeletionTarget.TRANSCRIPTS, ::plan) {
+                fail("A stale ordinary question must not mark either the target or its cache alias")
+            }!!
+            assertEquals(setOf(ordinary.id), renewed.transcriptIds)
+            assertNull(history.confirmDeletion(renewed, HistoryDeletionTarget.TRANSCRIPTS, ::plan) { ids ->
+                if (manual.id in ids) TranscriptStore.deleteArtifacts(aliasView)
+            })
+            assertNull(texts.find(ordinary.id))
+            assertTrue(aliasView.isFile); assertFalse(TranscriptSource.read(store.file).discarded)
+            assertNotNull(texts.find(deterministic.id)); assertNotNull(texts.find(manual.id))
+            assertTrue(audio.part(0).exists())
+        } finally { store.keepForRecovery() }
     }
 
     @Test fun reverseLinksSurviveRestartAndExcludeLeasedDeletedResults() {
