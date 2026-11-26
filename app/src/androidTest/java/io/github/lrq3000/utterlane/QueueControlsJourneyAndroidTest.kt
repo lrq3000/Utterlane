@@ -1,28 +1,35 @@
 package io.github.lrq3000.utterlane
 
+import android.Manifest
 import android.app.Activity
 import android.app.Instrumentation
 import android.content.ClipData
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
+import io.github.lrq3000.utterlane.asr.MicrophoneSessionFactory
 import io.github.lrq3000.utterlane.asr.ModelCatalog
 import io.github.lrq3000.utterlane.asr.TranscriptCompletion
 import io.github.lrq3000.utterlane.asr.TranscriptSource
 import io.github.lrq3000.utterlane.history.HistoryRetention
 import io.github.lrq3000.utterlane.history.WavFile
 import io.github.lrq3000.utterlane.home.HomeActivity
+import io.github.lrq3000.utterlane.home.HomeCapturePhase
+import io.github.lrq3000.utterlane.home.HomeDestination
 import io.github.lrq3000.utterlane.onboarding.OnboardingRepository
 import io.github.lrq3000.utterlane.onboarding.OnboardingSample
+import io.github.lrq3000.utterlane.transcribe.QueueJournal
 import io.github.lrq3000.utterlane.transcribe.QueueRecord
 import io.github.lrq3000.utterlane.transcribe.QueueStage
 import io.github.lrq3000.utterlane.transcribe.TranscribeActivity
 import java.io.File
 import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -31,7 +38,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** A public reading goes through the real import, recognizer, service and reader. Only the document picker's return value is supplied by the test. */
+/** Run each journey on an initially empty isolated QA identity. The app's real importer, recognizer, services and readers process bundled speech; the test supplies the picker response and, for the live-take case, the microphone PCM. Leave each journey's results available for evidence export before restoring the fixture. */
 @RunWith(AndroidJUnit4::class)
 class QueueControlsJourneyAndroidTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -39,7 +46,7 @@ class QueueControlsJourneyAndroidTest {
     private val queue get() = app.transcriptionQueue
     private val ui = OnboardingTestUi()
 
-    @Test fun pauseOneFileFinishItsSiblingThenExplicitlyContinueFromHistory() = runBlocking<Unit> {
+    private suspend fun requireIsolatedWorkspace() {
         assertEquals("Use the isolated QA app", "io.github.lrq3000.utterlane.dhome", app.packageName)
         queue.initialized()
         assertTrue("Refusing existing queue work", queue.journal.records().isEmpty())
@@ -51,6 +58,11 @@ class QueueControlsJourneyAndroidTest {
         app.modelManager.initializeSelection()
         assertEquals(ModelCatalog.DEFAULT, app.modelManager.selected.value)
         assertTrue("Seed the catalog-verified offline Ultra Q8 model", app.modelManager.ensureVerified())
+    }
+
+    @Test fun pauseOneFileFinishItsSiblingThenExplicitlyContinueFromHistory() = runBlocking<Unit> {
+        requireIsolatedWorkspace()
+        val settings = app.settingsRepository
         val guide = OnboardingRepository(app)
         val oldGuide = guide.progress.first()
         val oldAudio = settings.audioHistoryEnabled.first()
@@ -196,6 +208,136 @@ class QueueControlsJourneyAndroidTest {
             // Preserve service-owned results for diagnosis until the runner exports evidence and restores its initially absent QA package.
             long.delete(); short.delete()
         }
+    }
+
+    @Test fun liveCompletionLeavesFilePausedAndRestartCreatesOneStoppableAttempt() = runBlocking<Unit> {
+        requireIsolatedWorkspace()
+        assertEquals(PackageManager.PERMISSION_GRANTED, app.checkSelfPermission(Manifest.permission.RECORD_AUDIO))
+        assertTrue("Refuse an existing live workspace", !app.homeController.state.value.busy && app.homeController.state.value.model == null)
+        val settings = app.settingsRepository
+        val oldFactory = app.microphoneSessions
+        val oldSpeaker = settings.diarizationEnabled.first()
+        val guide = OnboardingRepository(app)
+        val oldGuide = guide.progress.first()
+        val short = File.createTempFile("qa-stop-restart-voice-", ".wav", app.cacheDir)
+        val long = File.createTempFile("qa-stop-restart-file-", ".wav", app.cacheDir)
+        app.assets.open("onboarding/alice_wonderland_excerpt.wav").use { input -> short.outputStream().use { input.copyTo(it) } }
+        assertEquals(OnboardingSample.BYTES, short.length())
+        val pcm = WavFile.read(short, 0, ((short.length() - 44) / 2).toInt())
+        WavFile(long).use { writer -> repeat(8) { writer.append(pcm) } }
+        val original = digest(long)
+        val capture = OnboardingRecognitionAndroidTest.FixtureCapture(pcm + ShortArray(32_000) + pcm + pcm)
+        val picker = object : Instrumentation.ActivityMonitor() {
+            override fun onStartActivity(intent: Intent): Instrumentation.ActivityResult? {
+                if (intent.action != Intent.ACTION_OPEN_DOCUMENT) return null
+                val uri = FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", long)
+                return Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+            }
+        }
+        var home: Activity? = null
+        instrumentation.addMonitor(picker)
+        try {
+            guide.complete()
+            settings.setDiarizationEnabled(false)
+            app.microphoneSessions = MicrophoneSessionFactory { capture }
+            ui.prepare()
+            home = launchNativeActivity(HomeActivity.intent(app))
+            ui.click("home_load_audio")
+            ui.click("file_setup_start")
+            val file = withTimeout(30_000) { queue.rows.first { it.size == 1 }.single() }
+            assertEquals(long.name, file.label)
+            awaitDetail(file)
+            awaitWords(file)
+            ui.click("queue_pause")
+            val paused = awaitStage(file, QueueStage.PAUSED)
+            val partial = queue.target(file.id).readText()
+            assertTrue(paused.checkpointed && paused.resumeSamples in 1L until 8L * pcm.size)
+            ui.node("queue_continue").recycle()
+            ui.click("dialog_back")
+            ui.node("home_screen").recycle()
+            instrumentation.runOnMainSync { app.homeController.record() }
+            assertTrue("Bundled speech did not enter the live pipeline", capture.sent.await(35, TimeUnit.SECONDS))
+            withTimeout(120_000) { app.homeController.state.first { it.capture.phase == HomeCapturePhase.RECORDING && it.result.preview.contains("rabbit", true) } }
+            assertEquals(paused, queue.journal.find(file.id))
+            instrumentation.runOnMainSync { app.homeController.record() }
+            val live = withTimeout(120_000) { queue.rows.first { rows -> rows.any { it.id != file.id && it.stage.reviewable } }.single { it.id != file.id } }
+            assertEquals("Live take failed: ${live.message}", QueueStage.READY, live.stage)
+            assertNotEquals(file.audio, live.audio)
+            val liveBody = queue.target(live.id).readText()
+            assertTrue(liveBody.contains("rabbit", true))
+            withTimeout(30_000) { queue.foreground.first { it == null } }
+            // Reload only the persisted descriptors, independently of the process's hot StateFlow.
+            fun durable() = QueueJournal(File(app.noBackupFilesDir, "transcription-queue")).records()
+            assertEquals(paused, durable().single { it.id == file.id })
+            assertEquals(partial, queue.target(file.id).readText())
+            Log.i(TAG, "Live ${live.id} completed (${liveBody.length} chars); lone file ${file.id} stayed durably PAUSED at ${paused.resumeSamples}, ${partial.length} chars")
+
+            ui.click("home_nav_transcripts")
+            ui.click("queue_job_${file.id}")
+            awaitDetail(file)
+            ui.click("queue_restart")
+            val retry = withTimeout(20_000) { queue.rows.first { it.size >= 3 }.single { it.id != file.id && it.id != live.id } }
+            assertEquals(file.audio, retry.audio)
+            assertNotEquals(file.textId, retry.textId)
+            assertEquals(0L, retry.resumeSamples)
+            assertFalse(retry.checkpointed)
+            assertEquals(QueueStage.STOPPED, queue.journal.find(file.id)?.stage)
+            assertEquals(partial, queue.target(file.id).readText())
+            awaitDetail(retry)
+            awaitStage(retry, QueueStage.PROCESSING)
+            val producer = withTimeout(15_000) { queue.active.first { it?.first == retry.id } }!!.second
+            val start = withTimeout(15_000) { producer.state.first { it.fileProgress != null } }.fileProgress!!
+            assertTrue("Restart must begin before the old checkpoint", start.processedSamples < paused.resumeSamples)
+            val beforeStop = awaitWords(retry)
+            ui.click("queue_stop")
+            awaitStage(retry, QueueStage.STOPPED)
+            withTimeout(30_000) { queue.foreground.first { it == null } }
+            val stopped = queue.target(retry.id).readText()
+            assertTrue(stopped.startsWith(beforeStop))
+            assertEquals(TranscriptCompletion.INCOMPLETE, TranscriptSource.read(queue.target(retry.id)).completion)
+            ui.node("queue_restart").recycle()
+            assertEquals(stopped.trim(), readerWords().trim())
+            ui.screenshot("queue-controls-restarted-stopped")
+            // Treat navigation as navigation rather than acknowledging either attempt. Both partial readers must remain independently addressable after the producer exits.
+            app.startActivity(HomeActivity.intent(app, HomeDestination.TRANSCRIPTS))
+            ui.node("queue_job_${retry.id}").recycle()
+            ui.click("queue_job_${file.id}")
+            awaitDetail(file)
+            assertEquals(partial.trim(), readerWords().trim())
+            assertEquals(TranscriptCompletion.INCOMPLETE, TranscriptSource.read(queue.target(file.id)).completion)
+            val saved = durable().associate { it.id to it.stage }
+            assertEquals(mapOf(file.id to QueueStage.STOPPED, retry.id to QueueStage.STOPPED, live.id to QueueStage.READY), saved)
+            assertEquals(liveBody, queue.target(live.id).readText())
+            assertEquals(original, digest(long))
+            Log.i(TAG, "Restart ${file.id} -> ${retry.id}, same audio ${file.audio}; fresh processed=${start.processedSamples}, stopped partial=${stopped.length} chars. Two independently readable STOPPED attempts and one READY live result; original SHA-256 unchanged")
+        } finally {
+            capture.stop()
+            instrumentation.removeMonitor(picker)
+            instrumentation.runOnMainSync {
+                ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+                    .filterIsInstance<TranscribeActivity>().forEach { it.finish() }
+                home?.finish()
+            }
+            app.microphoneSessions = oldFactory
+            settings.setDiarizationEnabled(oldSpeaker)
+            guide.update { oldGuide }
+            short.delete(); long.delete()
+        }
+    }
+
+    private fun readerWords(): String {
+        val dialog = ui.node("transcription_dialog")
+        return try { ui.recognizedText("transcript_chunk_0", dialog.windowId) } finally { dialog.recycle() }
+    }
+
+    private suspend fun awaitWords(row: QueueRecord): String = withTimeout(150_000) {
+        val target = queue.target(row.id)
+        var text = ""
+        while (!text.contains("rabbit", true)) {
+            if (target.isFile) text = target.readText()
+            if (!text.contains("rabbit", true)) delay(125)
+        }
+        text
     }
 
     private suspend fun awaitStage(row: QueueRecord, expected: QueueStage): QueueRecord = withTimeout(240_000) {
