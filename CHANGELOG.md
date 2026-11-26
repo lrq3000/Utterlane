@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.3.1] - 2026-11-26
+
+### Changed
+- Pause, continue, stop, or restart an individual file from the transcription progress panel. Manually paused files stay paused until you continue them; restarting leaves the earlier partial transcript intact.
+- The reader remembers your text size and moves backgrounding to a bottom icon. Import and Share can send files straight to the background, independently of speaker labels.
+- Home shows the queue while work is active. Transcript History keeps paused jobs and unreviewed results accessible, and both surfaces open the exact attempt.
+
+### Fixed
+- Cancel and delete one job without removing another job's result or the original audio. Transcript-only imports no longer offer to delete a saved audio recording.
+
 ## [2.3.0] - 2026-11-26
 
 ### Added

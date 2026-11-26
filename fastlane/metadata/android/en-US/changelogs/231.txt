@@ -1,0 +1,4 @@
+Pause, continue, stop, or restart individual transcriptions. A paused job stays paused, and Stop keeps its partial text.
+Monitor active jobs on Home and reopen paused ones from Transcript History.
+Change transcript text size or transcribe in the background straight from Import or Share.
+Cancel a job without affecting other attempts or the original audio.
