@@ -28,11 +28,12 @@ class AudioRecorderArchivalConfigurationTest {
         for (source in MicrophoneSource.entries) {
             val arguments = arrayOf<Matcher<*>>(EqMatcher(source.androidSource), EqMatcher(48000),
                 EqMatcher(AudioFormat.CHANNEL_IN_STEREO), EqMatcher(AudioFormat.ENCODING_PCM_16BIT), EqMatcher(48000))
-            every { constructedWith<AudioRecord>(*arguments).state } returns AudioRecord.STATE_INITIALIZED
+            var actualState = AudioRecord.STATE_INITIALIZED
+            every { constructedWith<AudioRecord>(*arguments).state } answers { actualState }
             every { constructedWith<AudioRecord>(*arguments).sampleRate } returns 48000
             every { constructedWith<AudioRecord>(*arguments).channelCount } returns 2
             every { constructedWith<AudioRecord>(*arguments).recordingState } returns AudioRecord.RECORDSTATE_STOPPED
-            every { constructedWith<AudioRecord>(*arguments).release() } just Runs
+            every { constructedWith<AudioRecord>(*arguments).release() } answers { actualState = AudioRecord.STATE_UNINITIALIZED }
             val recorder = AudioRecorder()
             recorder.configureMicrophone(MicrophoneOptions.HFP.copy(source = source))
             assertEquals(PcmFormat(48000, 2), recorder.configureFormat(PcmFormat(48000, 2), RuntimeOptions(captureBufferSeconds = .25)))

@@ -107,7 +107,11 @@ class RecognitionIsolationTest {
         val next = async(start = CoroutineStart.UNDISPATCHED) { queue.withTurn { "replacement" } }
         assertFalse(next.isCompleted)
         requests.fail(IllegalStateException("worker reset"))
-        assertEquals("worker reset", waiting.await().exceptionOrNull()?.cause?.message)
+        // Coroutine debug stack recovery and Future.get may each wrap the worker failure. The observable contract is propagation of the original reset and release of the turn.
+        val failure = requireNotNull(waiting.await().exceptionOrNull())
+        val cause = generateSequence(failure) { it.cause }.last()
+        assertTrue(cause is IllegalStateException)
+        assertEquals("worker reset", cause.message)
         assertEquals("replacement", next.await())
     }
 

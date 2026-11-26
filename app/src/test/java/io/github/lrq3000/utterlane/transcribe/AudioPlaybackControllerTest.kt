@@ -144,10 +144,14 @@ class AudioPlaybackControllerTest {
         assertEquals("owner", controller.state.value.owner)
         assertEquals(1250L, controller.state.value.positionMs)
         assertTrue(controller.state.value.active)
+        assertTrue("A paused owner must keep the playback lease", history.hasLeases(entry.id))
         history.delete(entry.id)
         assertTrue("Paused audio keeps its source lease", entry.directory.exists())
         controller.stop("owner")
-        await { !entry.directory.exists() }
+        await { !history.hasLeases(entry.id) }
+        // History durably tombstones deletions; an unlink refused temporarily by the filesystem is retried at housekeeping. Only an actual Stop may release the lease that permits removal.
+        if (entry.directory.exists()) history.prune(HistoryRetention.FOREVER)
+        assertFalse("Stopped playback must not retain the deleted audio", entry.directory.exists())
     }
 
     @Test fun capturePauseWinsOverPendingSeekCompletion() {
