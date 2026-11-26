@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Rect
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.content.FileProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -31,6 +33,47 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class FileTranscriptionSetupAndroidTest {
+    @Test fun shareStacksOptionsAndKeepsBothAxesReachableInASmallWindow() = runBlocking<Unit> {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val app = instrumentation.targetContext.applicationContext as UtterlaneApp
+        val ui = OnboardingTestUi()
+        val source = File.createTempFile("setup-scroll-", ".wav", app.cacheDir)
+        val uri = FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", source)
+        var screen: Activity? = null
+        try {
+            ui.prepare()
+            val activity = launchNativeActivity(Intent(Intent.ACTION_SEND).setPackage(app.packageName).setType("audio/wav")
+                .putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION))
+            screen = activity
+            val density = activity.resources.displayMetrics.density
+            fun size(width: Int, height: Int) = instrumentation.runOnMainSync { activity.window.setLayout((width * density).toInt(), (height * density).toInt()) }
+            fun bounds(tag: String): Rect = ui.node(tag).let { node ->
+                try { Rect().also(node::getBoundsInScreen) } finally { node.recycle() }
+            }
+            fun scroll(tag: String, action: AccessibilityNodeInfo.AccessibilityAction) {
+                val node = ui.node(tag)
+                try {
+                    assertTrue("$tag must scroll when content overflows", node.isScrollable)
+                    assertTrue("$tag must offer ${action.id}", node.performAction(action.id))
+                } finally { node.recycle() }
+            }
+            size(392, 560)
+            ui.scrollTo("file_setup_background")
+            val speakers = bounds("file_setup_speakers")
+            val background = bounds("file_setup_background")
+            assertTrue("The background option should be below the speaker option", background.top >= speakers.bottom)
+            size(205, 200)
+            scroll("file_setup_scroll_x", AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT)
+            scroll("file_setup_scroll_y", AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN)
+            size(392, 200)
+            ui.scrollTo("file_setup_cancel")
+            ui.click("file_setup_cancel", scroll = false)
+        } finally {
+            instrumentation.runOnMainSync { screen?.finish() }
+            source.delete()
+        }
+    }
+
     @Test fun sharedFileCancelLeavesNoImportAndNextFileStartsWithLabelsOff() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp

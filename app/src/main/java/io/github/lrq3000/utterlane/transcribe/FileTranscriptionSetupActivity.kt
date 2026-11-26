@@ -12,6 +12,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -21,6 +23,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -165,8 +170,7 @@ open class FileTranscriptionSetupActivity : LocalizedActivity() {
                 Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface,
                     modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth()
                         .semantics { testTagsAsResourceId = true }.testTag("file_setup")) {
-                    Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    FileSetupViewport {
                         Text(stringResource(R.string.transcribe_title), style = MaterialTheme.typography.headlineSmall)
                         if ((recovering || previouslyConfirmed) && item == null) Text(stringResource(if (state.loaded) R.string.queue_batch_finished else R.string.queue_preparing_service))
                         else if (uris.isEmpty() && item == null) Text(stringResource(R.string.transcribe_error_no_audio))
@@ -201,23 +205,10 @@ open class FileTranscriptionSetupActivity : LocalizedActivity() {
                                 }
                                 TextButton({ close(true) }) { Text(stringResource(if (item.firstJob != null) R.string.queue_batch_view else R.string.queue_batch_close)) }
                             }
-                            BoxWithConstraints(Modifier.fillMaxWidth()) {
-                                val beside = maxWidth >= 260.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
-                                val speakers: @Composable () -> Unit = {
-                                    FileSetupOption(R.string.home_speakers, R.string.file_setup_speaker_help, "file_setup_speakers",
-                                        item?.speakers ?: labels, !submitted, beside) { labels = it }
-                                }
-                                val background: @Composable () -> Unit = {
-                                    FileSetupOption(R.string.import_background_switch, R.string.import_background_help, "file_setup_background",
-                                        returnInBackground, !submitted, beside) { returnInBackground = it }
-                                }
-                                if (beside) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                        Box(Modifier.weight(1f)) { speakers() }
-                                        Box(Modifier.weight(1f)) { background() }
-                                    }
-                                } else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { speakers(); background() }
-                            }
+                            FileSetupOption(R.string.home_speakers, R.string.file_setup_speaker_help, "file_setup_speakers",
+                                item?.speakers ?: labels, !submitted) { labels = it }
+                            FileSetupOption(R.string.import_background_switch, R.string.import_background_help, "file_setup_background",
+                                returnInBackground, !submitted) { returnInBackground = it }
                             if ((item?.speakers ?: labels) && !available) SpeakerModelNotice()
                         }
                         if (state.problem == ImportScreenState.Problem.STORAGE) Text(stringResource(R.string.queue_batch_storage))
@@ -245,17 +236,47 @@ open class FileTranscriptionSetupActivity : LocalizedActivity() {
     }
 }
 
+/** Wrap to the viewport normally. Keep a minimum readable form width so oversized text and very narrow windows scroll rather than squeezing the switch rows. */
 @Composable
-private fun FileSetupOption(title: Int, help: Int, tag: String, checked: Boolean, enabled: Boolean, beside: Boolean, onChange: (Boolean) -> Unit) {
+private fun FileSetupViewport(content: @Composable ColumnScope.() -> Unit) {
+    val x = rememberScrollState()
+    val y = rememberScrollState()
+    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+    val rtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
+    BoxWithConstraints(Modifier.fillMaxWidth().drawWithContent {
+        drawContent()
+        fun thumb(state: ScrollState, length: Float): Pair<Float, Float>? {
+            if (state.maxValue <= 0 || state.maxValue == Int.MAX_VALUE || length <= 0) return null
+            val visible = (length * length / (length + state.maxValue)).coerceIn(minOf(22.dp.toPx(), length), length)
+            return (length - visible) * (state.value.toFloat() / state.maxValue) to visible
+        }
+        val inset = 5.dp.toPx()
+        val endX = if (rtl) inset else size.width - inset
+        thumb(y, size.height - inset * 2)?.let { (start, span) ->
+            drawLine(color, Offset(endX, inset + start), Offset(endX, inset + start + span), 3.dp.toPx(), StrokeCap.Round)
+        }
+        val length = size.width - inset * 2
+        thumb(x, length)?.let { (start, span) ->
+            val left = inset + if (rtl) length - span - start else start
+            drawLine(color, Offset(left, size.height - inset), Offset(left + span, size.height - inset), 3.dp.toPx(), StrokeCap.Round)
+        }
+    }) {
+        val contentWidth = maxOf(maxWidth, 240.dp * LocalDensity.current.fontScale.coerceIn(1f, 2f))
+        Box(Modifier.testTag("file_setup_scroll_x").horizontalScroll(x)) {
+            Column(Modifier.width(contentWidth).testTag("file_setup_scroll_y").verticalScroll(y).padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+        }
+    }
+}
+
+@Composable
+private fun FileSetupOption(title: Int, help: Int, tag: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
     val label = stringResource(title)
     val control: @Composable () -> Unit = {
         Switch(checked, onChange, enabled = enabled, modifier = Modifier.testTag(tag).semantics { contentDescription = label })
     }
     Column {
-        if (beside) {
-            control()
-            Text(label, style = MaterialTheme.typography.titleMedium)
-        } else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(label, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
             control()
         }
