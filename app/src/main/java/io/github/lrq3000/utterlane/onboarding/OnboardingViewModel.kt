@@ -228,7 +228,7 @@ class OnboardingViewModel(
     fun stopForBackground() = trial.stopForBackground()
     override fun onCleared() {
         trial.cancel()
-        transferTarget?.let { services.cancelTransfer(it) }
+        // The scope cancels the request when the wizard is destroyed; only explicit Back discards the download checkpoint.
         super.onCleared()
     }
 
