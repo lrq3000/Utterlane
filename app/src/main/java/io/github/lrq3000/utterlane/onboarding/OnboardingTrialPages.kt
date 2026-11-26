@@ -12,6 +12,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -31,7 +34,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.github.lrq3000.utterlane.R
-import io.github.lrq3000.utterlane.ui.RecordingUIBuilder
+import androidx.activity.compose.BackHandler
+import io.github.lrq3000.utterlane.ui.RecordingPanel
 import io.github.lrq3000.utterlane.ui.theme.LocalBrandPalette
 
 @Composable
@@ -82,14 +86,17 @@ internal fun VoiceTrialRecordingPanel(session: VoiceTrialPanel, preview: String,
         val dispatch by rememberUpdatedState(action)
         val focus = LocalFocusManager.current
         val keyboard = LocalSoftwareKeyboardController.current
+        var nativePanel by remember { mutableStateOf<RecordingPanel?>(null) }
+        BackHandler { if (nativePanel?.dismissSettingsPrompt() != true) dispatch(OnboardingAction.Back) }
         LaunchedEffect(Unit) { focus.clearFocus(force = true); keyboard?.hide() }
         // The cap applies to the scroll viewport, not the native controls: short screens and large fonts can still reach Cancel.
         AndroidView(
             factory = { context ->
-                RecordingUIBuilder.createRecordingBar(context,
-                    onDoneClick = { dispatch(OnboardingAction.StopRecording) },
-                    onCancelClick = { dispatch(OnboardingAction.CancelRecording) }
-                ).panel.also { it.bind(scope, session.metrics, session.speakers) }
+                RecordingPanel(context,
+                    onStop = { dispatch(OnboardingAction.StopRecording) },
+                    onCancel = { dispatch(OnboardingAction.CancelRecording) },
+                    onSettings = { dispatch(OnboardingAction.DictationSettings(it)) }
+                ).also { nativePanel = it; it.bind(scope, session.metrics, session.speakers) }
             },
             modifier = Modifier.fillMaxWidth().heightIn(max = maxHeight).verticalScroll(rememberScrollState()),
             onRelease = { it.release() },

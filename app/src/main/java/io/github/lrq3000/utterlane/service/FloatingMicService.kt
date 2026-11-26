@@ -62,8 +62,7 @@ class FloatingMicService : Service() {
     private lateinit var micButton: ImageView
     private lateinit var layoutParams: WindowManager.LayoutParams
 
-    private var microphoneSession: MicrophoneSession? = null
-    private var recordingOverlay: io.github.lrq3000.utterlane.ui.RecordingOverlay? = null
+    private var microphoneSession: StreamingDictationOverlay? = null
 
     private val isRecording = AtomicBoolean(false)
     private var themeMode = SettingsRepository.THEME_SYSTEM
@@ -158,7 +157,6 @@ class FloatingMicService : Service() {
         }
         microphoneSession?.cancel(discard = false)
         microphoneSession = null
-        hideCapturePanel()
         getSystemService(DisplayManager::class.java).unregisterDisplayListener(displayListener)
         if (floatingAttached) {
             floatingAttached = false
@@ -332,31 +330,18 @@ class FloatingMicService : Service() {
             Log.i(TAG, "Capture session will initialize the selected model")
         }
 
-        isRecording.set(true)
-        updateMicButtonState()
-
         val target = TextInjectionService.instance?.captureStreamingTarget() ?: StreamingTextTarget(this) { false }
-        recordingOverlay = io.github.lrq3000.utterlane.ui.RecordingOverlay(this).apply {
-            onDoneClick = { if (isRecording.get()) stopRecording() }
-            onCancelClick = {
-                target.close()
-                microphoneSession?.cancel(); microphoneSession = null; isRecording.set(false)
-                updateMicButtonState(); hideCapturePanel()
-            }
-            show()
+        try {
+            microphoneSession = StreamingDictationOverlay(this, serviceScope, target,
+                recordingChanged = { isRecording.set(it); updateMicButtonState() },
+                warning = ::showToast, released = { microphoneSession = null })
+            microphoneSession?.start()
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not start dictation", error)
+            microphoneSession?.cancel(discard = false)
+            microphoneSession = null
+            showToast(getString(R.string.toast_recording_error))
         }
-        microphoneSession = UtterlaneApp.instance.microphoneSessions.create(this, serviceScope,
-            onText = { delta, store -> target.accept(store); recordingOverlay?.setStatus(delta) },
-            onComplete = { store, error ->
-                val openSettings = microphoneSession?.speakerControl?.speakerSettingsAction(this)
-                isRecording.set(false); microphoneSession = null; updateMicButtonState()
-                hideCapturePanel()
-                target.finish(store, preserve = error != null, afterDelivery = openSettings)
-                error?.let { showToast(it.message); store?.let { result -> TranscriptRecovery.show(this, result) } }
-            }, onCaptureEnded = { isRecording.set(false); updateMicButtonState() }, onWarning = { showToast(it) },
-            onSessionClosed = { target.sessionClosed() })
-        Log.i(TAG, "Starting incremental audio recording")
-        microphoneSession?.let { recordingOverlay?.bind(serviceScope, it); it.start() }
     }
 
     private fun stopRecording() {
@@ -420,5 +405,4 @@ class FloatingMicService : Service() {
     private fun showToast(message: String) {
         android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
     }
-    private fun hideCapturePanel() { recordingOverlay?.hide(); recordingOverlay = null }
 }

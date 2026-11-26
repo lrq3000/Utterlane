@@ -8,16 +8,13 @@ import android.view.inputmethod.EditorInfo
 import android.widget.TextView
 import android.widget.Toast
 import io.github.lrq3000.utterlane.R
-import io.github.lrq3000.utterlane.UtterlaneApp
-import io.github.lrq3000.utterlane.asr.MicrophoneSession
 import io.github.lrq3000.utterlane.asr.CapturePhase
 import io.github.lrq3000.utterlane.asr.DeviceWakeObserver
 import android.view.inputmethod.InputConnection
 import io.github.lrq3000.utterlane.service.StreamingTextTarget
-import io.github.lrq3000.utterlane.service.KeyboardQueueHandoff
-import io.github.lrq3000.utterlane.service.finishForegroundDictation
-import io.github.lrq3000.utterlane.service.notifyDictationQueueFailure
-import io.github.lrq3000.utterlane.ui.RecordingUIBuilder
+import io.github.lrq3000.utterlane.service.DictationSession
+import io.github.lrq3000.utterlane.service.finishDictation
+import io.github.lrq3000.utterlane.ui.RecordingPanel
 import io.github.lrq3000.utterlane.settings.speakerSettingsAction
 import io.github.lrq3000.utterlane.settings.openSettingsFromDictation
 import kotlinx.coroutines.*
@@ -27,7 +24,7 @@ class VoiceInputMethodService : InputMethodService() {
     override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(io.github.lrq3000.utterlane.settings.AppLanguage.wrap(base))
     companion object { private const val TAG = "VoiceInputMethodService" }
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var microphoneSession: MicrophoneSession? = null
+    private var microphoneSession: DictationSession? = null
     private var isRecording = false
     private var editorActive = false
     private var targetEditor: Pair<String?, Int>? = null
@@ -35,8 +32,7 @@ class VoiceInputMethodService : InputMethodService() {
     private var textTarget: StreamingTextTarget? = null
     private var hiddenJob: Job? = null
     private var statusText: TextView? = null
-    private var recordingPanel: io.github.lrq3000.utterlane.ui.RecordingPanel? = null
-    private var queueHandoff: KeyboardQueueHandoff? = null
+    private var recordingPanel: RecordingPanel? = null
 
     override fun onCreate() { super.onCreate(); Log.i(TAG, "VoiceInputMethodService created") }
     override fun onDestroy() {
@@ -46,7 +42,8 @@ class VoiceInputMethodService : InputMethodService() {
         // the application scope and recover it if this editor no longer exists.
         editorActive = false
         hiddenJob?.cancel()
-        if (queueHandoff?.ownsNavigation != true) microphoneSession?.stop()
+        microphoneSession?.stop()
+        microphoneSession = null
         textTarget?.close()
         recordingPanel?.release()
         serviceScope.cancel()
@@ -54,14 +51,15 @@ class VoiceInputMethodService : InputMethodService() {
     override fun onCreateInputView(): View {
         Log.i(TAG, "onCreateInputView")
         // Same recording bar as VoiceInputActivity.
-        val ui = RecordingUIBuilder.createRecordingBar(this,
-            onDoneClick = { if (isRecording) stopRecordingAndTranscribe() else if (microphoneSession == null) switchBackToPreviousKeyboard() },
-            onCancelClick = { if (queueHandoff?.ownsNavigation != true) { cleanup(); switchBackToPreviousKeyboard() } },
-            onSettingsClick = ::confirmSettings)
-        statusText = ui.statusText
-        recordingPanel = ui.panel
-        microphoneSession?.let { ui.panel.bind(serviceScope, it.metrics.state, it.speakerControl) }
-        return ui.view
+        val panel = RecordingPanel(this,
+            onStop = { if (isRecording) stopRecordingAndTranscribe() else if (microphoneSession == null) switchBackToPreviousKeyboard() },
+            onCancel = { if (microphoneSession?.ownsNavigation != true) { cleanup(); switchBackToPreviousKeyboard() } },
+            onSettings = ::confirmSettings)
+        statusText = panel.statusText
+        recordingPanel?.release()
+        recordingPanel = panel
+        microphoneSession?.let { panel.bind(serviceScope, it.metrics.state, it.speakers) }
+        return panel
     }
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean =
         if (keyCode == KeyEvent.KEYCODE_BACK && recordingPanel?.dismissSettingsPrompt() == true) true else super.onKeyDown(keyCode, event)
@@ -69,7 +67,7 @@ class VoiceInputMethodService : InputMethodService() {
         super.onStartInputView(info, restarting)
         Log.i(TAG, "onStartInputView, restarting=$restarting, editor=${info?.packageName}/${info?.fieldId}, sameConnection=${currentInputConnection === targetConnection}")
         hiddenJob?.cancel()
-        if (queueHandoff?.awaitingPublication == true || queueHandoff?.ownsNavigation == true && microphoneSession != null) return
+        if (microphoneSession?.ownsNavigation == true) return
         if (microphoneSession != null) {
             val sameEditor = targetEditor == Pair(info?.packageName, info?.fieldId ?: 0)
             // Resource IDs are reused by different activities/conversations. A
@@ -113,9 +111,6 @@ class VoiceInputMethodService : InputMethodService() {
     }
     private fun startRecording() {
         Log.i(TAG, "Starting incremental recording")
-        val handoff = try { KeyboardQueueHandoff.create(this) }
-        catch (error: Exception) { notifyDictationQueueFailure(this, error); switchBackToPreviousKeyboard(); return }
-        queueHandoff = handoff
         isRecording = true; editorActive = true
         statusText?.text = getString(R.string.model_loading)
         targetConnection = currentInputConnection
@@ -124,53 +119,49 @@ class VoiceInputMethodService : InputMethodService() {
         lateinit var target: StreamingTextTarget
         target = StreamingTextTarget(this, available = { editorActive && textTarget === target }) { text -> connection?.commitText(text, 1) == true }
         textTarget = target
-        microphoneSession = UtterlaneApp.instance.microphoneSessions.create(this, handoff.producerScope,
-            onText = { delta, store -> target.accept(store); statusText?.text = delta.takeLast(100) },
-            onComplete = { store, error ->
-                val session = microphoneSession
-                val openSettings = session?.speakerControl?.speakerSettingsAction(this)
-                isRecording = false; microphoneSession = null
-                handoff.complete(store, error?.message, session?.speakerControl?.retryPreference?.value) {
-                    val audio = session?.audioId
-                    target.finish(store, preserve = error != null, afterDelivery = openSettings,
-                        onResultDelivered = { if (error == null) finishForegroundDictation(this, audio, null) })
-                    if (error != null || store == null) finishForegroundDictation(this, audio, error)
+        lateinit var current: DictationSession
+        current = try { DictationSession(this,
+            onText = { delta, store ->
+                target.accept(store)
+                if (microphoneSession === current) statusText?.text = delta.takeLast(100)
+            },
+            onComplete = { capture, store, error ->
+                val openSettings = capture.speakerControl.speakerSettingsAction(this)
+                target.finishDictation(this, capture, store, error, openSettings,
+                    showAudioRecovery = microphoneSession === current)
+                if (microphoneSession === current) {
+                    isRecording = false
                     error?.let { Toast.makeText(this, it.message, Toast.LENGTH_LONG).show() }
                     if (editorActive) switchBackToPreviousKeyboard()
                 }
             }, onCaptureEnded = { isRecording = false; statusText?.text = getString(R.string.state_processing) },
             onWarning = { Toast.makeText(this, it, Toast.LENGTH_LONG).show() },
             onReady = { statusText?.text = getString(R.string.state_listening) },
-            onSessionClosed = {
-                if (!handoff.ownsNavigation) target.sessionClosed()
-                handoff.interrupted(getString(R.string.stream_cancelled))
-                if (queueHandoff === handoff) microphoneSession = null
-            }, keepResultAudio = true, openRecoveryOnFailure = false)
-        microphoneSession?.let { recordingPanel?.bind(serviceScope, it.metrics.state, it.speakerControl); it.start() }
+            onClosed = { backgrounded ->
+                if (!backgrounded) target.sessionClosed()
+                if (microphoneSession === current) microphoneSession = null
+            })
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not create voice input", error)
+            cleanup()
+            Toast.makeText(this, R.string.toast_recording_error, Toast.LENGTH_LONG).show()
+            switchBackToPreviousKeyboard()
+            return
+        }
+        microphoneSession = current
+        recordingPanel?.bind(serviceScope, current.metrics.state, current.speakers)
+        current.start()
     }
     private fun confirmSettings(phase: CapturePhase) {
         val session = microphoneSession ?: return
-        val handoff = queueHandoff ?: return
-        if (session.metrics.state.value.phase != phase || handoff.ownsNavigation) return
-        when (phase) {
-            CapturePhase.CAPTURING -> {
-                if (session.discardWhileCapturing()) {
-                    microphoneSession = null
-                    cleanup()
-                    openSettingsFromKeyboard()
-                }
+        val originatingTarget = textTarget
+        session.confirmSettings(phase) {
+            originatingTarget?.close()
+            if (microphoneSession === session) {
+                microphoneSession = null
+                cleanup()
+                openSettingsFromKeyboard()
             }
-            CapturePhase.PROCESSING -> session.audioId?.takeIf { session.captureReleased }?.let { audio ->
-                val originatingTarget = textTarget
-                handoff.submit(audio, session.speakerControl.retryPreference.value == true, {
-                    originatingTarget?.close()
-                    if (queueHandoff === handoff) {
-                        editorActive = false
-                        openSettingsFromKeyboard()
-                    }
-                }) { notifyDictationQueueFailure(this, it) }
-            }
-            else -> Unit
         }
     }
 

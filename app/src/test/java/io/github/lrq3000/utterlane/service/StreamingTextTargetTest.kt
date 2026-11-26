@@ -39,6 +39,18 @@ class StreamingTextTargetTest {
         assertTrue(app.recordingHistory.list().single().needsRecovery)
     }
 
+    @Test fun detachedTargetKeepsPrivateRecoveryWithoutWritingTheClipboard() {
+        val audio = deliverWithoutEditor("Private recovered text", detached = true)
+        assertFalse(app.getSystemService(ClipboardManager::class.java).hasPrimaryClip())
+        assertTrue(audio.isDirectory)
+    }
+
+    @Test fun overlayCanRetireSuccessfulAudioOncePrivateTextRecoveryIsPublished() {
+        val audio = deliverWithoutEditor("x".repeat(TranscriptStore.TRANSFER_LIMIT + 1), retireAfterRecovery = true)
+        assertFalse(app.getSystemService(ClipboardManager::class.java).hasPrimaryClip())
+        await("Successful overlay audio survived private transcript recovery") { !audio.exists() }
+    }
+
     @Test fun emptyPreservedTranscriptDoesNotReportResultDelivery() {
         val store = TranscriptStore(File.createTempFile("empty-dictation-", ".txt", app.cacheDir))
         var completed = false
@@ -52,7 +64,7 @@ class StreamingTextTargetTest {
     }
 
     @Suppress("DEPRECATION")
-    private fun deliverWithoutEditor(text: String): File {
+    private fun deliverWithoutEditor(text: String, detached: Boolean = false, retireAfterRecovery: Boolean = false): File {
         shadowOf(app.getSystemService(PowerManager::class.java)).setIsInteractive(true)
         val recording = app.recordingHistory.begin(HistoryRetention.NONE, keepUntilDismissed = true)
         recording.append(shortArrayOf(1, -1))
@@ -63,9 +75,11 @@ class StreamingTextTargetTest {
             append(text)
         }
         var completed = false
-        StreamingTextTarget(app, available = { false }) { fail("An unavailable editor must not receive text"); false }
-            .finish(store, afterDelivery = { completed = true },
-                onResultDelivered = { finishForegroundDictation(app, recording.entry.id, null) })
+        val target = StreamingTextTarget(app, available = { false }) { fail("An unavailable editor must not receive text"); false }
+        if (detached) target.close()
+        val retireAudio = { finishForegroundDictation(app, recording.entry.id, null) }
+        target.finish(store, afterDelivery = { completed = true },
+            onResultDelivered = retireAudio, onResultPreserved = retireAudio.takeIf { retireAfterRecovery })
         await("Transcript finalization did not finish") { completed }
         val recovery = app.getSharedPreferences("transcript_recovery", 0)
         await("Text recovery was not published") { recovery.getString("path", null) != null }

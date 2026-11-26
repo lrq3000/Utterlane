@@ -1,7 +1,5 @@
 package io.github.lrq3000.utterlane.service
 
-import io.github.lrq3000.utterlane.settings.speakerSettingsAction
-
 import android.accessibilityservice.AccessibilityButtonController
 import android.accessibilityservice.AccessibilityService
 import android.os.Build
@@ -29,8 +27,7 @@ class TextInjectionService : AccessibilityService() {
     override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(io.github.lrq3000.utterlane.settings.AppLanguage.wrap(base))
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var microphoneSession: MicrophoneSession? = null
-    private var recordingOverlay: io.github.lrq3000.utterlane.ui.RecordingOverlay? = null
+    private var microphoneSession: StreamingDictationOverlay? = null
     private val isRecording = AtomicBoolean(false)
 
     private var accessibilityButtonCallback: AccessibilityButtonController.AccessibilityButtonCallback? = null
@@ -111,31 +108,18 @@ class TextInjectionService : AccessibilityService() {
             Log.i(TAG, "Capture session will initialize the selected model")
         }
 
-        isRecording.set(true)
         showToast(getString(R.string.state_recording))
-
         val target = captureStreamingTarget()
-        recordingOverlay = io.github.lrq3000.utterlane.ui.RecordingOverlay(this).apply {
-            onDoneClick = { if (isRecording.get()) stopRecording() }
-            onCancelClick = {
-                target.close()
-                microphoneSession?.cancel(); microphoneSession = null; isRecording.set(false)
-                hideCapturePanel()
-            }
-            show()
+        try {
+            microphoneSession = StreamingDictationOverlay(this, serviceScope, target,
+                recordingChanged = isRecording::set, warning = ::showToast, released = { microphoneSession = null })
+            microphoneSession?.start()
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not start dictation", error)
+            microphoneSession?.cancel(discard = false)
+            microphoneSession = null
+            showToast(getString(R.string.toast_recording_error))
         }
-        microphoneSession = UtterlaneApp.instance.microphoneSessions.create(this, serviceScope,
-            onText = { delta, store -> target.accept(store); recordingOverlay?.setStatus(delta) },
-            onComplete = { store, error ->
-                val openSettings = microphoneSession?.speakerControl?.speakerSettingsAction(this)
-                isRecording.set(false); microphoneSession = null
-                hideCapturePanel()
-                target.finish(store, preserve = error != null, afterDelivery = openSettings)
-                error?.let { showToast(it.message); store?.let { result -> TranscriptRecovery.show(this, result) } }
-            }, onCaptureEnded = { isRecording.set(false) }, onWarning = { showToast(it) },
-            onSessionClosed = { target.sessionClosed() })
-        Log.i(TAG, "Starting incremental audio recording")
-        microphoneSession?.let { recordingOverlay?.bind(serviceScope, it); it.start() }
     }
 
     private fun stopRecording() {
@@ -182,7 +166,6 @@ class TextInjectionService : AccessibilityService() {
         }
         microphoneSession?.cancel(discard = false)
         microphoneSession = null
-        hideCapturePanel()
         serviceScope.cancel()
         instance = null
     }
@@ -319,5 +302,4 @@ class TextInjectionService : AccessibilityService() {
     fun showToast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
-    private fun hideCapturePanel() { recordingOverlay?.hide(); recordingOverlay = null }
 }

@@ -24,9 +24,11 @@ data class VoiceTrialState(
 
 interface OnboardingTrialSession {
     val panel: VoiceTrialPanel
+    val ownsNavigation: Boolean get() = false
     fun start()
     fun stop()
     fun cancel(discard: Boolean)
+    fun confirmSettings(phase: CapturePhase, accepted: () -> Unit): Boolean
 }
 
 /** Bounded, lifecycle-aware trial; its capture implementation is supplied by the app. */
@@ -49,6 +51,7 @@ class OnboardingVoiceTrial(
     private var releasingGeneration: Long? = null
     private var session: OnboardingTrialSession? = null
     private var timeout: Job? = null
+    val ownsNavigation get() = session?.ownsNavigation == true
 
     private fun bounded(text: String) = text.takeLast(MAX_TEXT).let {
         if (it.firstOrNull()?.isLowSurrogate() == true) it.drop(1) else it
@@ -135,7 +138,22 @@ class OnboardingVoiceTrial(
         } else stop()
     }
 
+    fun confirmSettings(phase: CapturePhase, openSettings: () -> Unit) {
+        val current = session ?: return
+        val token = generation
+        current.confirmSettings(phase) accepted@{
+            if (session !== current || generation != token) return@accepted
+            // The shared session already owns discard or queueing. Detach just this practice field and let capture close normally.
+            val previous = generation++
+            // Processing handoffs already released the microphone; only a live discard needs a release fence.
+            releasingGeneration = previous.takeIf { phase == CapturePhase.CAPTURING }
+            close()
+            openSettings()
+        }
+    }
+
     fun cancel(discard: Boolean = true) {
+        if (ownsNavigation) return
         // Invalidate callbacks before asking capture to stop: teardown can invoke
         // callbacks synchronously, or deliver them after a subsequent trial starts. Only onClosed releases admission.
         val previousGeneration = generation++

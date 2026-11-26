@@ -14,7 +14,7 @@ import java.io.File
 import java.util.UUID
 
 /** Main-confined ownership choice. The producer and its transcript path never change across handoff. */
-internal class KeyboardQueueHandoff(
+internal class DictationQueueHandoff(
     private val scope: CoroutineScope,
     private val file: File?,
     private val register: suspend (String, Boolean) -> Unit,
@@ -25,7 +25,6 @@ internal class KeyboardQueueHandoff(
     private var publication: CompletableDeferred<Boolean>? = null
     private var completed = false
     val ownsNavigation: Boolean get() = publication != null
-    val awaitingPublication: Boolean get() = publication?.isCompleted == false
 
     fun submit(audio: String, speakers: Boolean, accepted: () -> Unit, failed: (Exception) -> Unit): Boolean {
         if (publication != null || completed) return false
@@ -65,24 +64,23 @@ internal class KeyboardQueueHandoff(
             catch (failure: Exception) {
                 if (failure is CancellationException) throw failure
                 // The durable DRAINING row and transcript can still be repaired on cold start.
-                Log.e("KeyboardQueueHandoff", "Could not finalize queued dictation ${file?.name}", failure)
+                Log.e("DictationQueueHandoff", "Could not finalize queued dictation ${file?.name}", failure)
             } finally { store?.keepForRecovery() }
         }
     }
 
-    fun interrupted(error: String) {
-        if (!completed && ownsNavigation) complete(null, error, null) {}
-    }
+    fun interrupted(error: String): Job? =
+        if (!completed && ownsNavigation) complete(null, error, null) {} else null
 
     companion object {
-        fun create(context: Context): KeyboardQueueHandoff {
+        fun create(context: Context): DictationQueueHandoff {
             val app = UtterlaneApp.instance
             val textId = UUID.randomUUID().toString()
             val queue = app.transcriptionQueue
             val title = context.getString(R.string.dialog_title)
             // An unavailable queue directory must not prevent an ordinary take.
             val file = runCatching { queue.target(textId) }
-            return KeyboardQueueHandoff(app.applicationScope, file.getOrNull(),
+            return DictationQueueHandoff(app.applicationScope, file.getOrNull(),
                 register = { audio, speakers ->
                     file.getOrThrow()
                     queue.captureEnded(textId, audio, title, speakers)
@@ -95,21 +93,21 @@ internal class KeyboardQueueHandoff(
 }
 
 /** Only the continued-in-background route keeps a successful temporary source for review. */
-internal fun finishForegroundDictation(context: Context, audio: String?, failure: SessionFailure?) {
+internal fun finishForegroundDictation(context: Context, audio: String?, failure: SessionFailure?, openRecovery: Boolean = true) {
     val app = UtterlaneApp.instance
     if (failure == null || failure.kind == SessionFailure.Kind.NO_SPEECH) {
         if (audio != null) app.applicationScope.launch(Dispatchers.IO) {
             try { app.recordingHistory.dismiss(audio) }
-            catch (error: Exception) { Log.w("KeyboardQueueHandoff", "Temporary audio cleanup failed", error) }
+            catch (error: Exception) { Log.w("DictationQueueHandoff", "Temporary audio cleanup failed", error) }
         }
     }
     failure?.recoveryId?.let {
         RecordingRecovery.show(context, it)
-        RecordingRecovery.open(context, it)
+        if (openRecovery) RecordingRecovery.open(context, it)
     }
 }
 
 internal fun notifyDictationQueueFailure(context: Context, error: Exception) {
-    Log.w("KeyboardQueueHandoff", "Could not queue dictation", error)
+    Log.w("DictationQueueHandoff", "Could not queue dictation", error)
     Toast.makeText(context, R.string.dictation_settings_queue_failed, Toast.LENGTH_LONG).show()
 }

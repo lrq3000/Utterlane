@@ -18,7 +18,9 @@ import io.github.lrq3000.utterlane.asr.DiarizationModel
 import io.github.lrq3000.utterlane.asr.ModelCatalog
 import io.github.lrq3000.utterlane.asr.ModelDefinition
 import io.github.lrq3000.utterlane.asr.ModelManager
-import io.github.lrq3000.utterlane.asr.MicrophoneSession
+import io.github.lrq3000.utterlane.asr.CapturePhase
+import io.github.lrq3000.utterlane.service.DictationSession
+import io.github.lrq3000.utterlane.service.finishForegroundDictation
 import io.github.lrq3000.utterlane.settings.speakerSettingsAction
 import io.github.lrq3000.utterlane.service.FloatingMicService
 import io.github.lrq3000.utterlane.service.TextInjectionService
@@ -220,22 +222,25 @@ class AppOnboardingServices(private val app: UtterlaneApp) : OnboardingServices 
     }
 
     override fun voiceSession(scope: CoroutineScope, callbacks: OnboardingVoiceTrial.Callbacks): OnboardingTrialSession {
-        lateinit var session: MicrophoneSession
-        session = app.microphoneSessions.create(app, scope,
+        val session = DictationSession(app,
             onText = { _, store -> callbacks.onText(store.preview()) },
-            onComplete = { store, failure ->
+            onComplete = { capture, store, failure ->
                 store?.let { callbacks.onText(it.preview()) }
                 callbacks.onComplete(failure?.message)
                 store?.let { app.applicationScope.launch(Dispatchers.IO) { it.dispose() } }
-                session.speakerControl.speakerSettingsAction(app)?.invoke()
+                finishForegroundDictation(app, capture.audioId, failure)
+                capture.speakerControl.speakerSettingsAction(app)?.invoke()
             },
             onCaptureEnded = callbacks.onCaptureEnded, onWarning = callbacks.onWarning,
-            onReady = callbacks.onReady, onSessionClosed = callbacks.onClosed)
+            onReady = callbacks.onReady, onClosed = { callbacks.onClosed() })
         return object : OnboardingTrialSession {
-            override val panel = VoiceTrialPanel(session.metrics.state, session.speakerControl)
+            override val panel = VoiceTrialPanel(session.metrics.state, session.speakers)
+            override val ownsNavigation get() = session.ownsNavigation
             override fun start() = session.start()
             override fun stop() = session.stop()
             override fun cancel(discard: Boolean) = session.cancel(discard)
+            override fun confirmSettings(phase: CapturePhase, accepted: () -> Unit) =
+                session.confirmSettings(phase, accepted)
         }
     }
 }

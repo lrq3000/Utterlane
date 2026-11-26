@@ -35,6 +35,7 @@ enum class SetupPermission { MICROPHONE, AUDIO_FILES, NOTIFICATIONS }
 enum class AndroidSetup { APP, KEYBOARD, OVERLAY, ACCESSIBILITY }
 
 sealed interface OnboardingAction {
+    data class DictationSettings(val phase: io.github.lrq3000.utterlane.asr.CapturePhase) : OnboardingAction
     data object RetryInitialization : OnboardingAction
     data object Next : OnboardingAction
     data object Back : OnboardingAction
