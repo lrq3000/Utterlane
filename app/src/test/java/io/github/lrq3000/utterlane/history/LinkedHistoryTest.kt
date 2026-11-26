@@ -92,7 +92,9 @@ class LinkedHistoryTest {
         val store = TranscriptStore(target(id)).also { it.append("queue partial") }
         val deterministic = texts.save(store.file, "model", audio.id)
         val manual = texts.saveWorking(store, "model", audio.id, null, TranscriptMetadata())
-        val aliasView = folder.newFile().apply { writeText("queue partial"); TranscriptSource(audio.id, manual.id).write(this) }
+        val views = folder.newFolder()
+        val aliasView = File(views, "queued-view.txt").apply { writeText("queue partial"); TranscriptSource(audio.id, manual.id).write(this) }
+        val ordinaryView = File(views, "ordinary-view.txt").apply { writeText("delete this version"); TranscriptSource(audio.id, ordinary.id).write(this) }
         try {
             fun plan() = history.plan(audio.id, ordinary.id, false, linkedWorkingIds = setOf(manual.id, deterministic.id))
             val opened = plan()
@@ -107,9 +109,9 @@ class LinkedHistoryTest {
             }!!
             assertEquals(setOf(ordinary.id), renewed.transcriptIds)
             assertNull(history.confirmDeletion(renewed, HistoryDeletionTarget.TRANSCRIPTS, ::plan) { ids ->
-                if (manual.id in ids) TranscriptStore.deleteArtifacts(aliasView)
+                history.discardWorking(ids, listOf(store.file, ordinaryView), TranscriptSource.copies(views) + TranscriptSource.copies(results))
             })
-            assertNull(texts.find(ordinary.id))
+            assertNull(texts.find(ordinary.id)); assertFalse(ordinaryView.exists())
             assertTrue(aliasView.isFile); assertFalse(TranscriptSource.read(store.file).discarded)
             assertNotNull(texts.find(deterministic.id)); assertNotNull(texts.find(manual.id))
             assertTrue(audio.part(0).exists())

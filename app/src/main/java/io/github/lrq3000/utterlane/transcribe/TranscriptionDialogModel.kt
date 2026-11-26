@@ -714,11 +714,9 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     }
 
     private fun deleteWorkingCopies(ids: Set<String>) {
-        val selected = workingFiles().filter { it.isFile && workingId(it) in ids && !linkedHistory.isQueueTarget(it) }
         // A saved transcript can also have recovery copies from an earlier dialog.
         // Mark all confirmed identities before deleting the authoritative history.
-        val copies = cachedWorkingCopies().filter { it.id in ids && !linkedHistory.isQueueTarget(it.file) }.map { it.file }
-        (selected + copies).toSet().forEach(TranscriptStore::deleteArtifacts)
+        val selected = linkedHistory.discardWorking(ids, workingFiles(), cachedWorkingCopies())
         synchronized(temporaryResults) { temporaryResults.removeAll(selected.toSet()) }
     }
 

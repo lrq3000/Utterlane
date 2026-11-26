@@ -120,6 +120,14 @@ class QueueAttemptDeletionTest {
         assertNull(deletion.confirm(question(first), false, ::stopped, ::acknowledge))
         assertTrue(recordings.get(source.id).part(0).exists()); assertNotNull(journal.find(other.id))
         assertNull(deletion.confirm(question(other), false, ::stopped, ::acknowledge))
+        assertNull(journal.find(other.id))
+        assertFalse(recordings.hasLeases(source.id))
+        if (source.directory.exists()) {
+            // Windows can temporarily defer unlinking a tombstoned directory. A live source or stranded processing obligation must still fail before exercising the normal cleanup retry.
+            assertEquals("discarded", recordings.get(source.id).status)
+            assertThrows(IllegalStateException::class.java) { recordings.acquire(source.id) }
+            recordings.prune(HistoryRetention.FOREVER)
+        }
         assertFalse(source.directory.exists())
     }
 

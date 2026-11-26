@@ -1,6 +1,9 @@
 package io.github.lrq3000.utterlane.history
 
 import io.github.lrq3000.utterlane.transcribe.QueueJournal
+import io.github.lrq3000.utterlane.asr.TranscriptSource
+import io.github.lrq3000.utterlane.asr.TranscriptStore
+import io.github.lrq3000.utterlane.asr.WorkingTranscriptCopy
 import java.io.File
 
 enum class HistoryDeletionTarget { AUDIO, TRANSCRIPTS, BOTH }
@@ -45,6 +48,14 @@ class LinkedHistory internal constructor(private val recordings: RecordingHistor
     internal fun isQueueTarget(file: File): Boolean {
         val row = queue?.find(file.nameWithoutExtension) ?: return false
         return file.canonicalFile == checkNotNull(targetFile)(row.id).canonicalFile
+    }
+
+    /** Called inside confirmDeletion's publication transaction; return only the dialog-owned files actually marked. */
+    internal fun discardWorking(ids: Set<String>, owned: List<File>, copies: List<WorkingTranscriptCopy>): List<File> {
+        val selected = owned.filter { file -> file.isFile && !isQueueTarget(file) && WorkingTranscriptCopy(file, TranscriptSource.read(file)).id in ids }
+        val linked = copies.filter { it.id in ids && !isQueueTarget(it.file) }.map { it.file }
+        (selected + linked).toSet().forEach(TranscriptStore::deleteArtifacts)
+        return selected
     }
 
     fun plan(audioId: String?, transcriptId: String?, transcriptOrigin: Boolean,
