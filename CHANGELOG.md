@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.3.4] - 2026-11-26
+
+- Corrected the patch version to count all three functional changes since 2.3.1. App behavior is unchanged from 2.3.3.
+
 ## [2.3.3] - 2026-11-26
 
 ### Changed
