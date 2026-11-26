@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.3.13] - 2026-11-26
+
+### Added
+- **Settings → About** shows your installed version, project credits, license, source repository, and how Utterlane processes speech on your device.
+
+### Changed
+- The keyboard mic, floating mic, accessibility shortcut, and onboarding practice mic now open the same dictation dialog. The Settings gear offers to keep recording, discard with confirmation, or let the current transcription finish in the background once recording has stopped.
+
+### Fixed
+- Interrupted model downloads show how much was saved while reconnecting. A valid partial download can resume even if the server changes its validator for a checksum-pinned model; the whole model is verified before installation.
+
 ## [2.3.10] - 2026-11-26
 
 ### Added

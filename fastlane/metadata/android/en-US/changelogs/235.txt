@@ -1,0 +1,3 @@
+Model downloads show saved progress and resume when supported.
+All Utterlane dictation entry points share the same recording dialog and Settings gear.
+Settings → About shows the installed version, project credits, license, and source.
