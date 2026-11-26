@@ -5,6 +5,13 @@ internal class QueueJobControls(val stage: QueueStage, val pause: () -> Unit, va
 
 internal class FilePauseBoundary : Exception()
 
+/** The caller claims on the UI thread, before launching the suspending stop/restart transaction. A queued double tap would otherwise become a second valid restart of the now-stopped parent. */
+internal class QueueRestartRequests {
+    private val pending = mutableSetOf<String>()
+    fun claim(id: String): Boolean = pending.add(id)
+    fun release(id: String) { pending.remove(id) }
+}
+
 /** The checkpoint counts decoded 16 kHz input, not container timestamps. Skipping decoded samples on resume also works for containers with inaccurate seek tables and variable-rate audio. No previous audio is sent through recognition twice. */
 internal class ResumeCursor(private val checkpoint: Long) {
     var position = 0L

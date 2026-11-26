@@ -257,10 +257,10 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     }
 
     /** Execute on the attached owner once its queue slot is granted. UI retries use enqueueRetry so each receives a fresh attempt identity. */
-    internal fun retry(useCurrentModel: Boolean = false, resumeAt: Long? = null) {
+    internal fun retry(useCurrentModel: Boolean = false, resumeAt: Long? = null, speakerSection: Int = 0) {
         if (state.value.exitRequest != null || state.value.checkingExit || state.value.running || state.value.importing || state.value.saving || state.value.closing || operation?.isActive == true) return
         operation = viewModelScope.launch {
-            val target = input.queueId?.let { QueueTranscriptTarget(app.transcriptionQueue.target(it), resumeAt != null) }
+            val target = input.queueId?.let { QueueTranscriptTarget(app.transcriptionQueue.target(it), resumeAt != null, speakerSection) }
             if (target == null) transcribe(useCurrentModel) else withContext(target) { transcribe(useCurrentModel, resumeAt = resumeAt) }
         }
     }

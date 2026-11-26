@@ -108,4 +108,39 @@ class QueueJournalTest {
         assertEquals(true, restored.find(retry.id)?.speakers)
         assertEquals(QueueStage.READY, restored.find(old.id)?.stage)
     }
+
+    @Test fun deferredModelSwitchDoesNotStarveCompatibleWaitingFileDuringDictation() {
+        val journal = QueueJournal(temp.root)
+        val first = journal.add("lecture", "Paused lecture", false, modelId = "old-model")
+        val second = journal.add("note", "Note", false, modelId = "current-model")
+        journal.add("capture", "Mic", true, QueueStage.DRAINING)
+        assertEquals(second.id, nextEligibleFile(journal.records(), "current-model")?.id)
+        journal.update(second.copy(stage = QueueStage.READY))
+        assertNull(nextEligibleFile(journal.records(), "current-model"))
+        assertEquals(first.id, nextEligibleFile(journal.records().filter { it.stage != QueueStage.DRAINING }, "current-model")?.id)
+    }
+
+    @Test fun rapidRestartRequestsRegisterOnlyOneSiblingForTheSelectedSource() {
+        val journal = QueueJournal(temp.root)
+        val source = journal.add("voice", "Interview", false, QueueStage.PROCESSING)
+        val requests = QueueRestartRequests()
+        val accepted = listOf(source.id, source.id).filter(requests::claim)
+        journal.update(source.copy(stage = QueueStage.STOPPED))
+        accepted.forEach { journal.add(source.audio, source.label, source.speakers); requests.release(it) }
+        val next = journal.records().single { it.stage == QueueStage.WAITING }
+        assertEquals(source.audio, next.audio)
+        assertNotEquals(source.id, next.id)
+        assertEquals(QueueStage.STOPPED, journal.find(source.id)?.stage)
+        assertTrue(requests.claim(source.id))
+    }
+
+    @Test fun resumedDiarizationUsesANewLabelSectionOnlyAfterActualInputWasCheckpointed() {
+        val journal = QueueJournal(temp.root)
+        val row = journal.add("lecture", "Lecture", true, QueueStage.PAUSED)
+        assertEquals(0, row.continued().speakerSection)
+        val later = row.copy(resumeSamples = 1111L, checkpointed = true).continued()
+        journal.update(later)
+        assertEquals(1, QueueJournal(temp.root).find(row.id)!!.speakerSection)
+        assertEquals(2, later.copy(stage = QueueStage.PAUSED).continued().speakerSection)
+    }
 }

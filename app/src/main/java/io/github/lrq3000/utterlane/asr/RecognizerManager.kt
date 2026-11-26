@@ -285,7 +285,12 @@ class RecognizerManager(
                     var diarize = speakerOverride ?: liveSpeakers?.state?.value ?: app.settingsRepository.diarizationEnabled.first()
                     liveSpeakers?.initialize(diarize)
                     val count = app.settingsRepository.speakerCount.first()
-                    val speakerLabels = (1..8).map { context.getString(R.string.speaker_label, it) }
+                    val target = currentCoroutineContext()[QueueTranscriptTarget]
+                    val speakerLabels = (1..8).map { number ->
+                        val label = context.getString(R.string.speaker_label, number)
+                        if (target == null || target.speakerSection == 0 || count == 1) label
+                        else context.getString(R.string.queue_section_speaker, target.speakerSection + 1, label)
+                    }
                     val unknownSpeaker = context.getString(R.string.speaker_unknown)
                     suspend fun speakersAvailable(): Boolean {
                         val ready = count == 1 || try { app.diarizationModels.ensureVerified() }
@@ -301,7 +306,6 @@ class RecognizerManager(
                     val hasSpeakerDecoder = liveSpeakers != null || diarize
                     val sessionBackend = checkNotNull(recognizer)
                     val directory = File(context.cacheDir, "transcripts").apply { mkdirs() }
-                    val target = currentCoroutineContext()[QueueTranscriptTarget]
                     val store = TranscriptStore(target?.file ?: File.createTempFile("transcript-", ".txt", directory))
                     val id = sessionIds.incrementAndGet()
                     synchronized(stateLock) {
