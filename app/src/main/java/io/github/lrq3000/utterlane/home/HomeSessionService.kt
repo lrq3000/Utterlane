@@ -51,7 +51,16 @@ class HomeSessionService : Service() {
             controller.serviceStarted(requested)
             observer?.cancel()
             observer = scope.launch {
+                var hadMicrophone = microphone
                 controller.state.collect { state ->
+                    if (controller.ownsService(requested) && hadMicrophone && state.capture.phase == HomeCapturePhase.PROCESSING) {
+                        hadMicrophone = false
+                        // The existing capture service can cover the handoff even when Android refuses a new background service start. Never continue to advertise recording or a Stop action.
+                        val processing = notification(requested, microphone = false)
+                        if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION, processing,
+                            if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
+                        else startForeground(NOTIFICATION, processing)
+                    }
                     if (controller.ownsService(requested) && !state.busy) {
                         HomeServiceIdleStop.recheck(
                             isIdle = { controller.ownsService(requested) && !controller.state.value.busy },

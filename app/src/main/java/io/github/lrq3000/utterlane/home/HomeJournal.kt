@@ -12,19 +12,19 @@ internal class HomeJournal(context: Context) {
     private val prefs = context.getSharedPreferences("home_workspace", Context.MODE_PRIVATE)
     private var previous: DialogInput? = null
 
-    fun capture(audioId: String?, store: TranscriptStore?, snapshot: CaptureSnapshot?, speakerLabels: Boolean = false) {
+    fun capture(audioId: String?, store: TranscriptStore?, snapshot: CaptureSnapshot?, speakerLabels: Boolean = false, queueId: String? = null) {
         if (audioId == null && store == null) return
         write(DialogInput(audioId = audioId, transcriptPath = store?.file?.absolutePath,
             modelName = snapshot?.modelName.orEmpty(),
             // Audio's final metadata may not be written before process loss.
             // Checkpoint the committed-text flag, never the requested setting.
-            metadata = TranscriptMetadata(speakerLabels = speakerLabels)))
+            metadata = TranscriptMetadata(speakerLabels = speakerLabels), queueId = queueId))
     }
     fun write(input: DialogInput) {
         if (input == previous) return
         previous = input
         val metadata = input.metadata
-        prefs.edit().clear().putString("audio", input.audioId).putString("text", input.transcriptId)
+        prefs.edit().clear().putString("audio", input.audioId).putString("text", input.transcriptId).putString("queue", input.queueId)
             .putString("path", input.transcriptPath).putString("model", input.modelName).putString("model_id", input.modelId)
             .putLong("created", metadata?.created ?: 0).putLong("duration", metadata?.durationMs ?: 0)
             .putBoolean("has_created", metadata?.created != null)
@@ -34,7 +34,7 @@ internal class HomeJournal(context: Context) {
             }.apply()
     }
     fun restore(): DialogInput? {
-        val input = DialogInput(audioId = prefs.getString("audio", null), transcriptId = prefs.getString("text", null),
+        val input = DialogInput(audioId = prefs.getString("audio", null), transcriptId = prefs.getString("text", null), queueId = prefs.getString("queue", null),
             transcriptPath = prefs.getString("path", null), transcriptOrigin = false,
             modelName = prefs.getString("model", "").orEmpty(), modelId = prefs.getString("model_id", null),
             // Old journals used zero as unknown. New journals distinguish real

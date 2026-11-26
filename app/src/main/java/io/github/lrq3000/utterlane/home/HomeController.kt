@@ -28,7 +28,8 @@ internal data class HomeState(
     val preparing: Boolean = false,
     val permissionDenied: Boolean = false,
     val message: String? = null,
-    val liveSpeakers: Boolean? = null
+    val liveSpeakers: Boolean? = null,
+    val queuedTail: Boolean = false
 ) {
     val busy get() = capture.active || preparing || result.running || result.importing || result.saving || result.closing || result.deleting || result.checkingDeletion
     val canStop get() = capture.phase in setOf(HomeCapturePhase.STARTING, HomeCapturePhase.RECORDING, HomeCapturePhase.STOPPING)
@@ -70,6 +71,18 @@ class HomeController(private val app: UtterlaneApp) {
         }, onResult = ::adoptCapture)
 
     init {
+        scope.launch {
+            app.transcriptionQueue.reviewed.collect { id ->
+                // Closing a notification's dialog also retires an inline view of that exact result. Never dismiss the shared input a second time.
+                val owner = slot?.takeIf { it.input.queueId == id } ?: return@collect
+                synchronized(ownerGate) {
+                    if (slot !== owner) return@collect
+                    slot = null; journal.clear()
+                    mutable.update { it.copy(model = null, result = TranscriptionDialogState()) }
+                }
+                owner.clear()
+            }
+        }
         scope.launch { captureOwner.state.collect { capture ->
             mutable.update { it.copy(capture = capture, message = capture.message ?: it.message) }
         } }
@@ -78,6 +91,11 @@ class HomeController(private val app: UtterlaneApp) {
 
     /** Called only from a visible Activity after RECORD_AUDIO permission is granted. */
     fun record() {
+        if (captureOwner.state.value.phase == HomeCapturePhase.PROCESSING && state.value.queuedTail && !state.value.preparing) {
+            captureDriver?.detachTail()
+            captureOwner.start()
+            return
+        }
         if (captureOwner.state.value.active) { captureOwner.stop(); return }
         if (state.value.busy) return
         captureOwner.start()
@@ -188,6 +206,19 @@ class HomeController(private val app: UtterlaneApp) {
     private data class CaptureResult(val driver: CaptureDriver, val store: TranscriptStore?, val failure: SessionFailure?)
 
     private inner class CaptureDriver(private val events: HomeCaptureOwner.Events<CaptureResult>) : HomeCaptureOwner.Driver {
+        private val queueId = UUID.randomUUID().toString()
+        private var handoff: Deferred<Boolean>? = null
+        private var detached = false
+        fun detachTail() {
+            detached = true
+            // A short take can end before a preview was emitted. If an older inline result still owns the slot, retire its runtime view without acknowledging an unrelated queued result.
+            if (slot?.input?.queueId != null) releaseResult()
+            events.closed()
+            captureDriver = null
+            mutable.update { HomeState() }
+            synchronized(ownerGate) { journal.clear() }
+            liveDocument.show(null)
+        }
         private var session: MicrophoneSession? = null
         private var observer: Job? = null
         private var spoolObserver: Job? = null
@@ -203,12 +234,24 @@ class HomeController(private val app: UtterlaneApp) {
         override fun start() { requestService(microphone = true) }
         fun begin() {
             if (session != null || ended) return
-            val created = app.microphoneSessions.create(app, scope,
+            val created = app.microphoneSessions.create(app, CoroutineScope(scope.coroutineContext + QueueTranscriptTarget(app.transcriptionQueue.target(queueId))),
                 onText = { _, store -> publishInput(store = store) }, onComplete = { store, failure ->
                     delivered = true
                     if (failure?.kind == SessionFailure.Kind.BUSY) reject(failure.message)
                     else deliverResult(store, failure)
-                }, onCaptureEnded = { events.captureEnded() },
+                }, onCaptureEnded = {
+                    events.captureEnded()
+                    val audio = session?.audioId
+                    if (audio != null) handoff = scope.async {
+                        try {
+                            val time = java.text.DateFormat.getDateTimeInstance().format(java.util.Date())
+                            app.transcriptionQueue.captureEnded(queueId, audio, app.getString(R.string.queue_recording, time))
+                            app.transcriptionQueue.wake()
+                            if (isCurrent() && !delivered && inputAccepted) mutable.update { it.copy(queuedTail = true) }
+                            true
+                        } catch (e: Exception) { showError(e); false }
+                    }
+                },
                 onWarning = { if (captureDriver === this) showMessage(it) },
                 onReady = {
                     if (isCurrent()) {
@@ -234,7 +277,7 @@ class HomeController(private val app: UtterlaneApp) {
                     events.closed()
                     if (captureDriver === this) {
                         captureDriver = null
-                        mutable.update { it.copy(liveSpeakers = null) }
+                        mutable.update { it.copy(liveSpeakers = null, queuedTail = false) }
                     }
                     // A cancelled session does not deliver onComplete. Leave its
                     // journal and disk-backed data available for recovery.
@@ -282,10 +325,18 @@ class HomeController(private val app: UtterlaneApp) {
             // the previous descriptor; final completion remains a fallback.
             synchronized(ownerGate) {
                 journal.capture(session?.audioId, store, session?.metrics?.state?.value,
-                    speakerLabels = session?.speakerLabels == true)
+                    speakerLabels = session?.speakerLabels == true, queueId = queueId)
             }
         }
         private fun deliverResult(store: TranscriptStore?, failure: SessionFailure?) {
+            val publication = handoff
+            if (publication != null) scope.launch {
+                if (publication.await()) {
+                    app.transcriptionQueue.completeCapture(queueId, failure?.message)
+                    if (detached) store?.keepForRecovery()
+                }
+            }
+            if (detached) return
             val audio = session?.audioId?.let { runCatching { app.recordingHistory.get(it) }.getOrNull() }
             if (!completion.deliver(CaptureResult(this, store, failure), audio, store?.preview().orEmpty(),
                     failure?.message ?: app.getString(R.string.toast_recording_error))) {
@@ -309,7 +360,7 @@ class HomeController(private val app: UtterlaneApp) {
             audioId = session?.audioId, transcriptId = session?.savedTranscriptId,
             transcriptPath = store?.file?.absolutePath, transcriptOrigin = false,
             modelName = session?.metrics?.state?.value?.modelName.orEmpty(),
-            modelId = app.modelManager.selected.value.id, metadata = metadata)
+            modelId = app.modelManager.selected.value.id, metadata = metadata, queueId = queueId)
         fun audioId() = session?.audioId
         fun takeLease(): Closeable? = sourceLease.also { sourceLease = null }
         fun snapshot() = session?.metrics?.state?.value ?: CaptureSnapshot()
@@ -405,7 +456,8 @@ class HomeController(private val app: UtterlaneApp) {
         }
         // Confirmed deletion already disposed exactly the selected identities.
         // Do not run another dismissal against surviving independent history.
-        if (owner.model.state.value.finished) done() else owner.model.dismiss(done)
+        if (owner.model.state.value.finished || owner.model.state.value.exited) done()
+        else if (owner.input.queueId != null) owner.model.requestExit() else owner.model.dismiss(done)
     }
 
     private fun releaseResult() {
@@ -422,6 +474,9 @@ class HomeController(private val app: UtterlaneApp) {
 
     private fun retireResult(owner: ResultOwner, onRetired: () -> Unit = {}) {
         owner.observer?.cancel()
+        if (owner.input.queueId != null) {
+            owner.clear(); onRetired(); return
+        }
         var retired = false
         val finish = {
             if (!retired) {
@@ -460,7 +515,7 @@ class HomeController(private val app: UtterlaneApp) {
                     try { requestService(microphone = false) } catch (error: Exception) { showError(error) }
                 }
             }) { result, _ ->
-                if (result.finished && !result.deleting) {
+                if ((result.finished && !result.deleting) || result.exited) {
                     dismissOwner(this@ResultOwner)
                     return@observe
                 }

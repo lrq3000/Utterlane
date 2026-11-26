@@ -49,6 +49,8 @@ import io.github.lrq3000.utterlane.transcribe.TranscriptReader
 import io.github.lrq3000.utterlane.transcribe.TranscriptTransferActions
 import io.github.lrq3000.utterlane.transcribe.TranscriptionDialog
 import io.github.lrq3000.utterlane.transcribe.ImportRetentionQuestion
+import io.github.lrq3000.utterlane.transcribe.QueueNotifications
+import io.github.lrq3000.utterlane.transcribe.label
 import io.github.lrq3000.utterlane.transcribe.TranscriptionProgressFooter
 import io.github.lrq3000.utterlane.ui.AudioInputText
 import io.github.lrq3000.utterlane.ui.RecognitionStatusText
@@ -78,7 +80,40 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
         val previewHeight = (maxHeight - 400.dp).coerceIn(160.dp, 300.dp)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            HomeIntro(enabled = !state.busy, onLoad = onLoad)
+            HomeIntro(enabled = true, onLoad = onLoad)
+            val jobs by app.transcriptionQueue.rows.collectAsStateWithLifecycle()
+            if (jobs.isNotEmpty()) {
+                var expanded by rememberSaveable { mutableStateOf(false) }
+                TextButton({ expanded = !expanded }, modifier = Modifier.testTag("home_queue")) {
+                    Text("${stringResource(R.string.queue_title)} (${jobs.size})")
+                }
+                if (expanded) {
+                    if (jobs.any { it.stage.reviewable }) Text("${stringResource(R.string.queue_review)}: ${jobs.count { it.stage.reviewable }}",
+                        style = MaterialTheme.typography.labelMedium)
+                    // Window the list independently of the scrollable Home workspace.
+                    androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
+                        items(jobs.size, key = { jobs[it].id }) { index ->
+                            val row = jobs[index]
+                            TextButton({ context.startActivity(QueueNotifications.intent(context, row.id)) },
+                                modifier = Modifier.testTag("queue_job_${row.id}")) {
+                                Text("${row.label} · ${stringResource(row.stage.label())}")
+                            }
+                        }
+                    }
+                }
+                if (jobs.any { !it.stage.reviewable } && !state.canStop) {
+                    val audioEnabled by app.settingsRepository.audioHistoryEnabled.collectAsStateWithLifecycle(true)
+                    val textEnabled by app.settingsRepository.transcriptHistoryEnabled.collectAsStateWithLifecycle(true)
+                    val audioRetention by app.settingsRepository.audioHistoryRetention.collectAsStateWithLifecycle(io.github.lrq3000.utterlane.history.HistoryRetention.DEFAULT)
+                    val textRetention by app.settingsRepository.transcriptHistoryRetention.collectAsStateWithLifecycle(io.github.lrq3000.utterlane.history.HistoryRetention.DAY)
+                    if (!audioEnabled || !textEnabled || audioRetention == io.github.lrq3000.utterlane.history.HistoryRetention.NONE ||
+                        textRetention == io.github.lrq3000.utterlane.history.HistoryRetention.NONE) Text(stringResource(R.string.queue_after_close),
+                        style = MaterialTheme.typography.bodySmall)
+                    TextButton({ (context as? android.app.Activity)?.moveTaskToBack(true) }, modifier = Modifier.testTag("home_background")) {
+                        Text(stringResource(R.string.queue_background))
+                    }
+                }
+            }
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 15.dp)) {
@@ -134,6 +169,9 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
                 }
             }
             HomeCaptureControl(state, onRecord, controller::setLiveSpeakers)
+            if (state.queuedTail && state.capture.phase == HomeCapturePhase.PROCESSING) {
+                OutlinedButton(onRecord, Modifier.testTag("home_record_again")) { Text(stringResource(R.string.home_new_recording)) }
+            }
             if (state.result.speakerWarning == SpeakerWarning.PROCESSING_FAILED)
                 Text(stringResource(R.string.speaker_file_processing_failed), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error)
@@ -150,14 +188,15 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
             }
         }
     }
-    if (details && model != null) Dialog(onDismissRequest = { details = false },
+    if (details && model != null) Dialog(onDismissRequest = { if (model.input.queueId != null) model.requestExit() else details = false },
         properties = DialogProperties(usePlatformDefaultWidth = false)) {
         // This overlay borrows Home's result owner. Both Back paths only navigate;
         // More -> Dismiss and confirmed deletion remain the explicit cleanup paths.
-        TranscriptionDialog(model, onClose = { details = false },
+        TranscriptionDialog(model, onClose = { if (model.input.queueId != null) model.requestExit() else details = false },
             onEmpty = { details = false; controller.dismiss() })
     }
     state.pendingImport?.let { ImportRetentionQuestion(it) }
+    if (!details && model?.input?.queueId != null) io.github.lrq3000.utterlane.transcribe.DialogExitConfirmation(model, state.result)
 }
 
 /** Text establishes the row height; the local-file action uses that exact square. */
