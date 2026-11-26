@@ -35,6 +35,7 @@ slowing down the processing.
   easy to notice and return to. The second-best experience after an instant result
   is a comprehensible wait with a useful sense of its remaining duration, not an
   unexplained spinner that demands attention.
+- **Reduce the time a person must wait, as well as the time the device must compute.** When processing cannot be instantaneous, let the user leave as soon as their participation is no longer needed, show meaningful progress, and provide a direct route back to each result. For example, transcribe incrementally during recording; once the microphone stops, finish the remaining transcription in the background. Let users queue several audio files in one action, dictate while the queue is running, and review each result independently.
 
 ## 2. Intrinsic speed and efficiency: do less work, overlap what can run independently
 
