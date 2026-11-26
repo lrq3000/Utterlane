@@ -1,0 +1,9 @@
+# Responsive transcription controls
+
+Import and Share use the same compact setup: the two switches are stacked, descriptions wrap normally, and the dialog scrolls with an indicator on each axis that actually overflows. Processing controls stay by the progress indicator, use transparent icon buttons with named accessibility actions, and remain distinct from playback.
+
+Pause parks a job in the queue until explicitly continued. Stop moves it out of the active queue into Transcript History without deleting its source or partial text. Both support Continue from their checkpoint or Restart from the beginning as a separate attempt. Closing a parked or stopped reader is navigation, not acknowledgment of a completed result. Delete remains a separate confirmed disposition that joins the producer and removes only the approved scope.
+
+Prefer cancelling the file worker's wait for a nonpreemptible native operation and replaying its unfinished recognition window. Preserve the accepted transcript prefix and its exact decoded offset. Plain ASR and fixed-one-speaker mode can seal their local correction and formatting tails without waiting for native inference. Keep graceful draining when multi-speaker lookahead could hold earlier decoded words. If a checkpoint cannot be trusted, including Stop descriptors from older releases, keep the audio and partial text and offer only explicit Restart. No change to the live microphone's controls or native scheduling.
+
+Verify blocked inference, no late result publication, exact suffix replay, no automatic continuation, detached Stop history, icon accessibility, and narrow/short dialog layout. Integrate three separate changes by fast-forward and publish one release commit at semantic patch +2; Android version code advances once for the new release, independent of that semantic bump.

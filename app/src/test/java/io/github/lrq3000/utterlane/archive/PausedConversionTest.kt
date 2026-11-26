@@ -13,7 +13,7 @@ class PausedConversionTest {
     @get:Rule val temp = TemporaryFolder()
 
     @Test fun conversionWhilePausedKeepsExactSuffixAcrossColdStartAndContinue() = pausedConversion(continueToEnd = true)
-    @Test fun conversionDuringPauseHandoffCanReleaseOriginalAsSoonAsStopped() = pausedConversion(continueToEnd = false)
+    @Test fun conversionDuringPauseHandoffKeepsOriginalUntilStoppedCheckpointIsDeleted() = pausedConversion(continueToEnd = false)
 
     private fun pausedConversion(continueToEnd: Boolean) {
         val queueRoot = temp.newFolder()
@@ -69,12 +69,15 @@ class PausedConversionTest {
             assertOriginal()
             history.beginProcessing(id).complete()
             journal.update(checkpoint.copy(stage = QueueStage.READY))
+            // Completed review still holds the recording, but no longer needs this exact input representation.
+            assertTrue(journal.protectsAudio(id))
         } else {
             journal.update(checkpoint.copy(stage = QueueStage.STOPPING))
             journal.update(checkpoint.copy(stage = QueueStage.STOPPED))
+            assertTrue(journal.protectsAudio(id))
+            assertOriginal()
+            assertTrue(journal.acknowledge(row.id))
         }
-        // Review still owns the recording, but no longer owns its original representation.
-        assertTrue(journal.protectsAudio(id))
         assertNotEquals("A sleeping archival drain needs a wake on the last release", idleWake, journal.originalReleases.value)
         while (history.cleanupPublishedEncoding()) { }
         assertFalse(original.exists())

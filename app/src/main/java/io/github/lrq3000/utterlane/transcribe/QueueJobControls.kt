@@ -1,7 +1,8 @@
 package io.github.lrq3000.utterlane.transcribe
 
 internal class QueueJobControls(val stage: QueueStage, val pause: () -> Unit, val resume: () -> Unit,
-    val stop: () -> Unit, val restart: () -> Unit, val delete: () -> Unit)
+    val stop: () -> Unit, val restart: () -> Unit, val delete: () -> Unit,
+    val canContinue: Boolean = stage == QueueStage.PAUSED)
 
 internal class FilePauseBoundary : Exception()
 

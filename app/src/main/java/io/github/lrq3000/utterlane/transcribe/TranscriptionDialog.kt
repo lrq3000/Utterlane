@@ -82,7 +82,9 @@ internal fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () ->
         model.finishAudioExport(uri, directory = true)
     }
     Surface(color = Color.Transparent, modifier = Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
-        Box(Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+        BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+            val compactProcessing = jobControls != null && maxHeight < 280.dp
+            val compactProgressHeight = maxHeight / 2
             Card(Modifier.widthIn(max = 560.dp).fillMaxSize().testTag("transcription_dialog"),
                 shape = MaterialTheme.shapes.extraLarge,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -127,6 +129,8 @@ internal fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () ->
                             else -> DialogDeletionControl(model, state, busy)
                         }
                     }
+                    // The weighted reader can collapse after the playback toolbar wraps. In a short window measure the scrollable processing dock first so Stop and Continue remain reachable.
+                    if (compactProcessing) TranscriptionProgressFooter(state, stats, jobControls, Modifier.heightIn(max = compactProgressHeight))
                     Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
                         if (!state.importing) Text(stringResource(when {
                             state.audio == null -> R.string.dialog_audio_unavailable
@@ -147,7 +151,7 @@ internal fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () ->
                     }
                     Spacer(Modifier.height(8.dp))
                     TranscriptReader(model.document, state, Modifier.weight(1f).fillMaxWidth()) {
-                        TranscriptionProgressFooter(state, stats, jobControls)
+                        if (!compactProcessing) TranscriptionProgressFooter(state, stats, jobControls)
                     }
                     AudioPlaybackControls(model) {
                         val hasText = state.transcriptBytes > 0

@@ -339,7 +339,9 @@ class RecognizerManager(
                         finishSpeakers = if (hasSpeakerDecoder) { { invokeBackend { it.finishSpeakers(id, options) } } } else null,
                         speakerRequested = liveSpeakers?.let { { it.resolve(false) } },
                         speakerStart = ::speakersAvailable,
-                        onSpeakersBypassed = { liveSpeakers?.unavailable(); onSpeakerUnavailable?.invoke(SpeakerWarning.PROCESSING_FAILED) }
+                        onSpeakersBypassed = { liveSpeakers?.unavailable(); onSpeakerUnavailable?.invoke(SpeakerWarning.PROCESSING_FAILED) },
+                        checkpointFileWindows = target?.checkpointFileWindows == true,
+                        speakerNativeLookahead = count != 1
                     ).also { created = it }
                 }
             }

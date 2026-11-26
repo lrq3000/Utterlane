@@ -19,7 +19,9 @@ class TranscriptionSession(
     private val finishSpeakers: (suspend () -> List<SpeechSpan>)? = null,
     private val speakerRequested: (() -> Boolean)? = null,
     private val speakerStart: suspend () -> Boolean = { true },
-    private val onSpeakersBypassed: () -> Unit = {}
+    private val onSpeakersBypassed: () -> Unit = {},
+    private val checkpointFileWindows: Boolean = false,
+    private val speakerNativeLookahead: Boolean = true
 ) : java.io.Closeable {
     private var speakerText = if (decodeSpeakers != null && speakerRequested == null) SpeakerText(corrections, speakerLabel) else null
     private var newParagraph = false
@@ -29,29 +31,50 @@ class TranscriptionSession(
     @Volatile var hasSpeakerLabels: Boolean = false
         private set
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+    private var sealedFileOffset = 0L
+    private fun windowProcessed(window: AudioWindow, started: Long) {
+        onProcessed(window.ownedEnd, (System.nanoTime() - started) / 1000000)
+        Log.i("TranscriptionSession", "Segment ${window.ownedStart}..${window.ownedEnd}; input=${window.samples.size}; completed=${store.segments}")
+    }
     private val segmenter = AudioSegmenter(flushPendingOnFinish = decodeSpeakers != null, options = options) { window ->
         if (!mayContinue()) return@AudioSegmenter
         val started = System.nanoTime()
         switchSpeakerMode()
         if (!mayContinue()) return@AudioSegmenter
         val formatter = speakerText
-        if (formatter != null) {
+        val emission = if (formatter != null) {
             val spans = checkNotNull(decodeSpeakers).invoke(window)
             if (!mayContinue()) return@AudioSegmenter
-            emitSpeakerSpans(formatter, spans)
+            formatSpeakerSpans(formatter, spans)
         } else {
             val text = decode(window)
             if (!mayContinue()) return@AudioSegmenter
-            emit(corrections.accept(text))
+            SpeakerText.Emission(corrections.accept(text), false)
         }
+        if (checkpointFileWindows && !requiresSpeakerDrain) {
+            // No cancellation point between advancing dictionary state, appending its text, and committing the ownership offset. Presentation can suspend afterward.
+            append(emission.text, emission.hasSpeakerLabels)
+            sealedFileOffset = window.ownedEnd
+            windowProcessed(window, started)
+            if (emission.text.isNotBlank() && mayContinue()) onSegment(emission.text.trimEnd())
+            return@AudioSegmenter
+        }
+        emit(emission)
         if (!mayContinue()) return@AudioSegmenter
-        onProcessed(window.ownedEnd, (System.nanoTime() - started) / 1000000)
-        if (!mayContinue()) return@AudioSegmenter
-        Log.i("TranscriptionSession", "Segment ${window.ownedStart}..${window.ownedEnd}; input=${window.samples.size}; completed=${store.segments}")
+        windowProcessed(window, started)
     }
     @Volatile var finished = false
         private set
     val hasSpeakerFinalization: Boolean get() = speakerText != null && finishSpeakers != null
+    internal val requiresSpeakerDrain: Boolean get() = hasSpeakerFinalization && speakerNativeLookahead
+    /** Call only after the cancelled producer has left its decoder. The shared native operation may still return, but has no transcript writer. */
+    internal fun sealInterruptedFilePrefix(): Long {
+        check(checkpointFileWindows && !requiresSpeakerDrain)
+        // The dictionary can withhold suffix words from a fully recognized window; flush just those words locally, never drain ASR input or native speaker lookahead here.
+        flushLocalTail()
+        store.sync()
+        return sealedFileOffset
+    }
     suspend fun accept(samples: ShortArray) {
         check(!closed.get()) { "Transcription session is closed" }
         if (!mayContinue()) return
@@ -94,6 +117,12 @@ class TranscriptionSession(
     }
 
     private suspend fun drainMode() {
+        if (checkpointFileWindows && !requiresSpeakerDrain) {
+            if (!mayContinue()) return
+            val emission = flushLocalTail()
+            if (emission.text.isNotBlank() && mayContinue()) onSegment(emission.text.trimEnd())
+            return
+        }
         val formatter = speakerText
         if (formatter == null) {
             emit(corrections.finish())
@@ -102,19 +131,23 @@ class TranscriptionSession(
             if (finishSpeakers != null) {
                 val spans = finishSpeakers.invoke()
                 if (!mayContinue()) return
-                emitSpeakerSpans(formatter, spans)
+                emit(formatSpeakerSpans(formatter, spans))
                 if (!mayContinue()) return
             }
             emit(formatter.finishEmission())
         }
     }
 
-    private suspend fun emitSpeakerSpans(formatter: SpeakerText, spans: List<SpeechSpan>) {
+    /** Clearing the formatter's buffered words and appending them must be one cancellation-safe commit, including at EOF. */
+    private fun flushLocalTail(): SpeakerText.Emission =
+        (speakerText?.finishEmission() ?: SpeakerText.Emission(corrections.finish(), false)).also { append(it.text, it.hasSpeakerLabels) }
+
+    private fun formatSpeakerSpans(formatter: SpeakerText, spans: List<SpeechSpan>): SpeakerText.Emission {
         if (!bypassReported && spans.any { it.speaker == SpeechSpan.UNLABELED }) {
             bypassReported = true
             onSpeakersBypassed()
         }
-        emit(formatter.acceptEmission(spans))
+        return formatter.acceptEmission(spans)
     }
 
     // Closing does not itself cancel an in-flight decoder or callback. Check
@@ -129,13 +162,18 @@ class TranscriptionSession(
 
     private suspend fun emit(text: String, speakerLabels: Boolean = false) {
         if (text.isBlank() || !mayContinue()) return
+        append(text, speakerLabels)
+        if (!mayContinue()) return
+        onSegment(text.trimEnd())
+    }
+
+    private fun append(text: String, speakerLabels: Boolean) {
+        if (text.isBlank()) return
         store.append(if (newParagraph) "\n$text" else text)
         newParagraph = false
         // Delivery can fail or close the session after this write. The result
         // already owns the label, so publish its metadata before the callback.
         if (speakerLabels) hasSpeakerLabels = true
-        if (!mayContinue()) return
-        onSegment(text.trimEnd())
     }
 }
 

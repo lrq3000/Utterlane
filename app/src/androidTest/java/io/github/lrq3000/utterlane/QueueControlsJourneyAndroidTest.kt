@@ -296,6 +296,7 @@ class QueueControlsJourneyAndroidTest {
             assertTrue(stopped.startsWith(beforeStop))
             assertEquals(TranscriptCompletion.INCOMPLETE, TranscriptSource.read(queue.target(retry.id)).completion)
             ui.node("queue_restart").recycle()
+            ui.node("queue_continue").recycle()
             assertEquals(stopped.trim(), readerWords().trim())
             ui.screenshot("queue-controls-restarted-stopped")
             // Treat navigation as navigation rather than acknowledging either attempt. Both partial readers must remain independently addressable after the producer exits.
@@ -310,6 +311,16 @@ class QueueControlsJourneyAndroidTest {
             assertEquals(liveBody, queue.target(live.id).readText())
             assertEquals(original, digest(long))
             Log.i(TAG, "Restart ${file.id} -> ${retry.id}, same audio ${file.audio}; fresh processed=${start.processedSamples}, stopped partial=${stopped.length} chars. Two independently readable STOPPED attempts and one READY live result; original SHA-256 unchanged")
+
+            ui.click("dialog_back")
+            ui.click("queue_job_${retry.id}")
+            awaitDetail(retry)
+            ui.click("queue_continue")
+            awaitStage(retry, QueueStage.READY)
+            val continued = queue.target(retry.id).readText()
+            assertTrue("Continue must append to the same stopped attempt", continued.length > stopped.length && continued.startsWith(stopped))
+            assertEquals(partial, queue.target(file.id).readText())
+            assertEquals(original, digest(long))
         } finally {
             capture.stop()
             instrumentation.removeMonitor(picker)

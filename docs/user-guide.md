@@ -383,13 +383,13 @@ instead of reading every transcript while you explore a large history.
 
 ### Background transcription and review
 
-**Transcription queue.** Import one or more files from Home, or share audio to Utterlane. Turn on **Run in background** beside **Speaker labels** if you want to return without opening the transcript. Answer any import questions first. Utterlane secures a private processing copy of each accepted file. The original stays with the app or folder you imported it from.
+**Transcription queue.** Import one or more files from Home, or share audio to Utterlane. Turn on **Run in background** below **Speaker labels** if you want to return without opening the transcript. On a small screen, scroll the setup dialog to reach any hidden content. Answer any import questions first. Utterlane secures a private processing copy of each accepted file. The original stays with the app or folder you imported it from.
 
 While files are queued or processing, tap the **Transcription queue** on Home to inspect the jobs. Tap a row or its notification to open that exact transcript. **Transcripts** on Home also lists manually paused jobs and results awaiting review, even when no work is running or notifications are disabled.
 
-**Control processing.** Pause, Continue, Stop and Restart are in the transcription progress panel, separate from audio playback. Pause leaves other files free to run; only Continue resumes that file. Stop keeps the partial transcript. Restart queues a new attempt on the same audio and leaves the old attempt available. The trash action in the reader or queue list asks before cancelling and deleting the attempt. A temporary input from a transcript-only import is not presented as a saved audio recording to delete.
+**Control processing.** The Pause, Continue, Stop and Restart icons are in the transcription progress panel, separate from audio playback. Pause parks the attempt in the queue and lets other files run. Stop removes it from the active queue but keeps its partial transcript under **Transcripts**. After either action, Continue resumes the same attempt from its saved position; Restart starts a new attempt from the beginning without replacing the old partial. When a saved position cannot be verified, only Restart is available. Back leaves a paused or stopped attempt unchanged. To discard one, use the trash action and confirm the scope. A temporary input from a transcript-only import is not presented as a saved audio recording to delete.
 
-When several speakers are being identified, continuing after a pause starts a new speaker-label section. For example, “Section 2 · Speaker 1” is the first identified speaker in that section, not necessarily the same person as “Speaker 1” before the pause.
+When several speakers are being identified, Pause and Stop may take longer because the app preserves words still held by the speaker-labeling model. Continuing starts a new speaker-label section. For example, “Section 2 · Speaker 1” is the first identified speaker in that section, not necessarily the same person as “Speaker 1” in the previous section.
 
 **Read the transcript.** Use the text-size control in the title to adjust the transcript without changing the rest of the interface; the setting carries over to the next transcript. Tap the background icon at the bottom to hide the reader while processing continues.
 

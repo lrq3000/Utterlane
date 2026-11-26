@@ -17,8 +17,13 @@ internal data class QueueRecord(val id: String, val sequence: Long, val audio: S
     val resumeSamples: Long = 0, val checkpointed: Boolean = false, val speakerSection: Int = 0) {
     val textId: String get() = TranscriptHistory.idForAttempt("$id.txt")
     // PAUSING precedes the offset commit. A fresh waiting/paused file has not selected any representation yet.
-    val holdsOriginal get() = stage == QueueStage.PROCESSING || stage == QueueStage.PAUSING ||
-        checkpointed && (stage == QueueStage.PAUSED || stage == QueueStage.WAITING)
+    val holdsOriginal get() = when (stage) {
+        QueueStage.PROCESSING, QueueStage.PAUSING, QueueStage.STOPPING -> true
+        QueueStage.PAUSED, QueueStage.STOPPED, QueueStage.WAITING -> checkpointed
+        else -> false
+    }
+    // Pause keeps a parked row in the active queue. Stop retires it to History, but leaves a trustworthy checkpoint available for explicit Continue. Neither is dispatched automatically.
+    val canContinue get() = stage == QueueStage.PAUSED || stage == QueueStage.STOPPED && checkpointed
     // Other services and recovery notifications use positive IDs. Android foreground IDs must be nonzero.
     val notificationId: Int get() = -sequence.toInt()
     /** A fresh diarizer cannot identify people from a retired session. Scope later speaker numbers to their section instead of implying cross-pause identity. */
@@ -47,9 +52,13 @@ internal class QueueJournal(private val root: File) {
         if (loaded) return
         val read = root.listFiles().orEmpty().filter { it.extension == "job" }.map { file ->
             val p = ArchiveDisk.read(file)
+            val stage = QueueStage.valueOf(p.getProperty("stage"))
+            // Before resumable Stop, a descriptor could retain its previous Pause offset even after more text had been appended. Never resume that legacy prefix.
+            val checkpointed = p.getProperty("checkpointed").toBoolean() &&
+                (stage != QueueStage.STOPPED || p.getProperty("stoppedCheckpoint").toBoolean())
             QueueRecord(file.nameWithoutExtension, p.getProperty("order").toLong(), p.getProperty("audio"),
-                p.getProperty("label"), p.getProperty("speakers").toBoolean(), QueueStage.valueOf(p.getProperty("stage")), p.getProperty("message"), p.getProperty("model"),
-                p.getProperty("terminalPosted").toBoolean(), p.getProperty("resumeSamples", "0").toLong(), p.getProperty("checkpointed").toBoolean(),
+                p.getProperty("label"), p.getProperty("speakers").toBoolean(), stage, p.getProperty("message"), p.getProperty("model"),
+                p.getProperty("terminalPosted").toBoolean(), if (checkpointed) p.getProperty("resumeSamples", "0").toLong() else 0L, checkpointed,
                 p.getProperty("speakerSection", "0").toInt())
         }.sortedBy { it.sequence }
         read.forEach(::index)
@@ -62,6 +71,7 @@ internal class QueueJournal(private val root: File) {
         row.modelId?.let { setProperty("model", it) }
         if (row.terminalPosted) setProperty("terminalPosted", "true")
         if (row.checkpointed) setProperty("checkpointed", "true")
+        if (row.stage == QueueStage.STOPPED && row.checkpointed) setProperty("stoppedCheckpoint", "true")
         if (row.resumeSamples != 0L) setProperty("resumeSamples", row.resumeSamples.toString())
         if (row.speakerSection != 0) setProperty("speakerSection", row.speakerSection.toString())
     })
@@ -103,6 +113,8 @@ internal class QueueJournal(private val root: File) {
     /** A stale selection, finalizer or double tap must not overwrite a newer disposition of this job. */
     @Synchronized fun transition(id: String, from: Set<QueueStage>, change: (QueueRecord) -> QueueRecord): QueueRecord? =
         find(id)?.takeIf { it.stage in from }?.let(change)?.also(::update)
+    @Synchronized fun continueJob(id: String): QueueRecord? =
+        find(id)?.takeIf { it.canContinue }?.continued()?.copy(terminalPosted = false)?.also(::update)
     @Synchronized fun finishCapture(id: String, failure: String?, interrupted: String, speakers: Boolean?): QueueRecord? {
         val row = find(id) ?: return null
         if (row.stage != QueueStage.CAPTURING && row.stage != QueueStage.DRAINING) return null
@@ -117,6 +129,7 @@ internal class QueueJournal(private val root: File) {
         ArchiveDisk.remove(File(root, "$id.job"))
         AudioMetadata.syncDirectory(root)
         jobs.remove(id); texts.remove(row.textId)
+        if (row.holdsOriginal) releaseOriginal(row.audio)
         val remaining = audioRefs.getValue(row.audio) - 1
         if (remaining == 0) audioRefs.remove(row.audio) else audioRefs[row.audio] = remaining
         return true

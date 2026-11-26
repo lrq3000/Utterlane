@@ -28,8 +28,9 @@ internal class QueueRecovery(private val journal: QueueJournal, private val reco
             val complete = audio?.status == "saved" && source?.audioId == row.audio && !source.discarded && source.completion == TranscriptCompletion.COMPLETE
             val stopped = row.stage == QueueStage.STOPPING || row.stage == QueueStage.PAUSING
             // If shutdown interrupted a manual pause before its text and offset were committed together, offer the partial result and an explicit restart; never replay onto an uncertain prefix.
-            row.copy(stage = if (stopped) QueueStage.STOPPED else if (complete) QueueStage.READY else QueueStage.FAILED,
+            row.copy(stage = if (complete) QueueStage.READY else if (stopped) QueueStage.STOPPED else QueueStage.FAILED,
                 message = if (complete || row.stage == QueueStage.STOPPING) null else interrupted,
+                checkpointed = false, resumeSamples = 0,
                 speakers = if (row.stage == QueueStage.CAPTURING) audio?.captureSpeakerRequest ?: row.speakers else row.speakers).also(journal::update)
         }
     }

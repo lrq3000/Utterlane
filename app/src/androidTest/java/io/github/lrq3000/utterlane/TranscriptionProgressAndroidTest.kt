@@ -267,7 +267,8 @@ class TranscriptionProgressAndroidTest {
                     UtterlaneTheme(darkTheme = false) {
                         TranscriptionDialog(fixture.model, {}, {}, onBackground = {}, jobControls = QueueJobControls(stage.value,
                             { stage.value = QueueStage.PAUSED }, { stage.value = QueueStage.PROCESSING },
-                            { stage.value = QueueStage.STOPPED }, {}, {}))
+                            { stage.value = QueueStage.STOPPED }, {}, {},
+                            canContinue = stage.value in setOf(QueueStage.PAUSED, QueueStage.STOPPED)))
                     }
                 }
             }
@@ -287,11 +288,14 @@ class TranscriptionProgressAndroidTest {
                     assertTrue("Icon action should not render a text button", node.text.isNullOrBlank())
                 } finally { node.recycle() }
             }
+            instrumentation.runOnMainSync { fixture.activity.window.setLayout((300 * density).toInt(), (200 * density).toInt()) }
+            ui.scrollTo("queue_pause")
+            instrumentation.runOnMainSync { fixture.activity.window.setLayout((392 * density).toInt(), WindowManager.LayoutParams.MATCH_PARENT) }
             ui.click("queue_pause")
             ui.click("queue_continue")
             ui.click("queue_stop")
             ui.node("queue_restart").recycle()
-            assertFalse(ui.hasNode("queue_continue"))
+            ui.node("queue_continue").recycle()
             assertFalse(ui.hasNode("queue_stop"))
             for (transient in listOf(QueueStage.PAUSING, QueueStage.STOPPING)) {
                 instrumentation.runOnMainSync { stage.value = transient }

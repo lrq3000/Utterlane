@@ -89,6 +89,7 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
             val active by queue.active.collectAsStateWithLifecycle()
             val record = rows.firstOrNull { it.id == id }
             val stage = record?.stage
+            val stopped = stage == QueueStage.STOPPED
             var confirmingDelete by rememberSaveable(id) { mutableStateOf(false) }
             val showSnapshot = stage?.reviewable == true || stage == QueueStage.PAUSED || stage == QueueStage.WAITING
             val snapshotOwner = remember(id, stage, record?.resumeSamples) {
@@ -98,7 +99,7 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
             var review by remember(id, stage, record?.resumeSamples) { mutableStateOf<TranscriptionDialogModel?>(null) }
             LaunchedEffect(id, stage, record?.resumeSamples) {
                 val input = if (showSnapshot) queue.input(id) else null
-                if (input != null) review = ViewModelProvider(if (stage?.reviewable == true) this@TranscribeActivity else snapshotOwner, object : ViewModelProvider.Factory {
+                if (input != null) review = ViewModelProvider(if (stage?.reviewable == true && !stopped) this@TranscribeActivity else snapshotOwner, object : ViewModelProvider.Factory {
                     @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = TranscriptionDialogModel(app, input) as T
                 })["review-$id-$stage", TranscriptionDialogModel::class.java]
             }
@@ -110,14 +111,15 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
                 val controls = stage?.takeIf { it in setOf(QueueStage.WAITING, QueueStage.PAUSING, QueueStage.PAUSED, QueueStage.PROCESSING,
                     QueueStage.STOPPING, QueueStage.STOPPED) }?.let {
                     QueueJobControls(it, { queue.pause(id) }, { queue.resume(id) }, { queue.stop(id) },
-                        { queue.restart(id) { next -> startActivity(QueueNotifications.intent(this, next)); finish() } }, { confirmingDelete = true })
+                        { queue.restart(id) { next -> startActivity(QueueNotifications.intent(this, next)); finish() } }, { confirmingDelete = true },
+                        canContinue = record?.canContinue == true)
                 }
                 if (processing != null && stage?.reviewable == false) {
                     BackHandler { finish() }
                     TranscriptionDialog(processing, onClose = ::finish, onEmpty = ::finish, onBackground = hide, jobControls = controls)
                 } else if (reader != null) {
                     val state by reader.state.collectAsStateWithLifecycle()
-                    val close = { if (stage?.reviewable != true) finish() else if (!state.importing) reader.requestExit(); Unit }
+                    val close = { if (stage?.reviewable != true || stopped) finish() else if (!state.importing) reader.requestExit(); Unit }
                     BackHandler(onBack = close)
                     Column {
                         record?.message?.let { Text(it, Modifier.padding(8.dp)) }

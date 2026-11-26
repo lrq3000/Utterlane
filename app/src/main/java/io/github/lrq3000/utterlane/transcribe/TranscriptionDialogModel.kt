@@ -60,7 +60,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     private val exitRetention = DialogExitRetention(app, input.queueId)
     val document = TranscriptPager(viewModelScope)
     private var operation: Job? = null
-    @Volatile internal var pauseRequested = false
+    @Volatile private var fileInterruptionRequested = false
+    @Volatile private var mustDrainSpeakerLookahead = false
     @Volatile internal var pausedAt: Long? = null
         private set
     @Volatile private var stoppedByUser = false
@@ -260,12 +261,17 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     internal fun retry(useCurrentModel: Boolean = false, resumeAt: Long? = null, speakerSection: Int = 0) {
         if (state.value.exitRequest != null || state.value.checkingExit || state.value.running || state.value.importing || state.value.saving || state.value.closing || operation?.isActive == true) return
         operation = viewModelScope.launch {
-            val target = input.queueId?.let { QueueTranscriptTarget(app.transcriptionQueue.target(it), resumeAt != null, speakerSection) }
+            val target = input.queueId?.let { QueueTranscriptTarget(app.transcriptionQueue.target(it), resumeAt != null, speakerSection, checkpointFileWindows = true) }
             if (target == null) transcribe(useCurrentModel) else withContext(target) { transcribe(useCurrentModel, resumeAt = resumeAt) }
         }
     }
 
     internal suspend fun awaitOperation() { operation?.join() }
+    internal fun interruptFile() {
+        fileInterruptionRequested = true
+        // Plain ASR safely abandons a pending reply. The diarizer may still own earlier words than the active window and must finish that bounded tail before we publish an offset.
+        if (!mustDrainSpeakerLookahead) operation?.cancel()
+    }
     internal suspend fun cancelOperation(manualStop: Boolean = false) {
         if (manualStop) stoppedByUser = true
         operation?.cancelAndJoin()
@@ -337,11 +343,14 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                             latestPreview = current.store.preview()
                         }
                         val created = checkNotNull(session)
+                        mustDrainSpeakerLookahead = created.requiresSpeakerDrain
+                        currentCoroutineContext().ensureActive()
                         fileProgress.start(created.hasSpeakerFinalization)
                         chosenModel = app.modelManager.selected.value.name
                         resultModelId = app.modelManager.selected.value.id
                         lastRequestedModelId = resultModelId
-                         if (resumeAt != null) created.store.resumeTranscription(audioId, checkNotNull(resultModelId))
+                          if (resumeAt != null && (resumeAt > 0L || created.store.source.completion == TranscriptCompletion.INCOMPLETE))
+                              created.store.resumeTranscription(audioId, checkNotNull(resultModelId))
                          else created.store.beginTranscription(TranscriptSource(audioId, modelName = chosenModel, modelId = resultModelId,
                              recovered = source.recovered, archivePlan = archiveProducer.textPlan))
                          resultMetadata = TranscriptMetadata(source, speakerLabels = resumeAt != null && source.speakerLabels)
@@ -349,7 +358,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         publishTranscriptionState()
                          val accept: suspend (ShortArray) -> Unit = { pcm ->
                              // Flush pending segmentation, dictionary, gain and speaker tails before publishing an input offset. This frees the native session/codec for the next file rather than parking one per paused job.
-                             if (pauseRequested) {
+                              if (fileInterruptionRequested) {
                                  gain.drain(created::accept)
                                  created.finish()
                                  check(created.finished)
@@ -432,7 +441,20 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
             metrics.cancelled()
             // This is a clean handoff, not a broken recording requiring failure recovery. The queue retains the input until explicit disposition.
             withContext(Dispatchers.IO) { processing?.complete() }
-        } catch (e: CancellationException) { metrics.cancelled(); fileProgress.fail(cancelled = true); throw e
+        } catch (e: CancellationException) {
+            metrics.cancelled(); fileProgress.fail(cancelled = true)
+            if (fileInterruptionRequested && !stoppedByUser) withContext(NonCancellable + Dispatchers.IO) {
+                val store = session?.store
+                if (store == null || store.source.completion == TranscriptCompletion.UNKNOWN) pausedAt = resumeAt ?: 0L
+                else if (store.source.completion == TranscriptCompletion.INCOMPLETE) {
+                    try {
+                        pausedAt = (resumeAt ?: 0L) + checkNotNull(session).sealInterruptedFilePrefix()
+                    } catch (error: Exception) {
+                        showError(error) // An unproved checkpoint is not resumable; keep the readable partial and original.
+                    }
+                }
+            }
+            throw e
         } catch (e: Exception) {
             metrics.completed(e.message); fileProgress.fail(); showError(e)
             withContext(Dispatchers.IO) {
@@ -444,7 +466,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
             if (archival == null) archiveProducer.close()
             withContext(NonCancellable + Dispatchers.IO) {
                  // A stopped attempt can be reviewed until explicit dismissal; it is not an unexpected recording failure. Its transcript deliberately remains incomplete.
-                 try { if (stoppedByUser) processing?.complete() else processing?.close() }
+                  try { if (stoppedByUser || pausedAt != null || session?.store?.source?.completion == TranscriptCompletion.COMPLETE) processing?.complete() else processing?.close() }
                 catch (e: Exception) { Log.e("TranscribeDialog", "Could not record processing interruption", e) }
             }
             presenter?.cancel(); activity?.cancel(); diagnostics?.cancel()

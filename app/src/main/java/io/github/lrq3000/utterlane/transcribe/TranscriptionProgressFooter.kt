@@ -31,7 +31,8 @@ import kotlin.math.ceil
  * details share this bounded area so neither errors nor completion move its top. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun TranscriptionProgressFooter(state: TranscriptionDialogState, statistics: Boolean, jobControls: QueueJobControls? = null) {
+internal fun TranscriptionProgressFooter(state: TranscriptionDialogState, statistics: Boolean, jobControls: QueueJobControls? = null,
+    modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val progress = state.fileProgress
     val operation = when {
@@ -70,7 +71,7 @@ internal fun TranscriptionProgressFooter(state: TranscriptionDialogState, statis
         }
     } ?: queueStage?.label()
     val hasTransport = queueStage?.hasProcessingControls == true
-    Column(Modifier.fillMaxWidth().heightIn(max = 180.dp).testTag("transcription_progress")) {
+    Column(modifier.fillMaxWidth().heightIn(max = 180.dp).testTag("transcription_progress")) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -134,7 +135,7 @@ internal fun QueueProcessingControls(jobControls: QueueJobControls, canRestart: 
     val stage = jobControls.stage
     if (!stage.hasProcessingControls) return
     FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (stage == QueueStage.PAUSED)
+        if (jobControls.canContinue)
             DialogAction(Icons.Outlined.PlayArrow, stringResource(R.string.reader_continue_transcription), "queue_continue", onClick = jobControls.resume)
         else if (stage != QueueStage.STOPPED)
             DialogAction(Icons.Outlined.Pause, stringResource(R.string.reader_pause_transcription), "queue_pause", onClick = jobControls.pause)

@@ -10,13 +10,57 @@ import java.io.File
 class QueueJournalTest {
     @get:Rule val temp = TemporaryFolder()
 
+    @Test fun legacyStoppedDescriptorCannotResumeFromItsPreviousPausePosition() {
+        val journal = QueueJournal(temp.root)
+        val row = journal.add("audio", "Legacy", false, QueueStage.STOPPED)
+        val descriptor = File(temp.root, "${row.id}.job")
+        val properties = io.github.lrq3000.utterlane.archive.ArchiveDisk.read(descriptor)
+        properties.setProperty("checkpointed", "true")
+        properties.setProperty("resumeSamples", "32001")
+        io.github.lrq3000.utterlane.archive.AudioMetadata.write(descriptor, properties)
+
+        val cold = QueueJournal(temp.root)
+        assertEquals(QueueStage.STOPPED, cold.find(row.id)?.stage)
+        assertFalse(cold.find(row.id)!!.canContinue)
+        assertNull(cold.continueJob(row.id))
+        assertTrue(cold.protectsAudio(row.audio))
+    }
+
+    @Test fun stoppedCheckpointIsNotDispatchedAndCanOnlyBeRequeuedExplicitly() {
+        val journal = QueueJournal(temp.root)
+        val row = journal.add("audio", "File", false, QueueStage.STOPPED)
+        journal.update(row.copy(resumeSamples = 32_001, checkpointed = true, terminalPosted = true))
+        val cold = QueueJournal(temp.root)
+        assertNull(nextEligibleFile(cold.records(), "current"))
+        assertEquals(emptyList<QueueRecord>(), QueueHistoryIndex(cold.records()).monitorRows)
+        assertEquals(listOf(row.id), QueueHistoryIndex(cold.records()).withoutHistoryRows(emptySet()).map { it.id })
+        assertTrue(cold.protectsOriginal(row.audio))
+        val waiting = cold.continueJob(row.id)!!
+        assertEquals(row.id, waiting.id)
+        assertEquals(32_001L, waiting.resumeSamples)
+        assertFalse(waiting.terminalPosted)
+        assertEquals(waiting, nextEligibleFile(cold.records(), "current"))
+    }
+
+    @Test fun deletingStoppedAttemptReleasesOriginalWithoutRemovingSiblingAttempt() {
+        val journal = QueueJournal(temp.root)
+        val stopped = journal.add("audio", "Stopped", false, QueueStage.STOPPED)
+        journal.update(stopped.copy(resumeSamples = 100L, checkpointed = true))
+        val sibling = journal.add("audio", "Sibling", false, QueueStage.READY)
+        assertTrue(journal.protectsOriginal(stopped.audio))
+        assertTrue(journal.acknowledge(stopped.id))
+        assertFalse(journal.protectsOriginal(stopped.audio))
+        assertTrue(journal.protectsAudio(stopped.audio))
+        assertEquals(sibling, journal.find(sibling.id))
+    }
+
     @Test fun pausedFileIsNeverDispatchedByOtherFileOrMicCompletionEvenAfterReload() {
         val journal = QueueJournal(temp.root)
         val lecture = journal.add("lecture", "Lecture", false, QueueStage.PROCESSING)
         val interview = journal.add("interview", "Interview", false)
         val mic = journal.add("mic", "Dictation", false, QueueStage.DRAINING)
         assertNotNull(journal.transition(lecture.id, setOf(QueueStage.PROCESSING)) {
-            it.copy(stage = QueueStage.PAUSED, resumeSamples = 73001)
+            it.copy(stage = QueueStage.PAUSED, resumeSamples = 73001, checkpointed = true)
         })
         journal.update(interview.copy(stage = QueueStage.READY))
         journal.finishCapture(mic.id, null, "interrupted", false)

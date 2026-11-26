@@ -138,9 +138,13 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
     private fun registerRetry(audio: String, speakers: Boolean, modelId: String?, previous: String? = null): QueueRecord =
         retries.add(audio, speakers, modelId, app.getString(R.string.dialog_title), previous)
 
-    private fun command(action: suspend () -> Unit): Job =
+    private fun command(withDisposition: Boolean = false, action: suspend () -> Unit): Job =
         app.applicationScope.launch {
-            try { init.await(); commands.withLock { action() } }
+            try {
+                init.await()
+                if (withDisposition) disposition.run { commands.withLock { action() } }
+                else commands.withLock { action() }
+            }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) { app.homeController.showMessage(e.message ?: app.getString(R.string.transcribe_error_failed)) }
         }
@@ -151,13 +155,14 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
                 it.copy(stage = if (it.stage == QueueStage.WAITING) QueueStage.PAUSED else QueueStage.PAUSING)
             }?.also { refresh() }
         }
-        if (next?.stage == QueueStage.PAUSING) current.value?.takeIf { it.first == id }?.second?.pauseRequested = true
+        if (next?.stage == QueueStage.PAUSING) current.value?.takeIf { it.first == id }?.second?.interruptFile()
         if (next?.stage == QueueStage.PAUSED) updateWaitingNotice()
     }
 
-    fun resume(id: String) = command {
+    // Confirmed deletion holds disposition through join, tombstoning and acknowledgement. Continue must not requeue the same row between those steps.
+    fun resume(id: String) = command(withDisposition = true) {
         val resumed = withContext(Dispatchers.IO) {
-            journal.transition(id, setOf(QueueStage.PAUSED), QueueRecord::continued)?.also { refresh() }
+            journal.continueJob(id)?.also { terminalNotices.remove(it); refresh() }
         }
         if (resumed != null) wake()
     }
@@ -170,25 +175,39 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
             val before = rows.value.firstOrNull { it.id == id } ?: return@command
             if (before.stage !in setOf(QueueStage.WAITING, QueueStage.PROCESSING, QueueStage.PAUSED, QueueStage.STOPPED)) return@command
             if (!stopFile(id)) return@command
-            val next = withContext(Dispatchers.IO) { registerRetry(before.audio, before.speakers, before.modelId, previous = id).also { refresh() } }
+            val next = withContext(Dispatchers.IO) {
+                registerRetry(before.audio, before.speakers, journal.find(id)?.modelId ?: before.modelId, previous = id).also { refresh() }
+            }
             wake(); open(next.id)
         }.invokeOnCompletion { restarts.release(id) }
     }
 
     suspend fun stopForDeletion(id: String): Boolean = withContext(Dispatchers.Main.immediate) {
         init.await()
-        commands.withLock { stopFile(id) }
+        commands.withLock { stopFile(id, forDeletion = true) }
     }
 
-    private suspend fun stopFile(id: String): Boolean {
+    private suspend fun stopFile(id: String, forDeletion: Boolean = false): Boolean {
         val row = withContext(Dispatchers.IO) {
             journal.transition(id, setOf(QueueStage.WAITING, QueueStage.PROCESSING, QueueStage.PAUSING, QueueStage.PAUSED)) {
-                it.copy(stage = QueueStage.STOPPING)
+                // Stop takes the row out of the active queue. A parked or waiting row has no producer to interrupt, so its existing checkpoint is already safe.
+                if (it.stage == QueueStage.WAITING || it.stage == QueueStage.PAUSED)
+                    it.copy(stage = QueueStage.STOPPED, checkpointed = !forDeletion || it.checkpointed)
+                else it.copy(stage = QueueStage.STOPPING)
             }?.also { refresh() } ?: journal.find(id)
         } ?: return false
-        if (row.stage.reviewable) return true
+        if (row.stage.reviewable) {
+            withContext(Dispatchers.IO) { deliverTerminal(id); updateWaitingNotice() }
+            return true
+        }
         if (row.stage != QueueStage.STOPPING) return false
-        executing?.takeIf { it.first == id }?.second?.cancelAndJoin()
+        executing?.takeIf { it.first == id }?.second?.let { producer ->
+            if (forDeletion) producer.cancelAndJoin()
+            else {
+                current.value?.takeIf { it.first == id }?.second?.interruptFile()
+                producer.join()
+            }
+        }
         return withContext(Dispatchers.IO) {
             journal.transition(id, setOf(QueueStage.STOPPING)) { it.copy(stage = QueueStage.STOPPED, message = null) }
             refresh(); deliverTerminal(id); updateWaitingNotice()
@@ -283,7 +302,12 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
             })[TranscriptionDialogModel::class.java]
             worker = model
             model.awaitOperation()
-            model.pauseRequested = rows.value.firstOrNull { it.id == row.id }?.stage == QueueStage.PAUSING
+            val stageBeforeDecode = rows.value.firstOrNull { it.id == row.id }?.stage
+            if (stageBeforeDecode == QueueStage.PAUSING || stageBeforeDecode == QueueStage.STOPPING) {
+                checkpoint = row.resumeSamples
+                terminal = QueueStage.PAUSED
+                return
+            }
             model.retry(resumeAt = row.resumeSamples.takeIf { row.checkpointed }, speakerSection = row.speakerSection)
             current.value = row.id to model
             coroutineScope {
@@ -296,9 +320,17 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
                 try { model.awaitOperation() } finally { progress.cancel() }
             }
             val end = model.state.value
-            checkpoint = model.pausedAt
+            val request = rows.value.firstOrNull { it.id == row.id }?.stage
+            checkpoint = model.pausedAt ?: row.resumeSamples.takeIf {
+                request in setOf(QueueStage.PAUSING, QueueStage.STOPPING) && end.fileProgress == null && end.store == null
+            }
             usedModel = end.store?.source?.modelId ?: usedModel
-            terminal = if (checkpoint != null) QueueStage.PAUSED else if (end.fileProgress?.stage == FileProgressStage.COMPLETE) QueueStage.READY else QueueStage.FAILED
+            // Once the complete marker wins the race, the result is durable. Do not offer Continue against an already-complete transcript.
+            terminal = when {
+                checkpoint != null -> QueueStage.PAUSED
+                end.completion == TranscriptCompletion.COMPLETE -> QueueStage.READY
+                else -> QueueStage.FAILED
+            }
             message = end.message
         } catch (e: CancellationException) { message = app.getString(R.string.queue_interrupted); throw e }
         catch (e: Exception) { message = e.message ?: app.getString(R.string.transcribe_error_failed) }
@@ -310,11 +342,15 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
                 if (claimed) withContext(Dispatchers.IO) {
                     val finished = journal.transition(row.id, setOf(QueueStage.PROCESSING, QueueStage.PAUSING, QueueStage.STOPPING)) {
                         val stopped = it.stage == QueueStage.STOPPING
-                        it.copy(stage = if (stopped) QueueStage.STOPPED else terminal, message = if (stopped) null else message,
-                            resumeSamples = checkpoint ?: it.resumeSamples, checkpointed = checkpoint != null || it.checkpointed, modelId = usedModel)
+                        it.copy(stage = if (stopped && terminal != QueueStage.READY) QueueStage.STOPPED else terminal,
+                            message = message.takeUnless { stopped }, resumeSamples = checkpoint ?: 0L,
+                            checkpointed = checkpoint != null, modelId = usedModel)
                     }
-                    refresh()
-                    if (finished?.stage == QueueStage.PAUSED) terminalNotices.publish(finished) else deliverTerminal(row.id)
+                     if (finished?.stage == QueueStage.PAUSED) synchronized(journal) {
+                         // A separate screen can continue the job before the producer's final notification. Never overwrite the new stage with a stale pause notice.
+                         if (journal.find(row.id) == finished) terminalNotices.publish(finished)
+                     } else deliverTerminal(row.id)
+                     refresh()
                 }
             }
         }
@@ -330,8 +366,8 @@ internal fun nextEligibleFile(rows: List<QueueRecord>, currentModel: String): Qu
 internal fun QueueRecord.reviewInput(saved: TranscriptEntry?, file: File?, entry: HistoryEntry?) = DialogInput(audioId = audio,
     transcriptId = saved?.id, transcriptPath = file?.absolutePath, transcriptOrigin = false, modelId = modelId,
     metadata = saved?.let(::TranscriptMetadata) ?: entry?.let(::TranscriptMetadata), fileOptions = FileTranscriptionOptions(speakers),
-    recovered = stage == QueueStage.FAILED, queueId = id, pausedSamples = resumeSamples.takeIf { checkpointed && stage == QueueStage.PAUSED },
-    unfinishedQueueView = !stage.reviewable)
+    recovered = stage == QueueStage.FAILED, queueId = id, pausedSamples = resumeSamples.takeIf { checkpointed && canContinue },
+    unfinishedQueueView = !stage.reviewable || stage == QueueStage.STOPPED && canContinue)
 
 /** A teardown before Stop can suppress handoff after a preview already started registration. Complete that exact row after its writer exits; do not start a new producer. */
 internal suspend fun afterCapturePublication(registering: Deferred<Unit>?, handoff: Deferred<Boolean>?, complete: suspend () -> Unit) {
