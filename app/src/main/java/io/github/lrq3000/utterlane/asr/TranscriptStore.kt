@@ -17,14 +17,14 @@ class TranscriptStore(val file: File) {
             CacheArtifacts.deleteWhenReleased(file)
             CacheArtifacts.deleteWhenReleased(TranscriptSource.metadata(file))
         }
-        fun prune(directory: File, maximumAgeMs: Long) {
-            directory.listFiles()?.filter { it.name.endsWith(".source") }?.forEach { metadata ->
+        fun prune(directory: File, maximumAgeMs: Long, eligible: (File) -> Boolean = { true }) {
+            directory.listFiles()?.filter { it.name.endsWith(".source") && eligible(it) }?.forEach { metadata ->
                 val file = File(directory, metadata.name.removeSuffix(".source"))
                 // Explicit deletion can finish between directory listing and read.
                 val discarded = try { TranscriptSource.read(file).discarded } catch (_: java.io.IOException) { false }
                 if (discarded) deleteArtifacts(file)
             }
-            CacheArtifacts.prune(directory, maximumAgeMs, includeDirectories = false,
+            CacheArtifacts.prune(directory, maximumAgeMs, includeDirectories = false, eligible = eligible,
                 referenceTime = TranscriptSource::retentionReference)
         }
     }

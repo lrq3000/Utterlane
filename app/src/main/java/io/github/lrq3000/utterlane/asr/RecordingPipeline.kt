@@ -31,7 +31,8 @@ class RecordingPipeline(
         onSamples: (ShortArray) -> Unit = {},
         onCaptureEnded: suspend () -> Unit = {},
         onProcessingFailed: suspend (Exception) -> Unit = {},
-        closeConsumer: () -> Unit = {}
+        closeConsumer: () -> Unit = {},
+        onCaptureClosing: () -> Unit = {}
     ): Outcome = coroutineScope {
         val owner = currentCoroutineContext()
         val queue = BoundedAudioQueue(options, recording.rolling?.format ?: io.github.lrq3000.utterlane.archive.PcmFormat())
@@ -61,6 +62,7 @@ class RecordingPipeline(
             } catch (e: CancellationException) { throw e
             } catch (e: Exception) { captureError = e
             } finally {
+                onCaptureClosing()
                 dispatched.complete(Unit)
                 queue.close()
                 withContext(NonCancellable) { onCaptureEnded() }

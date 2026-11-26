@@ -15,8 +15,9 @@ import androidx.core.view.WindowInsetsCompat
 
 object RecordingUIBuilder {
     data class RecordingUI(val view: LinearLayout, val statusText: TextView, val panel: RecordingPanel)
-    fun createRecordingBar(context: Context, onDoneClick: () -> Unit, onCancelClick: () -> Unit): RecordingUI {
-        val panel = RecordingPanel(context, onDoneClick, onCancelClick)
+    fun createRecordingBar(context: Context, onDoneClick: () -> Unit, onCancelClick: () -> Unit,
+        onSettingsClick: ((io.github.lrq3000.utterlane.asr.CapturePhase) -> Unit)? = null): RecordingUI {
+        val panel = RecordingPanel(context, onDoneClick, onCancelClick, onSettingsClick)
         return RecordingUI(panel, panel.statusText, panel)
     }
 }
@@ -28,11 +29,12 @@ class RecordingOverlay(private val context: Context) {
     private var panel: RecordingPanel? = null
     var onDoneClick: (() -> Unit)? = null
     var onCancelClick: (() -> Unit)? = null
+    var onSettingsClick: ((io.github.lrq3000.utterlane.asr.CapturePhase) -> Unit)? = null
 
     fun show() {
         if (overlayView != null) return
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val ui = RecordingUIBuilder.createRecordingBar(context, { onDoneClick?.invoke() }, { onCancelClick?.invoke() })
+        val ui = RecordingUIBuilder.createRecordingBar(context, { onDoneClick?.invoke() }, { onCancelClick?.invoke() }, onSettingsClick)
         overlayView = ui.view; panel = ui.panel
         // Navigation/cutout padding keeps the large stop target above system controls.
         ViewCompat.setOnApplyWindowInsetsListener(ui.view) { view, insets ->
@@ -47,6 +49,7 @@ class RecordingOverlay(private val context: Context) {
     }
     fun bind(scope: CoroutineScope, session: MicrophoneSession) { panel?.bind(scope, session.metrics.state, session.speakerControl) }
     fun setStatus(text: String) { panel?.preview(text) }
+    fun dismissSettingsPrompt(): Boolean = panel?.dismissSettingsPrompt() == true
     fun hide() {
         panel?.release()
         overlayView?.let { try { windowManager?.removeView(it) } catch (_: IllegalArgumentException) { /* already removed by the window manager */ } }

@@ -722,7 +722,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         TranscriptSource.copies(app.transcriptionQueue.resultsDirectory)
     private fun linkedWorkingCopies(recoverable: Boolean = false): List<WorkingTranscriptCopy> {
         val audioId = ownedAudioId ?: return emptyList()
-        val copies = if (recoverable) TranscriptSource.recoverableCopies(File(app.cacheDir, "transcripts")) else cachedWorkingCopies()
+        val copies = if (recoverable) TranscriptSource.recoverableCopies(File(app.cacheDir, "transcripts")) +
+            app.transcriptionQueue.recoverableUnclaimedText() else cachedWorkingCopies()
         return copies.filter { it.source.audioId == audioId }
     }
 

@@ -66,6 +66,14 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
         require(UUID.fromString(id).toString() == id)
         return File(resultsDirectory.apply { check(isDirectory || mkdirs() || isDirectory) }, "$id.txt")
     }
+    fun ownsWorkingText(file: File): Boolean =
+        file.parentFile == resultsDirectory && journal.find(file.name.removeSuffix(".source").removeSuffix(".txt")) != null
+
+    fun recoverableUnclaimedText() = TranscriptSource.recoverableCopies(resultsDirectory).filterNot { ownsWorkingText(it.file) }
+
+    fun pruneUnclaimedText(maximumAgeMs: Long) {
+        io.github.lrq3000.utterlane.asr.TranscriptStore.prune(resultsDirectory, maximumAgeMs) { !ownsWorkingText(it) }
+    }
     private val terminalNotices by lazy { QueueNotifications(app) }
     private fun deliverTerminal(id: String) {
         try { terminalDelivery.deliver(id) { terminalNotices.publish(it) } }
@@ -229,7 +237,7 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
             val row = if (current == null) journal.add(audio, label, speakers, QueueStage.DRAINING, id)
                 else current.copy(stage = QueueStage.DRAINING, speakers = speakers).also(journal::update)
             app.recordingHistory.refreshQueueHold(audio); refresh()
-            QueueNotifications(app).post(row)
+            QueueNotifications(app).publish(row)
         }
     }
     suspend fun completeCapture(id: String, failure: String?, speakers: Boolean?) {

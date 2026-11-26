@@ -1,6 +1,10 @@
 package io.github.lrq3000.utterlane.settings
 
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import android.util.Log
+import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -20,6 +24,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.asr.LiveSpeakerControl
+import io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator
 
 internal enum class SettingsPage(
     val route: String,
@@ -56,6 +61,16 @@ internal fun SpeakerModelNotice() {
 /** Consume the explicit request only after the recording owner can safely hand over its text. */
 internal fun LiveSpeakerControl.speakerSettingsAction(context: Context): (() -> Unit)? =
     if (takeSettingsRequest()) ({ SettingsActivity.openSpeakerSettings(context) }) else null
+
+internal fun openSettingsFromDictation(context: Context) {
+    val target = Intent(context, SettingsActivity::class.java).putExtra(HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true)
+    if (context !is Activity) target.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try { context.startActivity(target) }
+    catch (error: RuntimeException) {
+        Log.w("SettingsActivity", "Could not open Settings from dictation", error)
+        Toast.makeText(context, R.string.dictation_settings_open_failed, Toast.LENGTH_LONG).show()
+    }
+}
 
 @Composable
 internal fun SettingsDirectory(onOpenPage: (SettingsPage) -> Unit) {

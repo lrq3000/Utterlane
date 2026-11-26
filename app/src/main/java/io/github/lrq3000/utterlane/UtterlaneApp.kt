@@ -167,6 +167,8 @@ class UtterlaneApp : Application() {
 
     fun cleanupCacheArtifacts() {
         io.github.lrq3000.utterlane.asr.TranscriptStore.prune(File(cacheDir, "transcripts"), 7 * 86400000L)
+        // An ordinary keyboard take may have been interrupted before opting into the queue. Do not expire any registered result here.
+        transcriptionQueue.pruneUnclaimedText(7 * 86400000L)
         CacheArtifacts.prune(File(cacheDir, "transcripts/exports"), 86400000L)
         CacheArtifacts.prune(File(cacheDir, "history-exports"), 86400000L)
     }

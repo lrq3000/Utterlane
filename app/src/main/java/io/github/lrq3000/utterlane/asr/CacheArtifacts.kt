@@ -44,9 +44,9 @@ object CacheArtifacts {
     }
 
     fun prune(directory: File, maximumAgeMs: Long, now: Long = System.currentTimeMillis(), includeDirectories: Boolean = true,
-        referenceTime: (File) -> Long = { it.lastModified() }) {
+        eligible: (File) -> Boolean = { true }, referenceTime: (File) -> Long = { it.lastModified() }) {
         directory.listFiles()?.forEach { file ->
-            if (!includeDirectories && file.isDirectory) return@forEach
+            if ((!includeDirectories && file.isDirectory) || !eligible(file)) return@forEach
             val reference = referenceTime(file)
             val artifact = file.canonicalFile
             val delete = synchronized(states) {

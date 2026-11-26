@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item type="id" name="recording_settings_gear" />
+    <item type="id" name="recording_settings_back" />
+    <item type="id" name="recording_settings_confirm" />
+    <string name="dictation_settings_discard_warning">Opening Settings now will stop and discard this recording. Text already inserted stays in the editor.</string>
+    <string name="dictation_settings_keep_recording">Keep recording</string>
+    <string name="dictation_settings_discard">Stop and discard</string>
+    <string name="dictation_settings_background_warning">The recording has stopped. Finish the transcription in the background while you use Settings. Find the result in Utterlane History.</string>
+    <string name="dictation_settings_back">Back to transcription</string>
+    <string name="dictation_settings_background">Continue in background</string>
+    <string name="dictation_settings_queue_failed">Could not move the transcription to the background. It can still finish here.</string>
+    <string name="dictation_settings_open_failed">Could not open Utterlane Settings.</string>
+</resources>

@@ -54,7 +54,9 @@ class DictionaryManager(private val context: Context) {
     private fun loadRulesSync() {
         try {
             if (!rulesFile.exists()) {
-                _rules.value = emptyList()
+                val defaults = listOf(ReplacementRule("utterlane", "Utterlane"))
+                _rules.value = defaults
+                rebuildCompiledRules(defaults)
                 return
             }
 

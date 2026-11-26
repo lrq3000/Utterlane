@@ -1,9 +1,11 @@
 package io.github.lrq3000.utterlane.audio
 
 import android.app.Application
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -31,9 +33,20 @@ internal class AudioRoutingPlatform : Closeable {
     val application: Application = RuntimeEnvironment.getApplication()
     val manager = mockk<AudioManager>(relaxed = true)
     val record = mockk<AudioRecord>(relaxed = true)
+    var initialScoState: Int? = null
     val context = object : ContextWrapper(application) {
         override fun getSystemService(name: String): Any? =
             if (name == Context.AUDIO_SERVICE) manager else super.getSystemService(name)
+
+        override fun registerReceiver(receiver: BroadcastReceiver?, filter: IntentFilter, broadcastPermission: String?, scheduler: Handler?): Intent? =
+            super.registerReceiver(receiver, filter, broadcastPermission, scheduler).let { scoSnapshot(filter) ?: it }
+
+        override fun registerReceiver(receiver: BroadcastReceiver?, filter: IntentFilter, broadcastPermission: String?, scheduler: Handler?, flags: Int): Intent? =
+            super.registerReceiver(receiver, filter, broadcastPermission, scheduler, flags).let { scoSnapshot(filter) ?: it }
+
+        private fun scoSnapshot(filter: IntentFilter): Intent? = initialScoState?.takeIf {
+            filter.hasAction(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED)
+        }?.let { Intent(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED).putExtra(AudioManager.EXTRA_SCO_AUDIO_STATE, it) }
     }
     val phone = device(1, AudioDeviceInfo.TYPE_BUILTIN_MIC, "", source = true, name = "Phone")
     var inputDevices: List<AudioDeviceInfo> = listOf(phone)

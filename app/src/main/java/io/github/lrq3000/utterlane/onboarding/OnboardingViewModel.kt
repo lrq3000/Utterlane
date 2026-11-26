@@ -31,6 +31,8 @@ data class OnboardingUiState(
     val modelReady: Boolean get() = choice?.id == device.selectedModelId && device.speechTransfer.phase == TransferPhase.READY
     val floatingActive: Boolean get() = device.preferences.floating && device.permissions.floatingRunning && device.permissions.canFloat(modelReady)
     val transfer: OnboardingTransfer get() = if (step == OnboardingStep.SPEAKER_DOWNLOAD) device.speakerTransfer else device.speechTransfer
+    internal val keepSetupScreenOn get() = trial.active ||
+        (step == OnboardingStep.DOWNLOAD || step == OnboardingStep.SPEAKER_DOWNLOAD) && transfer.phase == TransferPhase.DOWNLOADING
 }
 
 class OnboardingViewModel(
@@ -228,7 +230,7 @@ class OnboardingViewModel(
     fun stopForBackground() = trial.stopForBackground()
     override fun onCleared() {
         trial.cancel()
-        transferTarget?.let { services.cancelTransfer(it) }
+        // The scope cancels the request when the wizard is destroyed; only explicit Back discards the download checkpoint.
         super.onCleared()
     }
 
