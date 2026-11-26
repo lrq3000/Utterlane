@@ -38,7 +38,8 @@ internal enum class SettingsPage(
     VOICE("voice", R.string.settings_voice_title, R.string.settings_voice_summary, Icons.Default.Mic),
     FILES("files", R.string.settings_files_title, R.string.settings_files_summary, Icons.Default.FolderOpen),
     STORAGE("storage", R.string.settings_storage_title, R.string.settings_storage_summary, Icons.Default.Storage),
-    APPEARANCE("appearance", R.string.settings_appearance_title, R.string.settings_appearance_summary, Icons.Default.Palette);
+    APPEARANCE("appearance", R.string.settings_appearance_title, R.string.settings_appearance_summary, Icons.Default.Palette),
+    ABOUT("about", R.string.settings_about_title, R.string.settings_about_summary, Icons.Default.Info);
 
     companion object {
         fun fromRoute(route: String?): SettingsPage? = entries.firstOrNull { it.route == route }

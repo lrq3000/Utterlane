@@ -70,6 +70,9 @@
     <string name="onboarding_download_ready_body">Your model is installed. Recognition can now happen right on your phone.</string>
     <string name="onboarding_download_error">Let’s try that again.</string>
     <string name="onboarding_download_error_body">The transfer did not finish. Retry, import local files, or choose another model.</string>
+    <string name="onboarding_download_saved_progress">%1$d%% downloaded and saved. Retry to continue when possible.</string>
+    <string name="onboarding_download_reconnecting">Connecting… %1$d%% saved</string>
+    <string name="onboarding_download_connecting">Connecting…</string>
     <string name="onboarding_download_progress">%1$d of %2$d MB · %3$d%%</string>
     <string name="onboarding_download_verifying">Checking model files…</string>
     <string name="onboarding_download_pending">Ready to download · %1$d MB</string>

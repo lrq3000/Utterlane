@@ -29,13 +29,13 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** One bottom-panel presentation for IME and system/accessibility overlays. */
 class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit,
-    onSettings: ((CapturePhase) -> Unit)? = null) : LinearLayout(context) {
+    onSettings: (CapturePhase) -> Unit) : LinearLayout(context) {
     private var themeMode = SettingsRepository.THEME_SYSTEM
     private val initialPalette = NativeBrandStyle.palette(context)
     private val foreground = initialPalette.text.toArgb()
     private val secondary = initialPalette.muted.toArgb()
     private val title = label(20f, foreground)
-    private val settingsPrompt = onSettings?.let { KeyboardSettingsPrompt(context, it) }
+    private val settingsPrompt = KeyboardSettingsPrompt(context, onSettings)
     private val details = label(13f, secondary)
     private val recognition = label(13f, secondary)
     private val signal = label(14f, initialPalette.warning.toArgb())
@@ -114,14 +114,13 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit,
         addView(LinearLayout(context).apply {
             orientation = VERTICAL
             setPadding(0, dp(16), 0, 0)
-            if (settingsPrompt == null) addView(title)
-            else addView(LinearLayout(context).apply {
+            addView(LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 addView(title, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
                 addView(settingsPrompt.gear, LayoutParams(dp(48), dp(48)))
             })
-            settingsPrompt?.let { addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)) }
+            addView(settingsPrompt, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
             addView(details); addView(recognition); addView(signal)
             addView(input); addView(inputWarning)
         }, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
@@ -161,12 +160,12 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit,
         }
     }
     fun preview(text: String) { statusText.text = text.takeLast(300) }
-    fun dismissSettingsPrompt(): Boolean = settingsPrompt?.dismiss() == true
+    fun dismissSettingsPrompt(): Boolean = settingsPrompt.dismiss()
     fun release() {
         observer?.cancel(); observer = null
         themeObserver?.cancel(); themeObserver = null
         speakerObserver?.cancel(); speakerObserver = null; speakerControl = null
-        settingsPrompt?.dismiss()
+        settingsPrompt.dismiss()
         keepScreenOn = false
     }
 
@@ -198,12 +197,12 @@ class RecordingPanel(context: Context, onStop: () -> Unit, onCancel: () -> Unit,
         speakerSettings.setTextColor(palette.onContainer.toArgb())
         speakers.backgroundTintList = null
         speakers.background = waveformSpeakerBackground(context, palette)
-        settingsPrompt?.applyPalette(palette)
+        settingsPrompt.applyPalette(palette)
         waveform.applyPalette(palette)
     }
 
     private fun render(snapshot: CaptureSnapshot, showStatistics: Boolean = false) {
-        settingsPrompt?.update(snapshot.phase)
+        settingsPrompt.update(snapshot.phase)
         input.text = AudioInputText.caption(context, snapshot)
         val warning = AudioInputText.warning(context, snapshot)
         // Do not reset an accessibility live region on every waveform publication.

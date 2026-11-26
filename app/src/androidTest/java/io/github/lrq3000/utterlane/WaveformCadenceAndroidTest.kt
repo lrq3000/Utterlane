@@ -42,7 +42,7 @@ class WaveformCadenceAndroidTest {
         lateinit var button: View
         try {
             instrumentation.runOnMainSync {
-                val recordingPanel = RecordingPanel(activity, {}, {})
+                val recordingPanel = RecordingPanel(activity, {}, {}, {})
                 panel = recordingPanel
                 recordingPanel.bind(scope, metrics.state)
                 button = recordingPanel.findViewById(R.id.recording_done)

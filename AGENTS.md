@@ -144,6 +144,8 @@ When bumping a version, update all of these:
 
 ## Architecture
 
+Utterlane-owned dictation launched by the keyboard mic (voice intent or IME), floating mic, accessibility shortcut, or onboarding practice button must use the same `RecordingPanel` and `DictationSession`. Keep Android window hosting and result delivery in the entry-point adapters, not separate control layouts or separate Settings/discard logic.
+
 ### Core Components
 | Component | Purpose |
 |-----------|---------|

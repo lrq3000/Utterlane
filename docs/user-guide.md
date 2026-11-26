@@ -284,9 +284,9 @@ device memory. Missing companions are not downloaded automatically. TTS/music
 models cannot be used for speech input. See the
 [developer guide](development.md#custom-models) for supported formats and behavior.
 
-## Settings from keyboard dictation
+## Settings from the dictation dialog
 
-Tap the top-right gear in the keyboard’s Utterlane dictation panel. While the microphone is listening, **Keep recording** closes the warning, and **Stop and discard** stops the microphone, discards the current recording, and opens Settings. Text already inserted into the editor remains there.
+Tap the gear to the right of **Listening — speak now**. The same Utterlane dialog is used by the keyboard mic, floating mic, accessibility shortcut, and onboarding practice mic. While the microphone is listening, **Keep recording** closes the warning, and **Stop and discard** stops the microphone, discards the current recording, and opens Settings. Text already inserted stays in its original editor or practice field.
 
 After recording stops, **Back to transcription** keeps the panel open. **Continue in background** opens Settings and lets Utterlane finish the same transcription. Open the result from **Transcripts** or the completion notification, if notifications are enabled.
 
@@ -295,6 +295,10 @@ After recording stops, **Back to transcription** keeps the panel open. **Continu
 Under **Settings → Speech recognition → Word Corrections**, use your own whole-word replacement rules to fix recurring names and recognition mistakes. Corrections are applied after speech recognition.
 
 If you have not saved any custom rules, Utterlane starts with a removable correction for the spelling `Utterlane`. Existing dictionaries, including an explicitly cleared dictionary, are not changed.
+
+## About Utterlane
+
+**Settings → About** shows your installed version, the project's licensing and credits, and its GitHub link. Opening the page works offline; following a link or downloading a model requires connectivity.
 
 ## Speaker labels
 

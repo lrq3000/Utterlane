@@ -63,7 +63,7 @@ class StreamingTextTarget(
     }
 
     fun finish(store: TranscriptStore?, preserve: Boolean = false, afterDelivery: (() -> Unit)? = null,
-        onResultDelivered: (() -> Unit)? = null) {
+        onResultDelivered: (() -> Unit)? = null, onResultPreserved: (() -> Unit)? = null) {
         if (store == null) { close(); afterDelivery?.invoke(); return }
         if (finishing) return
         finishing = true
@@ -71,10 +71,11 @@ class StreamingTextTarget(
             TranscriptionPower(context).use {
                 mutex.withLock {
                     var recoveryPosted = false
+                    var resultDelivered = false
                     fun recover() {
                         if (!recoveryPosted) {
                             recoveryPosted = true
-                            TranscriptRecovery.show(context, store)
+                            TranscriptRecovery.show(context, store, onSaved = onResultPreserved.takeUnless { preserve || resultDelivered })
                         }
                     }
                     try {
@@ -85,11 +86,13 @@ class StreamingTextTarget(
                             withContext(Dispatchers.IO) { store.dispose() }
                         } else {
                             try {
-                                if (DeviceWakeObserver.canDeliver(context)) {
+                                if (!closed && DeviceWakeObserver.canDeliver(context)) {
                                     val text = withContext(Dispatchers.IO) { store.readForTransfer() }
-                                    if (text != null) {
+                                    // Detachment or screen locking can happen while the disk read is suspended.
+                                    if (text != null && !closed && DeviceWakeObserver.canDeliver(context)) {
                                         (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Transcription", text))
                                         // A complete clipboard fallback retires temporary audio just like editor delivery; the recovery copy keeps the text.
+                                        resultDelivered = !preserve
                                         if (!preserve) onResultDelivered?.invoke()
                                         Toast.makeText(context, context.getString(R.string.toast_no_field_clipboard), Toast.LENGTH_LONG).show()
                                     }

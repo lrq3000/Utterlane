@@ -10,7 +10,8 @@ data class OnboardingModel(
     val explanation: ModelExplanation, val tier: ModelTier? = null
 )
 enum class TransferPhase { IDLE, DOWNLOADING, IMPORTING, VERIFYING, READY, ERROR }
-data class OnboardingTransfer(val phase: TransferPhase = TransferPhase.IDLE, val progress: Int = 0, val error: String? = null) {
+data class OnboardingTransfer(val phase: TransferPhase = TransferPhase.IDLE, val progress: Int = 0, val error: String? = null,
+    val connecting: Boolean = false) {
     val active: Boolean get() = phase == TransferPhase.DOWNLOADING || phase == TransferPhase.IMPORTING || phase == TransferPhase.VERIFYING
 }
 data class OnboardingPreferences(

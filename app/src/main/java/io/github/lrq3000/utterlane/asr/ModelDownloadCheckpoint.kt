@@ -24,33 +24,34 @@ internal class ModelDownloadCheckpoint(private val directory: File, private val 
         check(payload.mkdirs() || payload.isDirectory) { "Cannot create model payload directory" }
     }
 
-    suspend fun fetch(artifact: ModelArtifact, open: suspend (Request) -> ModelManager.DownloadBody, progress: (Long) -> Unit) {
+    suspend fun fetch(artifact: ModelArtifact, open: suspend (Request) -> ModelManager.DownloadBody,
+        progress: (bytes: Long, connecting: Boolean) -> Unit) {
         val complete = File(payload, artifact.localName)
-        if (ArtifactVerifier.valid(complete, artifact)) {
-            progress(artifact.bytes)
-            return
-        }
+        if (ArtifactVerifier.valid(complete, artifact)) return
         val partial = File(directory, "${artifact.localName}.part")
         val validator = File(directory, "${artifact.localName}.etag")
         fun resetPartial() {
             Files.deleteIfExists(partial.toPath())
             Files.deleteIfExists(validator.toPath())
         }
-        val savedTag = if (validator.isFile) strongTag(validator.readText()) else null
+        // A digest pins the complete representation even when the CDN changes how it serves or tags the file.
+        val pinned = artifact.sha256 != null
+        val savedTag = if (!pinned && validator.isFile) strongTag(validator.readText()) else null
         var offset = partial.length()
         // A fully written but not-yet-committed file might have been interrupted
         // just before verification. Only a pinned digest can prove it now.
-        if (offset == artifact.bytes && artifact.sha256 != null && ArtifactVerifier.valid(partial, artifact)) {
+        if (offset == artifact.bytes && pinned && ArtifactVerifier.valid(partial, artifact)) {
             Files.move(partial.toPath(), complete.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-            progress(artifact.bytes)
+            progress(artifact.bytes, false)
             return
         }
-        if (offset >= artifact.bytes || (offset > 0L && savedTag == null && artifact.sha256 == null)) {
+        if (offset >= artifact.bytes || (offset > 0L && savedTag == null && !pinned)) {
             resetPartial()
             offset = 0L
         }
         while (true) {
             currentCoroutineContext().ensureActive()
+            progress(offset, true)
             val request = Request.Builder().url(artifact.url).header("Accept-Encoding", "identity").apply {
                 if (offset > 0) {
                     header("Range", "bytes=$offset-")
@@ -63,8 +64,7 @@ internal class ModelDownloadCheckpoint(private val directory: File, private val 
                 val tag = response.header("ETag")
                 val full = response.code == 200
                 val suffix = response.code == 206 && offset > 0 && response.header("Content-Range") == expectedRange &&
-                    (if (artifact.sha256 == null) savedTag != null && savedTag == tag
-                     else savedTag == null || tag == null || tag == savedTag)
+                    (pinned || savedTag != null && savedTag == tag)
                 val identityEncoding = encoding == null || encoding.equals("identity", ignoreCase = true)
                 when {
                     offset > 0 && (response.code == 416 || response.code == 206 && (!suffix || !identityEncoding)) -> true
@@ -74,14 +74,23 @@ internal class ModelDownloadCheckpoint(private val directory: File, private val 
                             // A server can ignore Range, including after a representation change.
                             resetPartial()
                             offset = 0L
-                            strongTag(tag)?.let(validator::writeText)
+                            progress(offset, false)
+                            if (!pinned) strongTag(tag)?.let(validator::writeText)
                         }
                         try {
-                            writeArtifact(artifact, partial, response, offset, progress)
+                            writeArtifact(artifact, partial, response, offset, { progress(it, false) })
                             Files.move(partial.toPath(), complete.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
                         } catch (badContent: SecurityException) {
                             resetPartial()
+                            progress(0, false)
                             throw badContent
+                        } catch (interrupted: IOException) {
+                            if (!pinned && strongTag(tag) == null) {
+                                // These bytes cannot be identified on the next request; do not report them as resumable.
+                                resetPartial()
+                                progress(0, false)
+                            }
+                            throw interrupted
                         }
                         false
                     }

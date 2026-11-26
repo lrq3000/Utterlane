@@ -925,6 +925,7 @@ private fun SettingsScreen(
                 )
             }
 
+            if (page == SettingsPage.ABOUT) AboutSettings()
             if (page == SettingsPage.ROOT) SettingsDirectory(onOpenPage)
             if (page == SettingsPage.ROOT) ListItem(
                 headlineContent = { Text(stringResource(R.string.onboarding_run_again)) },

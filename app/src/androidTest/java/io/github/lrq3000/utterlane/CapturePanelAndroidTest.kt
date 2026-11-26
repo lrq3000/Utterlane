@@ -46,7 +46,7 @@ class CapturePanelAndroidTest {
             !grantOverlay || app.packageName.endsWith(".qolsandbox"))
         val activity = instrumentation.startActivitySync(HistoryActivity.intent(app).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         val context = ContextThemeWrapper(activity, android.R.style.Theme_Translucent_NoTitleBar)
-        val overlay = io.github.lrq3000.utterlane.ui.RecordingOverlay(context)
+        val overlay = io.github.lrq3000.utterlane.ui.RecordingOverlay(context) {}
         lateinit var button: android.widget.ToggleButton
         try {
             if (grantOverlay) appOp("set $overlayOp allow")
@@ -54,7 +54,7 @@ class CapturePanelAndroidTest {
             settings.setThemeMode("dark")
             instrumentation.runOnMainSync {
                 overlay.show()
-                overlay.bind(scope, session)
+                overlay.bind(scope, session.metrics.state, session.speakerControl)
                 val panel = overlay.javaClass.getDeclaredField("overlayView").apply { isAccessible = true }.get(overlay) as View
                 button = panel.findViewById(R.id.recording_speakers)
             }
@@ -141,7 +141,7 @@ class CapturePanelAndroidTest {
         lateinit var panel: RecordingPanel
         try {
             instrumentation.runOnMainSync {
-                panel = RecordingPanel(app, { stops++; metrics.captureEnded() }, {}).also {
+                panel = RecordingPanel(app, { stops++; metrics.captureEnded() }, {}, {}).also {
                     it.bind(scope, metrics.state, control)
                 }
             }
@@ -172,8 +172,8 @@ class CapturePanelAndroidTest {
         val activity = instrumentation.startActivitySync(HistoryActivity.intent(app).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         try {
             instrumentation.runOnMainSync {
-                without = RecordingPanel(activity, {}, {}).also { it.bind(scope, metrics.state) }
-                with = RecordingPanel(activity, { stops++ }, {}).also { it.bind(scope, metrics.state, control) }
+                without = RecordingPanel(activity, {}, {}, {}).also { it.bind(scope, metrics.state) }
+                with = RecordingPanel(activity, { stops++ }, {}, {}).also { it.bind(scope, metrics.state, control) }
                 activity.setContentView(FrameLayout(activity).apply {
                     addView(with, FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -213,7 +213,7 @@ class CapturePanelAndroidTest {
             instrumentation.runOnMainSync {
                 // App-language changes recreate the panel. Start with a new layout so inherited directions and relative margins resolve together.
                 with.release()
-                with = RecordingPanel(activity, { stops++ }, {}).also { it.bind(scope, metrics.state, control) }
+                with = RecordingPanel(activity, { stops++ }, {}, {}).also { it.bind(scope, metrics.state, control) }
                 activity.setContentView(FrameLayout(activity).apply {
                     layoutDirection = View.LAYOUT_DIRECTION_RTL
                     addView(with, FrameLayout.LayoutParams(
@@ -255,7 +255,7 @@ class CapturePanelAndroidTest {
         lateinit var button: android.widget.ToggleButton
         try {
             instrumentation.runOnMainSync {
-                panel = RecordingPanel(app, {}, {}).also { it.bind(scope, metrics.state, control) }
+                panel = RecordingPanel(app, {}, {}, {}).also { it.bind(scope, metrics.state, control) }
                 button = panel.findViewById(R.id.recording_speakers)
             }
             fun renderedBackground(fractionX: Float, fractionY: Float): Int {
@@ -318,7 +318,7 @@ class CapturePanelAndroidTest {
                 app.settingsRepository.setThemeMode(if (dark) "dark" else "light")
                 instrumentation.runOnMainSync {
                     panel?.release()
-                    panel = RecordingPanel(app, {}, {}).also { it.bind(scope, metrics.state) }
+                    panel = RecordingPanel(app, {}, {}, {}).also { it.bind(scope, metrics.state) }
                     assertNotNull("Always-visible actual-input caption", panel!!.findViewById<TextView>(R.id.recording_input))
                     assertNotNull("Separate persistent warning", panel!!.findViewById<TextView>(R.id.recording_input_warning))
                 }
@@ -368,7 +368,7 @@ class CapturePanelAndroidTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp
         instrumentation.runOnMainSync {
-            val panel = RecordingPanel(app, {}, {})
+            val panel = RecordingPanel(app, {}, {}, {})
             try {
                 val backlog = app.getString(R.string.recognition_backlog, 0.0, 0.0, 0.0)
                 assertFalse("Statistics must be hidden before an explicit opt-in",
@@ -386,7 +386,7 @@ class CapturePanelAndroidTest {
         var stopped = false
         lateinit var panel: RecordingPanel
         instrumentation.runOnMainSync {
-            panel = RecordingPanel(app, { stopped = true; metrics.stopping(); metrics.captureEnded() }, {})
+            panel = RecordingPanel(app, { stopped = true; metrics.stopping(); metrics.captureEnded() }, {}, {})
             panel.bind(scope, metrics.state)
         }
         try {
@@ -434,7 +434,7 @@ class CapturePanelAndroidTest {
         val backlog = RecognitionStatusText.backlog(app, metrics.state.value)
         val activity = RecognitionStatusText.activity(app, metrics.state.value.recognition)
         lateinit var panel: RecordingPanel
-        instrumentation.runOnMainSync { panel = RecordingPanel(app, {}, {}) }
+        instrumentation.runOnMainSync { panel = RecordingPanel(app, {}, {}, {}) }
         try {
             settings.setShowTranscriptionStreamStatistics(false)
             instrumentation.runOnMainSync { panel.bind(scope, metrics.state) }

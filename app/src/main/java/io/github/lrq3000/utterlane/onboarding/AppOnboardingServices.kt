@@ -18,7 +18,9 @@ import io.github.lrq3000.utterlane.asr.DiarizationModel
 import io.github.lrq3000.utterlane.asr.ModelCatalog
 import io.github.lrq3000.utterlane.asr.ModelDefinition
 import io.github.lrq3000.utterlane.asr.ModelManager
-import io.github.lrq3000.utterlane.asr.MicrophoneSession
+import io.github.lrq3000.utterlane.asr.CapturePhase
+import io.github.lrq3000.utterlane.service.DictationSession
+import io.github.lrq3000.utterlane.service.finishForegroundDictation
 import io.github.lrq3000.utterlane.settings.speakerSettingsAction
 import io.github.lrq3000.utterlane.service.FloatingMicService
 import io.github.lrq3000.utterlane.service.TextInjectionService
@@ -125,11 +127,12 @@ class AppOnboardingServices(private val app: UtterlaneApp) : OnboardingServices 
 
     private fun transferState(state: ModelManager.DownloadState): OnboardingTransfer = when (state) {
         ModelManager.DownloadState.NotStarted -> OnboardingTransfer()
-        is ModelManager.DownloadState.Downloading -> OnboardingTransfer(TransferPhase.DOWNLOADING, state.progress)
+        is ModelManager.DownloadState.Downloading -> OnboardingTransfer(TransferPhase.DOWNLOADING, state.progress, connecting = state.connecting)
         is ModelManager.DownloadState.Copying -> OnboardingTransfer(TransferPhase.IMPORTING, state.progress)
         ModelManager.DownloadState.Extracting -> OnboardingTransfer(TransferPhase.VERIFYING)
         ModelManager.DownloadState.Ready -> OnboardingTransfer(TransferPhase.READY, 100)
-        is ModelManager.DownloadState.Error -> OnboardingTransfer(TransferPhase.ERROR, error = state.details ?: app.getString(R.string.model_error_checksum))
+        is ModelManager.DownloadState.Error -> OnboardingTransfer(TransferPhase.ERROR, state.savedProgress,
+            error = state.details ?: app.getString(R.string.model_error_checksum))
     }
 
     override suspend fun selectModel(id: String) {
@@ -219,22 +222,25 @@ class AppOnboardingServices(private val app: UtterlaneApp) : OnboardingServices 
     }
 
     override fun voiceSession(scope: CoroutineScope, callbacks: OnboardingVoiceTrial.Callbacks): OnboardingTrialSession {
-        lateinit var session: MicrophoneSession
-        session = app.microphoneSessions.create(app, scope,
+        val session = DictationSession(app,
             onText = { _, store -> callbacks.onText(store.preview()) },
-            onComplete = { store, failure ->
+            onComplete = { capture, store, failure ->
                 store?.let { callbacks.onText(it.preview()) }
                 callbacks.onComplete(failure?.message)
                 store?.let { app.applicationScope.launch(Dispatchers.IO) { it.dispose() } }
-                session.speakerControl.speakerSettingsAction(app)?.invoke()
+                finishForegroundDictation(app, capture.audioId, failure)
+                capture.speakerControl.speakerSettingsAction(app)?.invoke()
             },
             onCaptureEnded = callbacks.onCaptureEnded, onWarning = callbacks.onWarning,
-            onReady = callbacks.onReady, onSessionClosed = callbacks.onClosed)
+            onReady = callbacks.onReady, onClosed = { callbacks.onClosed() })
         return object : OnboardingTrialSession {
-            override val panel = VoiceTrialPanel(session.metrics.state, session.speakerControl)
+            override val panel = VoiceTrialPanel(session.metrics.state, session.speakers)
+            override val ownsNavigation get() = session.ownsNavigation
             override fun start() = session.start()
             override fun stop() = session.stop()
             override fun cancel(discard: Boolean) = session.cancel(discard)
+            override fun confirmSettings(phase: CapturePhase, accepted: () -> Unit) =
+                session.confirmSettings(phase, accepted)
         }
     }
 }

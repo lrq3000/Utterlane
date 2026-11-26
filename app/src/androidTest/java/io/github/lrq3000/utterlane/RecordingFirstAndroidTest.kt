@@ -112,7 +112,7 @@ class RecordingFirstAndroidTest {
         try {
             app.settingsRepository.setShowTranscriptionStreamStatistics(false)
             instrumentation.runOnMainSync {
-                panel = io.github.lrq3000.utterlane.ui.RecordingPanel(app, {}, {})
+                panel = io.github.lrq3000.utterlane.ui.RecordingPanel(app, {}, {}, {})
                 panelCreated = true
                 panel.bind(scope, metrics.state)
             }

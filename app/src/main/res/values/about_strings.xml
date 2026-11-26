@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_about_title">About</string>
+    <string name="settings_about_summary">Version, license, and source code</string>
+    <string name="settings_about_version">Version %1$s</string>
+    <string name="settings_about_version_unknown">unknown</string>
+    <string name="settings_about_open_source">Free and open-source software, made with love ❤️</string>
+    <string name="settings_about_author">Project lead</string>
+    <string name="settings_about_license">App license</string>
+    <string name="settings_about_repository">GitHub repository</string>
+    <string name="settings_about_origin">Based on TranSlander by hatsch and its contributors</string>
+    <string name="settings_about_on_device">All speech processing happens on your device. Internet access is only needed for model downloads and external links.</string>
+</resources>

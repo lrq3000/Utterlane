@@ -14,10 +14,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.RandomAccessFile
 
 /** Recovery is available even when a background caller cannot receive a large result. */
 object TranscriptRecovery {
-    fun show(context: Context, store: TranscriptStore) {
+    fun show(context: Context, store: TranscriptStore, onSaved: (() -> Unit)? = null) {
         UtterlaneApp.instance.applicationScope.launch(Dispatchers.IO) {
             if (store.file.length() == 0L || TranscriptSource.read(store.file).discarded) { store.dispose(); return@launch }
             val app = UtterlaneApp.instance
@@ -31,6 +32,7 @@ object TranscriptRecovery {
                 try {
                     TranscriptSource.withActiveSource(store.file) {
                         val copy = store.snapshot(File(context.cacheDir, "transcripts"))
+                        if (onSaved != null) RandomAccessFile(copy, "rw").use { it.fd.sync() }
                         source.write(copy)
                         store.dispose()
                         copy
@@ -48,8 +50,10 @@ object TranscriptRecovery {
             }
             // The Settings recovery action also works when notification permission is
             // denied. No transcription text is placed in the notification itself.
-            context.getSharedPreferences("transcript_recovery", Context.MODE_PRIVATE).edit()
-                .putString("path", recovered.absolutePath).apply()
+            val entry = context.getSharedPreferences("transcript_recovery", Context.MODE_PRIVATE).edit()
+                .putString("path", recovered.absolutePath)
+            if (onSaved == null) entry.apply()
+            else if (entry.commit()) onSaved()
             val request = recovered.name.hashCode() and Int.MAX_VALUE
             val intent = Intent(context, TranscribeActivity::class.java).putExtra("transcript_path", recovered.absolutePath)
             val pending = PendingIntent.getActivity(context, request, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)

@@ -1,5 +1,6 @@
 package io.github.lrq3000.utterlane.onboarding
 
+import io.github.lrq3000.utterlane.asr.CapturePhase
 import io.github.lrq3000.utterlane.asr.CaptureMetrics
 import io.github.lrq3000.utterlane.asr.LiveSpeakerControl
 import kotlinx.coroutines.CoroutineScope
@@ -125,7 +126,52 @@ class OnboardingVoiceTrialTest {
         assertEquals("Typed words. Spoken words.", trial.state.value.text)
     }
 
+    @Test fun openingSettingsAfterQueueAcceptanceDetachesTheTrialWithoutCancellingIt() {
+        trial.setText("Typed words.")
+        trial.start()
+        val session = sessions.single()
+        session.beginCapture()
+        session.callbacks.onText("Already shown.")
+        session.metrics.captureEnded()
+        session.callbacks.onCaptureEnded()
+        var opened = 0
+        trial.confirmSettings(CapturePhase.PROCESSING) { opened++ }
+        assertEquals(TrialPhase.PROCESSING, trial.state.value.phase)
+        assertEquals(0, opened)
+        session.settingsAccepted!!.invoke()
+        assertEquals(1, opened)
+        assertEquals(0, session.cancels)
+        assertFalse("A queued tail no longer owns the microphone", trial.state.value.releasing)
+        assertEquals("Typed words. Already shown.", trial.state.value.text)
+        session.callbacks.onText("Queued words")
+        assertEquals("Typed words. Already shown.", trial.state.value.text)
+        session.callbacks.onClosed()
+        assertFalse(trial.state.value.releasing)
+    }
+
+    @Test fun cancelCannotPretendToDiscardARequestedQueueHandoff() {
+        trial.start()
+        val session = sessions.single()
+        session.beginCapture()
+        session.metrics.captureEnded()
+        session.callbacks.onCaptureEnded()
+        var opened = false
+        trial.confirmSettings(CapturePhase.PROCESSING) { opened = true }
+        trial.cancel()
+        assertEquals(TrialPhase.PROCESSING, trial.state.value.phase)
+        assertEquals(0, session.cancels)
+        session.settingsAccepted!!.invoke()
+        assertTrue(opened)
+    }
+
     private class FakeSession(val callbacks: OnboardingVoiceTrial.Callbacks) : OnboardingTrialSession {
+        var settingsAccepted: (() -> Unit)? = null
+        override val ownsNavigation: Boolean get() = settingsAccepted != null
+        override fun confirmSettings(phase: CapturePhase, accepted: () -> Unit): Boolean {
+            if (metrics.state.value.phase != phase) return false
+            settingsAccepted = accepted
+            return true
+        }
         val metrics = CaptureMetrics()
         override val panel = VoiceTrialPanel(metrics.state, LiveSpeakerControl())
         var stops = 0

@@ -91,11 +91,11 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
     enum class ErrorType { NETWORK, CHECKSUM_MISMATCH, MISSING_FILE, FOLDER_ACCESS, STORAGE, UNKNOWN }
     sealed class DownloadState {
         data object NotStarted : DownloadState()
-        data class Downloading(val progress: Int) : DownloadState()
+        data class Downloading(val progress: Int, val connecting: Boolean = false) : DownloadState()
         data class Copying(val progress: Int) : DownloadState()
         data object Extracting : DownloadState()
         data object Ready : DownloadState()
-        data class Error(val type: ErrorType, val details: String? = null) : DownloadState()
+        data class Error(val type: ErrorType, val details: String? = null, val savedProgress: Int = 0) : DownloadState()
     }
     private val settings = SettingsRepository(context)
     private val operation = Mutex()
@@ -237,11 +237,14 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
         val checkpoint = checkpoint(target)
         var staging: File? = null
         var published = false
+        val previousProgress = (_downloadState.value as? DownloadState.Error)?.savedProgress ?: 0
+        var last = if (importing) 0 else previousProgress
+        var lastConnecting = !importing
         try {
             // Size alone is insufficient: retry must replace same-sized corrupt files.
             if (installedVerified(model)) { _downloadState.value = DownloadState.Ready; return@withContext }
             activeTransfer = owner
-            _downloadState.value = if (importing) DownloadState.Copying(0) else DownloadState.Downloading(0)
+            _downloadState.value = if (importing) DownloadState.Copying(0) else DownloadState.Downloading(last, connecting = true)
             check(target.parentFile!!.mkdirs() || target.parentFile!!.isDirectory) { "Cannot create model storage" }
             val download = downloadClient?.let { ModelDownloadCheckpoint(checkpoint, model).apply { prepare() } }
             val payload = download?.payload ?: File(target.parentFile, ".${model.id}-${java.util.UUID.randomUUID()}").also {
@@ -249,21 +252,23 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
                 check(it.mkdir()) { "Cannot create model staging directory" }
             }
             var completedBytes = 0L
-            var last = 0
             for (artifact in model.artifacts) {
                 currentCoroutineContext().ensureActive()
                 Log.i(TAG, "${if (importing) "Importing" else "Downloading"} ${model.id}: ${artifact.localName}")
-                val progress: (Long) -> Unit = { bytes ->
+                val progress: (Long, Boolean) -> Unit = { bytes, connecting ->
                     val percent = ((completedBytes + bytes) * 100 / model.downloadBytes).toInt().coerceIn(0, 99)
+                    if (percent != last || connecting != lastConnecting) {
+                        _downloadState.value = if (importing) DownloadState.Copying(percent) else DownloadState.Downloading(percent, connecting)
+                        lastConnecting = connecting
+                    }
                     if (percent != last) {
                         last = percent
-                        _downloadState.value = if (importing) DownloadState.Copying(percent) else DownloadState.Downloading(percent)
                         onProgress(percent)
                     }
                 }
                 if (download != null) download.fetch(artifact, { openDownload(checkNotNull(downloadClient).newCall(it)) }, progress)
                 else checkNotNull(importSource)(artifact).use { input ->
-                    writeArtifact(artifact, File(payload, artifact.localName), input, 0L, progress, retryShortRead = false)
+                    writeArtifact(artifact, File(payload, artifact.localName), input, 0L, { progress(it, false) }, retryShortRead = false)
                 }
                 completedBytes += artifact.bytes
             }
@@ -285,7 +290,7 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
                 is java.io.FileNotFoundException -> ErrorType.MISSING_FILE
                 is java.io.IOException -> if (importing) ErrorType.STORAGE else ErrorType.NETWORK
                 else -> ErrorType.UNKNOWN
-            }, e.message)
+            }, e.message, savedProgress = if (importing) 0 else last)
         } finally {
             // OkHttp cancellation commonly arrives as IOException; ensureActive()
             // can then throw from the generic catch rather than the cancellation catch.

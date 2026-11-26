@@ -15,7 +15,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.util.UUID
 
-class KeyboardQueueHandoffTest {
+class DictationQueueHandoffTest {
     @get:Rule val directory = TemporaryFolder()
 
     @Test fun completionThatRacesPublicationKeepsTheExactTranscriptAndAudioIdentity() = runBlocking {
@@ -24,7 +24,7 @@ class KeyboardQueueHandoffTest {
         val journal = QueueJournal(directory.root)
         val release = CompletableDeferred<Unit>()
         val events = mutableListOf<String>()
-        val handoff = KeyboardQueueHandoff(this, file, register = { audio, speakers ->
+        val handoff = DictationQueueHandoff(this, file, register = { audio, speakers ->
             release.await()
             journal.add(audio, "Dictation", speakers, QueueStage.DRAINING, id)
         }, finish = { error, speakers -> journal.finishCapture(id, error, "Interrupted", speakers) })
@@ -53,7 +53,7 @@ class KeyboardQueueHandoffTest {
         val events = mutableListOf<String>()
         val file = directory.root.resolve("unclaimed.txt")
         val store = TranscriptStore(file).apply { append("Still available") }
-        val handoff = KeyboardQueueHandoff(this, file, register = { _, _ -> error("Full storage") },
+        val handoff = DictationQueueHandoff(this, file, register = { _, _ -> error("Full storage") },
             finish = { _, _ -> fail("There is no queued job to complete") })
         handoff.submit("original-audio", false, { fail("Settings must not open") }, { events.add(it.message.orEmpty()) })
         val completed = handoff.complete(store, null, false) {
@@ -69,7 +69,7 @@ class KeyboardQueueHandoffTest {
         val file = directory.root.resolve("$id.txt")
         val journal = QueueJournal(directory.root)
         val store = TranscriptStore(file).apply { append("Do not lose this") }
-        val handoff = KeyboardQueueHandoff(this, file, register = { audio, speakers ->
+        val handoff = DictationQueueHandoff(this, file, register = { audio, speakers ->
             journal.add(audio, "Dictation", speakers, QueueStage.DRAINING, id)
             error("Notifications unavailable after write")
         }, finish = { error, speakers -> journal.finishCapture(id, error, "Interrupted", speakers) },
@@ -83,7 +83,7 @@ class KeyboardQueueHandoffTest {
     }
 
     @Test fun lackOfAQueuePathDoesNotBlockOrdinaryDictation() = runBlocking {
-        val handoff = KeyboardQueueHandoff(this, null, register = { _, _ -> error("Queue path unavailable") },
+        val handoff = DictationQueueHandoff(this, null, register = { _, _ -> error("Queue path unavailable") },
             finish = { _, _ -> fail("No queue row should be finalized") })
         assertNull(handoff.producerScope.coroutineContext[QueueTranscriptTarget])
         var editorDelivered = false
@@ -96,7 +96,7 @@ class KeyboardQueueHandoffTest {
             val rejection = CompletableDeferred<String>()
             val delivered = CompletableDeferred<Unit>()
             val scope = kotlinx.coroutines.CoroutineScope(coroutineContext + kotlinx.coroutines.CoroutineExceptionHandler { _, _ -> })
-            val handoff = KeyboardQueueHandoff(scope, null, register = { _, _ -> error("Cannot register") },
+            val handoff = DictationQueueHandoff(scope, null, register = { _, _ -> error("Cannot register") },
                 finish = { _, _ -> fail("No durable queue row") }, isRegistered = { error("Cannot read journal") })
             assertTrue(handoff.submit("source", false, { fail("Settings must stay closed") }) { rejection.complete(it.message.orEmpty()) })
             val completion = handoff.complete(null, null, null) { delivered.complete(Unit) }

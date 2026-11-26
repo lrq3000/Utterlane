@@ -2,6 +2,7 @@ package io.github.lrq3000.utterlane.asr
 
 import android.app.Application
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType
@@ -41,10 +42,51 @@ class ModelResumeTest {
             val retry = f.manager()
             retry.downloadModel()
             assertEquals("bytes=3-", f.requests[1].header("Range"))
-            assertEquals("\"v1\"", f.requests[1].header("If-Range"))
+            assertNull(f.requests[1].header("If-Range")) // A pinned digest, not a CDN ETag, identifies these bytes.
             assertEquals("identity", f.requests[1].header("Accept-Encoding"))
             assertEquals(ModelManager.DownloadState.Ready, retry.downloadState.value)
             assertEquals("abcdef", retry.directory().resolve("a.gguf").readText())
+        }
+    }
+
+    @Test fun interruptionAndWaitingForRetryHeadersKeepSavedProgressVisible() = runBlocking {
+        val waiting = CountDownLatch(1)
+        val reply = CountDownLatch(1)
+        fixture(
+            { interrupted(it, "abc") },
+            { request ->
+                waiting.countDown()
+                check(reply.await(8, TimeUnit.SECONDS))
+                response(request, "def".toResponseBody(), 206, "bytes 3-5/6", tag = "\"different-cdn-tag\"")
+            }
+        ).use { f ->
+            val manager = f.manager()
+            manager.downloadModel()
+            val failure = manager.downloadState.value as ModelManager.DownloadState.Error
+            assertEquals(ModelManager.ErrorType.NETWORK, failure.type)
+            assertEquals(50, failure.savedProgress)
+            val completion = async(Dispatchers.IO) { manager.downloadModel() }
+            try {
+                assertTrue(waiting.await(8, TimeUnit.SECONDS))
+                assertEquals(ModelManager.DownloadState.Downloading(50, connecting = true), manager.downloadState.value)
+            } finally { reply.countDown(); completion.await() }
+            assertEquals(listOf(null, "bytes=3-"), f.requests.map { it.header("Range") })
+            assertNull(f.requests[1].header("If-Range"))
+            assertTrue(manager.ensureVerified())
+        }
+    }
+
+    @Test fun aResumedSuffixWithWrongPinnedDigestIsNeverInstalled() = runBlocking {
+        fixture(
+            { interrupted(it, "abc") },
+            { response(it, "BAD".toResponseBody(), 206, "bytes 3-5/6", tag = "\"different-cdn-tag\"") }
+        ).use { f ->
+            val manager = f.manager()
+            manager.downloadModel()
+            manager.downloadModel()
+            assertEquals(listOf(null, "bytes=3-"), f.requests.map { it.header("Range") })
+            assertEquals(ModelManager.ErrorType.CHECKSUM_MISMATCH, (manager.downloadState.value as ModelManager.DownloadState.Error).type)
+            assertFalse(manager.directory().exists())
         }
     }
 

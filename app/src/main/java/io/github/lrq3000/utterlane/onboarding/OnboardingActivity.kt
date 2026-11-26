@@ -117,6 +117,9 @@ class OnboardingActivity : LocalizedActivity() {
             when (action) {
                 is OnboardingAction.Permission -> requestPermission(action.permission)
                 is OnboardingAction.Settings -> openSettings(action.target)
+                is OnboardingAction.DictationSettings -> model.confirmDictationSettings(action.phase) {
+                    if (!isFinishing && !isDestroyed) io.github.lrq3000.utterlane.settings.openSettingsFromDictation(this)
+                }
                 is OnboardingAction.Import -> { speakerImport = action.speakers; modelFolder.launch(null) }
                 is OnboardingAction.OpenLink -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(action.url)))
                 OnboardingAction.ChooseFolder -> audioFolder.launch(null)

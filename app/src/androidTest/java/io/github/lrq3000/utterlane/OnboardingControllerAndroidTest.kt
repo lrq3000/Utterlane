@@ -155,6 +155,15 @@ class OnboardingControllerAndroidTest {
             instrumentation.runOnMainSync {
                 val waveform = activity.findViewById<WaveformButton>(R.id.recording_done)
                 val panel = generateSequence<View>(waveform) { it.parent as? View }.filterIsInstance<RecordingPanel>().first()
+                val gear = panel.findViewById<View>(R.id.recording_settings_gear)
+                assertNotNull("The practice button must show the same Settings gear as keyboard dictation", gear)
+                val header = gear.parent as android.view.ViewGroup
+                val title = header.getChildAt(0) as android.widget.TextView
+                assertEquals(app.getString(R.string.capture_listening), title.text.toString())
+                assertTrue("Settings is visible on the right of the listening header", gear.isShown && gear.width > 0 && gear.left >= title.right)
+                gear.performClick()
+                panel.findViewById<View>(R.id.recording_settings_back).performClick()
+                assertEquals(0, services.sessionsCancelled.value)
                 assertTrue("Waveform must reflect actual samples", waveform.levels.any { it > 0f })
                 assertEquals("Recognized during capture.", panel.statusText.text.toString())
                 val speakers = panel.findViewById<android.widget.ToggleButton>(R.id.recording_speakers)
@@ -184,6 +193,27 @@ class OnboardingControllerAndroidTest {
                 assertTrue("The practice text must be editable again", result.isEditable)
             } finally { result.recycle() }
         }
+    }
+
+    @Test fun downloadErrorAndConnectingShowSavedProgress(): Unit = runBlocking {
+        repository.update { it.copy(stepId = OnboardingStep.DOWNLOAD.id, modelId = "full") }
+        services.device.value = services.device.value.copy(
+            speechTransfer = OnboardingTransfer(TransferPhase.ERROR, 47, "Connection lost"))
+        initialize()
+        ui.prepare()
+        val activity = launchNativeActivity(Intent(app, OnboardingActivity::class.java)) as OnboardingActivity
+        try {
+            instrumentation.runOnMainSync {
+                activity.setContent {
+                    val state by model.state.collectAsStateWithLifecycle()
+                    UtterlaneTheme(darkTheme = false) { OnboardingScreen(state, model::act) }
+                }
+            }
+            ui.scrollToText(app.getString(R.string.onboarding_download_saved_progress, 47))
+            services.device.value = services.device.value.copy(
+                speechTransfer = OnboardingTransfer(TransferPhase.DOWNLOADING, 47, connecting = true))
+            ui.scrollToText(app.getString(R.string.onboarding_download_reconnecting, 47))
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
     }
 
     @Test fun cancelClosesThePanelAndTheNextTrialStartsWithAnEmptyPreview(): Unit = runBlocking {
@@ -282,6 +312,7 @@ class OnboardingControllerAndroidTest {
             ControlledVoiceSession(callbacks).also { voice = it }
 
         inner class ControlledVoiceSession(val callbacks: OnboardingVoiceTrial.Callbacks) : OnboardingTrialSession {
+            override fun confirmSettings(phase: io.github.lrq3000.utterlane.asr.CapturePhase, accepted: () -> Unit) = false
             val metrics = CaptureMetrics { 0L }
             val speakers = LiveSpeakerControl()
             override val panel = VoiceTrialPanel(metrics.state, speakers)

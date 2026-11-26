@@ -147,6 +147,7 @@ class OnboardingViewModel(
     private suspend fun move(step: OnboardingStep) = repository.update { it.copy(stepId = step.id) }
 
     private fun back() {
+        if (trial.ownsNavigation) return
         trial.cancel()
         val previous = OnboardingContent.flow.previous(state.value.step, state.value.speakerDownloadRequired)
         if (previous == null) interaction.value = interaction.value.copy(exit = true)
@@ -228,6 +229,8 @@ class OnboardingViewModel(
     }
 
     fun stopForBackground() = trial.stopForBackground()
+    internal fun confirmDictationSettings(phase: io.github.lrq3000.utterlane.asr.CapturePhase, open: () -> Unit) =
+        trial.confirmSettings(phase, open)
     override fun onCleared() {
         trial.cancel()
         // The scope cancels the request when the wizard is destroyed; only explicit Back discards the download checkpoint.

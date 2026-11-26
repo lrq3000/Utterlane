@@ -16,13 +16,16 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assume.assumeTrue
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VoiceImeSpeakerVisualAndroidTest {
     @Test fun captureTheActualKeyboardWindow() = runBlocking<Unit> {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp
-        assumeTrue(app.packageName.endsWith(".qolsandbox") && InstrumentationRegistry.getArguments().getString("speakerVisualEvidence") == "true")
+        val checkUnifiedDialog = app.packageName.endsWith(".dictationfollowupqa")
+        assumeTrue(checkUnifiedDialog || app.packageName.endsWith(".qolsandbox") &&
+            InstrumentationRegistry.getArguments().getString("speakerVisualEvidence") == "true")
         val ui = OnboardingTestUi()
         ui.prepare()
         val settings = app.settingsRepository
@@ -50,6 +53,21 @@ class VoiceImeSpeakerVisualAndroidTest {
             shell("ime enable $ime")
             shell("settings put secure show_ime_with_hard_keyboard 1")
             shell("settings put secure default_input_method $ime")
+            if (checkUnifiedDialog) {
+                val gear = ui.node("${app.packageName}:id/recording_settings_gear")
+                val title = ui.textNode(app.getString(R.string.capture_listening))
+                val gearBounds = Rect().also(gear::getBoundsInScreen)
+                val titleBounds = Rect().also(title::getBoundsInScreen)
+                assertTrue("The IME settings gear must sit in the listening header",
+                    gear.isVisibleToUser && gear.isEnabled && gearBounds.left >= titleBounds.right &&
+                        gearBounds.top < titleBounds.bottom && gearBounds.bottom > titleBounds.top)
+                assertTrue(gear.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+                ui.textNode(app.getString(R.string.dictation_settings_discard_warning))
+                ui.screenshot("voice-ime-shared-dictation")
+                ui.click("${app.packageName}:id/recording_settings_back", scroll = false)
+                assertTrue(MicrophoneSession.isBusy())
+                return@runBlocking
+            }
             val id = "${app.packageName}:id/recording_speakers"
             for (checked in listOf(false, true)) {
                 fun find() = nodes().flatMap { it.findAccessibilityNodeInfosByViewId(id) }.firstOrNull { it.isVisibleToUser }

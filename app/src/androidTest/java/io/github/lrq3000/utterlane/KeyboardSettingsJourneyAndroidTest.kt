@@ -16,9 +16,15 @@ import io.github.lrq3000.utterlane.asr.TranscriptSource
 import io.github.lrq3000.utterlane.history.HistoryRetention
 import io.github.lrq3000.utterlane.history.WavFile
 import io.github.lrq3000.utterlane.service.VoiceInputActivity
+import io.github.lrq3000.utterlane.service.StreamingDictationOverlay
+import io.github.lrq3000.utterlane.service.StreamingTextTarget
 import io.github.lrq3000.utterlane.settings.SettingsActivity
 import io.github.lrq3000.utterlane.transcribe.QueueStage
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -32,10 +38,74 @@ import java.util.concurrent.TimeUnit
 /** Controlled microphone PCM, real keyboard overlay, Settings, model inference, and queue storage. */
 @RunWith(AndroidJUnit4::class)
 class KeyboardSettingsJourneyAndroidTest {
+    @Test fun floatingAndAccessibilityAdapterShowsTheSameGearWithoutAnEditor() = runBlocking<Unit> {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val app = instrumentation.targetContext.applicationContext as UtterlaneApp
+        assumeTrue(app.packageName.endsWith(".dictationfollowupqa"))
+        instrumentation.uiAutomation.grantRuntimePermission(app.packageName, Manifest.permission.RECORD_AUDIO)
+        assertTrue(Settings.canDrawOverlays(app))
+        val previous = app.microphoneSessions
+        val source = OnboardingRecognitionAndroidTest.FixtureCapture(ShortArray(32000) { 500 })
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        val monitor = instrumentation.addMonitor(SettingsActivity::class.java.name, null, false)
+        val priorIds = app.recordingHistory.list().map { it.id }.toSet()
+        val overlay = java.util.concurrent.atomic.AtomicReference<StreamingDictationOverlay>()
+        var settings: android.app.Activity? = null
+        val ui = OnboardingTestUi().apply { prepare() }
+        try {
+            app.microphoneSessions = MicrophoneSessionFactory { source }
+            instrumentation.runOnMainSync {
+                overlay.set(StreamingDictationOverlay(app, scope, StreamingTextTarget(app) { false },
+                    recordingChanged = {}, warning = {}, released = {}))
+                overlay.get().start()
+            }
+            assertTrue(source.sent.await(15, TimeUnit.SECONDS))
+            var visiblePanel: ViewGroup? = null
+            withTimeout(10_000) {
+                while (visiblePanel == null) {
+                    instrumentation.runOnMainSync {
+                        val window = StreamingDictationOverlay::class.java.getDeclaredField("overlay").apply { isAccessible = true }.get(overlay.get())
+                        val native = window.javaClass.getDeclaredField("panel").apply { isAccessible = true }.get(window) as? ViewGroup
+                        val gear = native?.findViewById<View>(R.id.recording_settings_gear)
+                        if (gear?.isEnabled == true && gear.isShown && gear.getGlobalVisibleRect(Rect())) visiblePanel = native
+                    }
+                    if (visiblePanel == null) delay(30)
+                }
+            }
+            instrumentation.runOnMainSync {
+                val panel = checkNotNull(visiblePanel)
+                val gear = panel.findViewById<View>(R.id.recording_settings_gear)
+                val title = (gear.parent as ViewGroup).getChildAt(0) as TextView
+                assertEquals(app.getString(R.string.capture_listening), title.text.toString())
+                assertTrue(gear.left >= title.right)
+                gear.performClick()
+            }
+            ui.screenshot("system-overlay-shared-dictation")
+            instrumentation.runOnMainSync {
+                val panel = checkNotNull(visiblePanel)
+                panel.findViewById<View>(R.id.recording_settings_back).performClick()
+                assertTrue(MicrophoneSession.isBusy())
+                panel.findViewById<View>(R.id.recording_settings_gear).performClick()
+                panel.findViewById<View>(R.id.recording_settings_confirm).performClick()
+            }
+            settings = monitor.waitForActivityWithTimeout(10000)
+            assertNotNull("Explicit confirmation opens Utterlane Settings", settings)
+            withTimeout(15000) {
+                while (MicrophoneSession.hasSessions() || app.recordingHistory.list().any { it.id !in priorIds }) delay(40)
+            }
+        } finally {
+            source.stop()
+            instrumentation.runOnMainSync { overlay.get()?.cancel(false); settings?.finish() }
+            instrumentation.removeMonitor(monitor)
+            scope.cancel()
+            app.microphoneSessions = previous
+        }
+    }
+
     @Test fun captureWarningCanBeDismissedAndOnlyFinishedAudioCanGoToTheQueue() = runBlocking<Unit> {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp
-        assumeTrue(app.packageName.endsWith(".dictationsettingsqa"))
+        assumeTrue(app.packageName.endsWith(".dictationsettingsqa") || app.packageName.endsWith(".dictationfollowupqa"))
         instrumentation.uiAutomation.grantRuntimePermission(app.packageName, Manifest.permission.RECORD_AUDIO)
         assertTrue("The isolated QA app needs overlay access", Settings.canDrawOverlays(app))
         val queue = app.transcriptionQueue

@@ -7,7 +7,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import io.github.lrq3000.utterlane.UtterlaneApp
-import io.github.lrq3000.utterlane.asr.MicrophoneSession
 import io.github.lrq3000.utterlane.settings.MemoryStore
 import io.github.lrq3000.utterlane.settings.SettingsRepository
 import io.mockk.every
@@ -34,7 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 @Config(application = Application::class, sdk = [28, 31, 36])
 class FloatingMicServiceTest {
     private val repository = SettingsRepository(MemoryStore())
-    private val session = mockk<MicrophoneSession>(relaxed = true)
+    private val session = mockk<StreamingDictationOverlay>(relaxed = true)
     private lateinit var controller: ServiceController<FloatingMicService>
     private lateinit var service: FloatingMicService
     private lateinit var button: View
@@ -59,7 +58,7 @@ class FloatingMicServiceTest {
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals((72 * service.resources.displayMetrics.density).toInt(), button.layoutParams.width)
         assertSame(button, ReflectionHelpers.getField<View>(service, "micButton"))
-        assertSame(session, ReflectionHelpers.getField<MicrophoneSession>(service, "microphoneSession"))
+        assertSame(session, ReflectionHelpers.getField<StreamingDictationOverlay>(service, "microphoneSession"))
         verify(exactly = 0) { session.stop() }
         verify(exactly = 0) { session.cancel(any()) }
     }
