@@ -125,11 +125,12 @@ class AppOnboardingServices(private val app: UtterlaneApp) : OnboardingServices 
 
     private fun transferState(state: ModelManager.DownloadState): OnboardingTransfer = when (state) {
         ModelManager.DownloadState.NotStarted -> OnboardingTransfer()
-        is ModelManager.DownloadState.Downloading -> OnboardingTransfer(TransferPhase.DOWNLOADING, state.progress)
+        is ModelManager.DownloadState.Downloading -> OnboardingTransfer(TransferPhase.DOWNLOADING, state.progress, connecting = state.connecting)
         is ModelManager.DownloadState.Copying -> OnboardingTransfer(TransferPhase.IMPORTING, state.progress)
         ModelManager.DownloadState.Extracting -> OnboardingTransfer(TransferPhase.VERIFYING)
         ModelManager.DownloadState.Ready -> OnboardingTransfer(TransferPhase.READY, 100)
-        is ModelManager.DownloadState.Error -> OnboardingTransfer(TransferPhase.ERROR, error = state.details ?: app.getString(R.string.model_error_checksum))
+        is ModelManager.DownloadState.Error -> OnboardingTransfer(TransferPhase.ERROR, state.savedProgress,
+            error = state.details ?: app.getString(R.string.model_error_checksum))
     }
 
     override suspend fun selectModel(id: String) {
