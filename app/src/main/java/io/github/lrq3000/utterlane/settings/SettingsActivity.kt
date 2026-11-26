@@ -218,7 +218,10 @@ class SettingsActivity : LocalizedActivity() {
             val settingsRepository = app.settingsRepository
             val speechDownload by app.modelManager.downloadState.collectAsStateWithLifecycle()
             val speakerDownload by app.diarizationModels.downloadState.collectAsStateWithLifecycle()
-            androidx.compose.runtime.SideEffect { window.keepModelDownloadScreenOn(speechDownload, speakerDownload) }
+            androidx.compose.runtime.SideEffect {
+                window.keepModelDownloadScreenOn(speechDownload, speakerDownload,
+                    speechVisible = page == SettingsPage.SPEECH, speakersVisible = page == SettingsPage.SPEAKERS)
+            }
             val themeMode by settingsRepository.themeMode.collectAsStateWithLifecycle(
                 initialValue = SettingsRepository.THEME_SYSTEM
             )

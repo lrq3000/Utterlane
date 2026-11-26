@@ -63,7 +63,8 @@ internal class ModelDownloadCheckpoint(private val directory: File, private val 
                 val tag = response.header("ETag")
                 val full = response.code == 200
                 val suffix = response.code == 206 && offset > 0 && response.header("Content-Range") == expectedRange &&
-                    (savedTag == null || tag == null || tag == savedTag)
+                    (if (artifact.sha256 == null) savedTag != null && savedTag == tag
+                     else savedTag == null || tag == null || tag == savedTag)
                 val identityEncoding = encoding == null || encoding.equals("identity", ignoreCase = true)
                 when {
                     offset > 0 && (response.code == 416 || response.code == 206 && (!suffix || !identityEncoding)) -> true
@@ -98,7 +99,8 @@ internal class ModelDownloadCheckpoint(private val directory: File, private val 
 }
 
 /** Verify in the write pass. A resumed prefix is hashed once; fresh transfers need no second disk pass. */
-internal suspend fun writeArtifact(artifact: ModelArtifact, file: File, input: java.io.InputStream, offset: Long, progress: (Long) -> Unit) {
+internal suspend fun writeArtifact(artifact: ModelArtifact, file: File, input: java.io.InputStream, offset: Long,
+    progress: (Long) -> Unit, retryShortRead: Boolean = true) {
     val digest = artifact.sha256?.let { MessageDigest.getInstance("SHA-256") }
     val buffer = ByteArray(65536)
     val coroutine = currentCoroutineContext()
@@ -124,7 +126,10 @@ internal suspend fun writeArtifact(artifact: ModelArtifact, file: File, input: j
             progress(bytes)
         }
     }
-    if (bytes != artifact.bytes) throw IOException("Incomplete model file: ${artifact.localName}")
+    if (bytes != artifact.bytes) {
+        val message = "Incomplete model file: ${artifact.localName}"
+        if (retryShortRead) throw IOException(message) else throw SecurityException(message)
+    }
     if (digest != null && digest.digest().joinToString("") { "%02x".format(it) } != artifact.sha256)
         throw SecurityException("Model integrity verification failed: ${artifact.localName}")
 }

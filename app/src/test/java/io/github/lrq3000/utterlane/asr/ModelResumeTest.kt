@@ -94,6 +94,22 @@ class ModelResumeTest {
         }
     }
 
+    @Test fun unsignedArtifactCannotAppendWithoutARepeatedStrongValidator() = runBlocking {
+        fixture(
+            { response(it, "abcdef".toResponseBody()) },
+            { interrupted(it, "to") },
+            { response(it, "BAD".toResponseBody(), 206, "bytes 2-4/5", tag = null) },
+            { response(it, "token".toResponseBody()) },
+            includeSecond = true
+        ).use { f ->
+            val manager = f.manager()
+            manager.downloadModel()
+            manager.downloadModel()
+            assertEquals(listOf(null, null, "bytes=2-", null), f.requests.map { it.header("Range") })
+            assertEquals("token", manager.directory().resolve("tokens.txt").readText())
+        }
+    }
+
     @Test fun explicitCancelDoesNotKeepARetryCheckpoint() = runBlocking {
         val read = CountDownLatch(1)
         val release = CountDownLatch(1)
@@ -135,9 +151,9 @@ class ModelResumeTest {
             override fun source() = reader
         })
 
-    private fun response(request: Request, body: ResponseBody, code: Int = 200, range: String? = null, tag: String = "\"v1\"") =
+    private fun response(request: Request, body: ResponseBody, code: Int = 200, range: String? = null, tag: String? = "\"v1\"") =
         Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(code).message("fixture")
-            .header("ETag", tag).apply { range?.let { header("Content-Range", it) } }.body(body).build()
+            .apply { tag?.let { header("ETag", it) }; range?.let { header("Content-Range", it) } }.body(body).build()
 
     private fun fixture(vararg responses: (Request) -> Response, includeSecond: Boolean = false) = Fixture(responses, includeSecond)
 

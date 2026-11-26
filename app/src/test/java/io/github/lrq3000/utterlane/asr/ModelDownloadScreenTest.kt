@@ -30,6 +30,8 @@ class ModelDownloadScreenTest {
             assertFalse(keepOn())
             window.keepModelDownloadScreenOn(idle, ModelManager.DownloadState.Downloading(1))
             assertTrue(keepOn())
+            window.keepModelDownloadScreenOn(idle, ModelManager.DownloadState.Downloading(1), speakersVisible = false)
+            assertFalse(keepOn())
             window.keepModelDownloadScreenOn(idle, ModelManager.DownloadState.Copying(1))
             assertFalse(keepOn())
             window.keepModelDownloadScreenOn(idle, ModelManager.DownloadState.Ready)

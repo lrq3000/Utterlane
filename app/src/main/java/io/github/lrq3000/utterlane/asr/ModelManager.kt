@@ -263,7 +263,7 @@ class ModelManager(private val context: Context, private val client: OkHttpClien
                 }
                 if (download != null) download.fetch(artifact, { openDownload(checkNotNull(downloadClient).newCall(it)) }, progress)
                 else checkNotNull(importSource)(artifact).use { input ->
-                    writeArtifact(artifact, File(payload, artifact.localName), input, 0L, progress)
+                    writeArtifact(artifact, File(payload, artifact.localName), input, 0L, progress, retryShortRead = false)
                 }
                 completedBytes += artifact.bytes
             }
