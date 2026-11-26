@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.3.10] - 2026-11-26
+
+### Added
+- A Settings gear in both keyboard dictation paths. Keep recording or explicitly discard an active take; after capture stops, continue the same transcription in the background and find the result under Transcripts.
+- A removable `utterlane` → `Utterlane` correction for new dictionaries. Existing dictionaries, including empty ones, are unchanged.
+
+### Fixed
+- Visible speech and speaker model downloads keep the screen awake in onboarding and Settings without new permissions. Retry resumes safe partial downloads and reuses verified files.
+- Temporary dictation audio is cleared after successful foreground delivery, including clipboard fallback, when audio history is off. Failed delivery remains recoverable.
+
 ## [2.3.4] - 2026-11-26
 
 - Corrected the patch version to count all three functional changes since 2.3.1. App behavior is unchanged from 2.3.3.

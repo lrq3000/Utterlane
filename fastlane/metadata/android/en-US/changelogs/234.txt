@@ -1,0 +1,4 @@
+Model downloads resume on Retry and keep the screen awake while visible.
+The dictation Settings gear can discard a live take with confirmation or finish the same transcription in the background after recording stops.
+New dictionaries include a removable Utterlane spelling correction.
+Successful clipboard fallback clears temporary audio when audio history is off.
