@@ -57,7 +57,7 @@ class FileTranscriptionSetupAndroidTest {
         }
     }
 
-    @Test fun homePickerReturnsOnlyTheConfirmedOptionsToItsExistingWorkspace() = runBlocking<Unit> {
+    @Test fun homePickerQueuesOnlyTheConfirmedOptionsWithoutChangingLiveDefaults() = runBlocking<Unit> {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as UtterlaneApp
         val ui = OnboardingTestUi()
@@ -66,7 +66,7 @@ class FileTranscriptionSetupAndroidTest {
         val oldCount = settings.speakerCount.first()
         val onboarding = OnboardingRepository(app)
         val oldOnboarding = onboarding.progress.first()
-        val recordings = app.recordingHistory.list().map { it.id }.toSet()
+        val existing = app.transcriptionQueue.journal.records().map { it.id }.toSet()
         val source = File.createTempFile("picker-fixture-", ".wav", app.cacheDir)
         WavFile(source).use { it.append(ShortArray(3200)) }
         val uri = FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", source)
@@ -83,19 +83,26 @@ class FileTranscriptionSetupAndroidTest {
             ui.awaitChecked("file_setup_speakers", false)
             ui.click("file_setup_speakers")
             ui.click("file_setup_start")
-            val result = withTimeout(30000) {
-                app.homeController.state.first { !it.busy && it.model != null && it.result.audio != null }
-            }
-            assertEquals(true, result.model?.input?.fileOptions?.speakerLabels)
+            val result = withTimeout(30000) { app.transcriptionQueue.rows.first { rows ->
+                rows.any { it.id !in existing && it.label == source.name }
+            }.single { it.id !in existing && it.label == source.name } }
+            assertTrue(result.speakers)
+            assertEquals(true, app.recordingHistory.get(result.audio).fileSpeakerLabels)
             assertFalse(settings.diarizationEnabled.first())
         } finally {
             instrumentation.removeMonitor(systemPicker)
-            instrumentation.runOnMainSync { app.homeController.dismiss(); screen?.finish() }
-            withTimeoutOrNull(10000) { app.homeController.state.first { it.model == null && !it.busy } }
+            instrumentation.runOnMainSync { screen?.finish() }
             settings.setDiarizationEnabled(oldDefault)
             settings.setSpeakerCount(oldCount)
             onboarding.update { oldOnboarding }
-            app.recordingHistory.list().filter { it.id !in recordings }.forEach { app.recordingHistory.delete(it.id) }
+            val owned = app.transcriptionQueue.journal.records().filter { it.id !in existing && it.label == source.name }
+            for (job in owned) {
+                withTimeout(120000) { app.transcriptionQueue.rows.first { rows -> rows.any { it.id == job.id && it.stage.reviewable } } }
+                app.transcriptionQueue.acknowledge(job.id)
+                app.recordingHistory.delete(job.audio)
+                app.transcriptHistory.find(job.textId)?.let { app.transcriptHistory.delete(it.id) }
+                io.github.lrq3000.utterlane.asr.TranscriptStore.deleteArtifacts(app.transcriptionQueue.target(job.id))
+            }
             source.delete()
         }
     }

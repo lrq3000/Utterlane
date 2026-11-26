@@ -18,7 +18,7 @@ data class DialogInput(val uri: Uri? = null, val path: String? = null, val audio
     val transcriptId: String? = null, val transcriptPath: String? = null, val automatic: Boolean = false,
     val transcriptOrigin: Boolean = transcriptId != null, val modelName: String = "", val modelId: String? = null,
     val metadata: TranscriptMetadata? = null, val recovered: Boolean = false,
-    val fileOptions: FileTranscriptionOptions? = null)
+    val fileOptions: FileTranscriptionOptions? = null, val queueId: String? = null)
 
 data class TranscriptionDialogState(
     val audio: HistoryEntry? = null, val store: TranscriptStore? = null, val transcriptId: String? = null,
@@ -56,7 +56,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         remember = app.settingsRepository::rememberImportRetention)
     private val linkedHistory = LinkedHistory(app.recordingHistory, app.transcriptHistory)
     private val historyOwners = DialogHistoryOwners(app.recordingHistory, app.transcriptHistory)
-    private val exitRetention = DialogExitRetention(app)
+    private val exitRetention = DialogExitRetention(app, input.queueId)
     val document = TranscriptPager(viewModelScope)
     private var operation: Job? = null
     private var saving: Job? = null
@@ -88,12 +88,12 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                 if (input.uri != null || input.path != null) archival = app.archival.producer()
                 withContext(Dispatchers.IO) {
                     val saved = input.transcriptId?.let(app.transcriptHistory::find)
-                        ?: if (input.transcriptId == null && input.transcriptPath == null && !input.automatic)
+                        ?: if (input.queueId == null && input.transcriptId == null && input.transcriptPath == null && !input.automatic)
                             latestLinkedTranscript() else null
                     val audio = if (input.transcriptId == null && input.transcriptPath == null && !input.automatic)
                         linkedHistory.availableAudio(ownedAudioId) else null
                     // A new interrupted attempt on the same audio can have useful working text even when an older version was kept.
-                    val working = if (!input.automatic && input.transcriptId == null && input.transcriptPath == null &&
+                    val working = if (!input.automatic && input.queueId == null && input.transcriptId == null && input.transcriptPath == null &&
                         (saved == null || audio?.needsRecovery == true)) linkedWorkingCopies(recoverable = true)
                         .filter { saved == null || (it.source.transcriptId == null && it.file.lastModified() >= saved.file.lastModified()) }
                         .maxByOrNull { it.file.lastModified() } else null
@@ -105,7 +105,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         mutable.update { it.copy(transcriptId = entry.id, model = entry.model, transcriptPinned = entry.retention.pinned) }
                     }
                     val restored = input.transcriptPath?.let { File(it).canonicalFile }?.takeIf { file ->
-                        require(file.parentFile == File(app.cacheDir, "transcripts").canonicalFile) { "Transcript is unavailable" }
+                        require(file.parentFile == File(app.cacheDir, "transcripts").canonicalFile ||
+                            input.queueId?.let { app.transcriptionQueue.target(it).canonicalFile == file } == true) { "Transcript is unavailable" }
                         file.isFile
                     }
                     if (restored != null) {
@@ -152,7 +153,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                 }
                 withContext(Dispatchers.IO) { refreshAudio() }
                 mutable.update { it.copy(importing = false) }
-                if (input.automatic && ownedAudioId != null) transcribe(archival = archival)
+                if (input.automatic && ownedAudioId != null && input.queueId == null) transcribe(archival = archival)
                 else mutable.value.audio?.takeIf {
                     // Recovery protection also owns successful temporary results;
                     // only a real failure/interruption warrants recovery wording.
@@ -227,10 +228,26 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
         refreshTranscript()
     }
 
-    fun retry(useCurrentModel: Boolean = false) {
+    fun enqueueRetry(useCurrentModel: Boolean = false, onQueued: (String) -> Unit = {}) {
         if (state.value.exitRequest != null || state.value.checkingExit || state.value.running || state.value.importing || state.value.saving || state.value.closing || state.value.deleting || operation?.isActive == true) return
-        operation = viewModelScope.launch { transcribe(useCurrentModel) }
+        ownedAudioId?.let { id ->
+            val speakers = input.fileOptions?.speakerLabels ?: state.value.audio?.retrySpeakers ?: resultMetadata.speakerLabels
+            app.transcriptionQueue.retry(id, speakers,
+                modelId = if (useCurrentModel) app.modelManager.selected.value.id else resultModelId ?: app.modelManager.selected.value.id,
+                accepted = onQueued)
+        }
     }
+
+    /** Execute on the attached owner once its queue slot is granted. UI retries use enqueueRetry so each receives a fresh attempt identity. */
+    internal fun retry(useCurrentModel: Boolean = false) {
+        if (state.value.exitRequest != null || state.value.checkingExit || state.value.running || state.value.importing || state.value.saving || state.value.closing || operation?.isActive == true) return
+        operation = viewModelScope.launch {
+            val target = input.queueId?.let { QueueTranscriptTarget(app.transcriptionQueue.target(it)) }
+            if (target == null) transcribe(useCurrentModel) else withContext(target) { transcribe(useCurrentModel) }
+        }
+    }
+
+    internal suspend fun awaitOperation() { operation?.join() }
 
     fun chooseImportRetention(choice: ImportRetentionChoice, remember: Boolean) = importRetention.answer(choice, remember)
     fun cancelImport() = importRetention.cancel()
@@ -274,7 +291,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                         val textDuration = app.settingsRepository.transcriptHistoryRetention.first()
                         diagnosticSession = app.recognitionDiagnostics.capture(options)
                         diagnostics = viewModelScope.launch { metrics.state.collect { diagnosticSession?.record(it) } }
-                        activity = viewModelScope.launch { app.recognizerManager.activity.collect { metrics.recognition(it) } }
+                        activity = app.recognizerManager.observeSessionActivity(viewModelScope, sink = metrics::recognition)
                         presenter = viewModelScope.launch {
                             while (isActive) {
                                 metrics.tick()
@@ -633,7 +650,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
 
     private fun workingFiles(): List<File> = synchronized(temporaryResults) { temporaryResults.toList() }
     private fun workingId(file: File): String = TranscriptSource.read(file).transcriptId ?: TranscriptHistory.idForAttempt(file.name)
-    private fun cachedWorkingCopies() = TranscriptSource.copies(File(app.cacheDir, "transcripts"))
+    private fun cachedWorkingCopies() = TranscriptSource.copies(File(app.cacheDir, "transcripts")) +
+        TranscriptSource.copies(app.transcriptionQueue.resultsDirectory)
     private fun linkedWorkingCopies(recoverable: Boolean = false): List<WorkingTranscriptCopy> {
         val audioId = ownedAudioId ?: return emptyList()
         val copies = if (recoverable) TranscriptSource.recoverableCopies(File(app.cacheDir, "transcripts")) else cachedWorkingCopies()
@@ -714,7 +732,10 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                     if (target != HistoryDeletionTarget.TRANSCRIPTS) ownedAudioId?.let { RecordingRecovery.dismissNotification(app, it) }
                     refreshAudio(); refreshTranscript()
                     val empty = deletionPlan().choices.isEmpty()
-                    if (empty) workingFiles().forEach(TranscriptStore::deleteArtifacts)
+                    if (empty) {
+                        workingFiles().forEach(TranscriptStore::deleteArtifacts)
+                        input.queueId?.let { app.transcriptionQueue.acknowledge(it) }
+                    }
                     mutable.update { it.copy(finished = empty, message = app.getString(R.string.dialog_deleted)) }
                 }
             } catch (e: Exception) { showError(e)
@@ -773,6 +794,7 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                 withContext(Dispatchers.IO) {
                     ownedAudioId?.let { RecordingRecovery.dismissNotification(app, it) }
                     releaseWorkingResults()
+                    input.queueId?.let { app.transcriptionQueue.acknowledge(it) }
                 }
                 if (pin) ActionFeedback.show(app, R.string.action_feedback_exit_pinned)
                 mutable.update { it.copy(exited = true, exitRequest = null) }

@@ -23,6 +23,8 @@ data class TranscriptEntry(val id: String, val directory: File, val created: Lon
 /** Text history owns independent copies; deleting source audio cannot cascade into it. */
 class TranscriptHistory(private val root: File, private val artifacts: ArchivalJobStore? = null,
     private val clock: () -> Long = System::currentTimeMillis) {
+    internal var awaitingQueueReview: (String) -> Boolean = { false }
+    @Synchronized internal fun refreshQueueHold(id: String) { entries[id]?.let(::indexExpiry) }
     @Synchronized fun planArchive(id: String, plan: ArchivePlan, retryPaused: Boolean = false): ArchiveSubmission? {
         val entry = entries[id]?.takeUnless { id in deleted } ?: return null
         val updated = entry.copy(archivePlan = plan)
@@ -272,7 +274,7 @@ class TranscriptHistory(private val root: File, private val artifacts: ArchivalJ
         indexExpiry(entry); changes.value++
     }
     private fun indexExpiry(entry: TranscriptEntry) = expiry.put(entry.id, entry.retention,
-        eligible = entry.id !in viewers && entry.id !in deleted)
+        eligible = entry.id !in viewers && entry.id !in deleted && !awaitingQueueReview(entry.id))
     private fun remove(id: String) {
         val entry = entries[id] ?: return
         if (!entry.directory.deleteRecursively()) return

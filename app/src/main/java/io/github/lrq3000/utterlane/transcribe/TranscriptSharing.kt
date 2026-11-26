@@ -14,7 +14,7 @@ fun shareTranscript(context: Context, store: TranscriptStore) {
     val lease = store.acquire()
     UtterlaneApp.instance.applicationScope.launch {
         try {
-            val file = withContext(Dispatchers.IO) { store.snapshot() }
+            val file = withContext(Dispatchers.IO) { store.snapshot(java.io.File(context.cacheDir, "transcripts/exports")) }
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"; putExtra(Intent.EXTRA_STREAM, uri)

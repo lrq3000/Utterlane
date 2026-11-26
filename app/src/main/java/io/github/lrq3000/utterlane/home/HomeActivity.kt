@@ -57,12 +57,13 @@ open class HomeActivity : LocalizedActivity() {
     }
     private val fileSetup = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) result.data?.let { accepted ->
-            val options = FileTranscriptionOptions.from(accepted)
-            if (options != null) accepted.data?.let { app.homeController.load(it, options) }
+            accepted.getStringExtra(io.github.lrq3000.utterlane.transcribe.QueueNotifications.JOB)?.let {
+                startActivity(io.github.lrq3000.utterlane.transcribe.QueueNotifications.intent(this, it))
+            }
         }
     }
-    private val audioPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { fileSetup.launch(FileTranscriptionSetupActivity.forPicker(this, it)) }
+    private val audioPicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) fileSetup.launch(FileTranscriptionSetupActivity.forPicker(this, uris))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -112,7 +113,8 @@ open class HomeActivity : LocalizedActivity() {
                         tabs.SaveableStateProvider(destination.name) {
                             when (destination) {
                                 HomeDestination.RECORD -> HomeScreen(app.homeController, ::record,
-                                     onLoad = { audioPicker.launch(arrayOf("audio/*")) })
+                                     onLoad = { audioPicker.launch(arrayOf("audio/*")) },
+                                     reopenImport = { fileSetup.launch(FileTranscriptionSetupActivity.resume(this@HomeActivity, it)) })
                                 HomeDestination.AUDIO -> HistoryScreen(audio, false, ::backFromWorkspace)
                                 HomeDestination.TRANSCRIPTS -> HistoryScreen(text, true, ::backFromWorkspace)
                             }
@@ -143,6 +145,7 @@ open class HomeActivity : LocalizedActivity() {
 
     override fun onResume() {
         super.onResume()
+        app.transcriptionQueue.visible()
         if (historyEntryDestination == null) AppEntryServices.restore(this)
     }
     override fun onNewIntent(intent: Intent) {

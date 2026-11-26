@@ -154,13 +154,6 @@ class WorkerRecognitionBackend(context: Context, private val model: ModelDefinit
     private fun <T> await(future: CompletableFuture<T>, watchdog: ProgressWatchdog): T {
         while (true) {
             try { return future.get(250, TimeUnit.MILLISECONDS) }
-            catch (e: InterruptedException) {
-                // Cancel this wait, not the shared worker: other sessions still
-                // own it. request() removes this reply ID; the serialized worker
-                // may finish its current decode before serving the next request.
-                // Initialization cancellation is closed by RecognizerManager.
-                throw e
-            }
             catch (e: ExecutionException) { throw IllegalStateException(e.cause?.message ?: "Recognition worker failed", e.cause) }
             catch (e: TimeoutException) {
                 // uptime excludes deep sleep; the explicit pause also covers a
@@ -213,18 +206,20 @@ class WorkerRecognitionBackend(context: Context, private val model: ModelDefinit
         failureListener(message)
     }
     private fun disconnect(message: String) {
-        failPending(IllegalStateException(message))
-        synchronized(activityLock) {
-            activityRequest = 0
-            activityListener(RecognitionActivity(stage = "idle", message = message))
+        try {
+            synchronized(identityLock) {
+                // Abort the isolated same-UID worker before releasing the waiter's model turn. Binder death already clears workerPid.
+                if (workerPid > 0) Process.killProcess(workerPid)
+                workerPid = 0
+            }
+            unbind()
+        } finally {
+            failPending(IllegalStateException(message))
+            synchronized(activityLock) {
+                activityRequest = 0
+                activityListener(RecognitionActivity(stage = "idle", message = message))
+            }
         }
-        synchronized(identityLock) {
-            // The private, non-exported service supplied this same-UID worker PID.
-            // OS process termination releases model memory even when JNI is stuck.
-            if (workerPid > 0) Process.killProcess(workerPid)
-            workerPid = 0
-        }
-        unbind()
     }
     private fun failPending(error: Throwable) {
         connected.completeExceptionally(error)

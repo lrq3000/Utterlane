@@ -141,8 +141,13 @@ class RecognitionWorkerService : Service() {
         val count = data.getInt("count")
         require(id > 0 && count in 0..8)
         val options = OptionsCodec.fromBundle(requireNotNull(data.getBundle("options")))
+        val window = AudioWindow(readPcm(data), data.getLong("start"), data.getLong("ownedStart"), data.getLong("ownedEnd"), data.getBoolean("final"))
+        return ResultSpanCodec.toBundle(withSpeakerCapacity(id, speakerSessions.keys,
+            { checkNotNull(backend).decodePlainWindow(window, textOnly) }) { speakerWindow(id, count, options, window) })
+    }
+
+    private fun speakerWindow(id: Long, count: Int, options: RuntimeOptions, window: AudioWindow): List<SpeechSpan> {
         val session = speakerSessions[id] ?: run {
-            check(speakerSessions.size < 4) { "Too many simultaneous speaker sessions" }
             val recognizer = checkNotNull(backend)
             val stream = speakerStream(count) {
                 val path = File(filesDir, "${DiarizationModel.definition.relativeDirectory}/model.gguf")
@@ -155,12 +160,11 @@ class RecognitionWorkerService : Service() {
         }
         try {
             require(session.count == count && session.options == options) { "Speaker session options changed during recognition" }
-            val spans = session.processor.process(AudioWindow(readPcm(data), data.getLong("start"), data.getLong("ownedStart"), data.getLong("ownedEnd"), data.getBoolean("final")))
-            return ResultSpanCodec.toBundle(spans)
+            return session.processor.process(window)
         } catch (failure: Throwable) {
             speakerSessions.remove(id)?.processor?.close(); throw failure
         } finally {
-            if (data.getBoolean("final")) speakerSessions.remove(id)?.processor?.close()
+            if (window.isFinal) speakerSessions.remove(id)?.processor?.close()
         }
     }
 
@@ -198,6 +202,10 @@ class RecognitionWorkerService : Service() {
     }
 
     companion object {
+        /** Preserve the four existing streams and decode a fifth input exactly once. UNLABELED also signals degraded operation on silent windows. */
+        internal inline fun withSpeakerCapacity(id: Long, occupied: Set<Long>, plain: () -> String, speakers: () -> List<SpeechSpan>): List<SpeechSpan> =
+            if (id !in occupied && occupied.size >= 4) listOf(SpeechSpan(plain(), SpeechSpan.UNLABELED)) else speakers()
+
         /** Executor-confined EOF: remove ownership even if option parsing or JNI fails. */
         internal fun finishSpeakerSession(sessions: MutableMap<Long, SpeakerSession>, id: Long,
             options: () -> RuntimeOptions): List<SpeechSpan> {

@@ -3,6 +3,8 @@ package io.github.lrq3000.utterlane.transcribe
 import io.github.lrq3000.utterlane.history.*
 import java.io.ByteArrayInputStream
 import java.io.IOException
+import java.io.File
+import java.util.UUID
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -11,6 +13,29 @@ import org.junit.rules.TemporaryFolder
 class ImportedAudioCopyTest {
     @get:Rule val folder = TemporaryFolder()
     private val bytes = byteArrayOf(1, 2, 3, 4)
+
+    @Test fun committedBatchSlotMayReuseOnlyAnEmptyOrIdentifiableMetadataOnlyDirectory() {
+        for (mode in listOf("empty", "empty-temp", "metadata", "foreign", "foreign-temp")) {
+            val historyRoot = folder.newFolder()
+            val job = UUID.randomUUID().toString()
+            val slot = File(historyRoot, job).apply { mkdir() }
+            val existing = when (mode) {
+                "metadata" -> File(slot, "recording.properties.tmp").apply { writeText("#Utterlane private history\nstatus=importing\n") }
+                "empty-temp" -> File(slot, "recording.properties.tmp").apply { createNewFile() }
+                "foreign" -> File(slot, "source.wav").apply { writeBytes(bytes) }
+                "foreign-temp" -> File(slot, "recording.properties.tmp").apply { writeBytes(bytes) }
+                else -> null
+            }
+            fun stage() = copyImportedAudio(RecordingHistory(historyRoot), bytes.inputStream(), "wav", AudioImportMetadata(), ImportRetentionChoice.KEEP, false, job)
+            if (mode.startsWith("foreign")) {
+                assertThrows(IllegalStateException::class.java) { stage() }
+                assertArrayEquals(bytes, existing!!.readBytes())
+            } else stage().let { owned -> owned.lease.use {
+                assertEquals(job, owned.entry.id)
+                assertArrayEquals(bytes, owned.entry.part(0).readBytes())
+            } }
+        }
+    }
 
     @Test fun providerCloseFailureReleasesTheAlreadyPublishedLeaseForBothRetentionChoices() {
         for (choice in ImportRetentionChoice.entries) {

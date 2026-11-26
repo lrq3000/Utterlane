@@ -101,13 +101,12 @@ class TranscriptStore(val file: File) {
     @Synchronized fun readForTransfer(limit: Int = TRANSFER_LIMIT): String? =
         if (file.length() <= limit) file.readText(Charsets.UTF_8) else null
 
-    fun snapshot(): File {
-        acquire().use { return snapshotWithLease() }
+    fun snapshot(directory: File = File(file.parentFile, "exports")): File {
+        acquire().use { return snapshotWithLease(directory) }
     }
 
-    private fun snapshotWithLease(): File {
+    private fun snapshotWithLease(directory: File): File {
         val length = synchronized(this) { file.length() }
-        val directory = File(file.parentFile, "exports")
         check(directory.mkdirs() || directory.isDirectory) { "Cannot create text export" }
         val snapshot = File.createTempFile("export-", ".txt", directory)
         try {

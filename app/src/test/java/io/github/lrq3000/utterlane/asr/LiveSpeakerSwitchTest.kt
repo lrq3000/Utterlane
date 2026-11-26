@@ -82,6 +82,7 @@ class LiveSpeakerSwitchTest {
             val block = ShortArray(16000) { 1000 }
             session.accept(block)
             assertEquals(false, controls.state.value)
+            assertEquals(true, controls.retryPreference.value)
             assertEquals("kept without labels", store.file.readText())
             available = true
             controls.set(true)

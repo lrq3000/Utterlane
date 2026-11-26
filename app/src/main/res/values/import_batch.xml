@@ -1,0 +1,20 @@
+<resources>
+    <string name="queue_batch_count">%1$d of %2$d files added to the queue.</string>
+    <string name="queue_batch_open">Open import · %1$d of %2$d files added</string>
+    <string name="queue_batch_unreadable">File %1$d (%2$s) has not been added. Check access to the file and available storage, then retry or select the file again.</string>
+    <string name="queue_batch_duplicate">That selection belongs to another file in this batch. Select file %1$d (%2$s).</string>
+    <string name="queue_batch_interrupted">Continue with file %1$d (%2$s). Files already added will not be imported again.</string>
+    <string name="queue_batch_continue">Continue import</string>
+    <string name="queue_batch_reselect">Select this file again</string>
+    <string name="queue_batch_skip">Skip this file</string>
+    <string name="queue_batch_stop_after">Stop after current file</string>
+    <string name="queue_batch_stop">Stop remaining import</string>
+    <string name="queue_batch_view">Open first queued file</string>
+    <string name="queue_batch_close">Close</string>
+    <string name="queue_batch_action_required">Import needs your attention · %1$d of %2$d files added</string>
+    <string name="queue_batch_finished">This import is no longer pending. Accepted files are available in the transcription queue until reviewed.</string>
+    <string name="queue_batch_storage">The import receipt could not be opened. Check available storage and reopen the import.</string>
+    <string name="queue_preparing_service">Preparing the transcription queue</string>
+    <string name="queue_service_pending">Audio is queued on this device. Background processing is not running.</string>
+    <string name="queue_service_resume">Resume processing</string>
+</resources>

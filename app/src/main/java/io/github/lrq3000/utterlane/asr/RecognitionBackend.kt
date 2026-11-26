@@ -22,3 +22,11 @@ interface RecognitionBackend : Closeable {
     fun finishSpeakers(sessionId: Long, options: RuntimeOptions = RuntimeOptions()): List<SpeechSpan> = emptyList()
     fun endSession(sessionId: Long) {}
 }
+
+/** Identical plain-ASR ownership whether labels were disabled or a speaker cache was unavailable. Untimed custom models receive disjoint PCM. */
+internal fun RecognitionBackend.decodePlainWindow(window: AudioWindow, custom: Boolean): String {
+    val pcm = if (custom) window.samples.copyOfRange((window.ownedStart - window.startSample).toInt(),
+        (window.ownedEnd - window.startSample).toInt()) else window.samples
+    val result = transcribeWindow(pcm)
+    return result.text ?: WindowText.select(result.tokens, result.timestamps, window)
+}

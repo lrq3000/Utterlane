@@ -117,6 +117,9 @@
         </receiver>
 
         <!-- External audio only: do not expose result, recovery or private paths. -->
+        <service android:name=".transcribe.TranscriptionQueueService" android:exported="false" android:foregroundServiceType="dataSync|mediaProcessing|specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="On Android 14, finishes user-requested offline transcription of captured or imported audio. Stops when no processing remains." />
+        </service>
         <activity
             android:name=".transcribe.FileTranscriptionSetupActivity"
             android:exported="true"
@@ -126,6 +129,7 @@
             <!-- Share intent from apps like WhatsApp -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="audio/*" />
             </intent-filter>
@@ -146,6 +150,7 @@
                 <data android:mimeType="audio/*" />
             </intent-filter>
         </activity>
+        <activity android:name=".transcribe.ImportRecoveryActivity" android:exported="false" android:theme="@style/Theme.Utterlane.Dialog" />
         <activity
             android:name=".transcribe.TranscribeActivity"
             android:exported="false"

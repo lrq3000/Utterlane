@@ -7,9 +7,16 @@ import java.io.FilterInputStream
 import java.io.InputStream
 import java.io.InterruptedIOException
 
+/** Adopt the completed private source from an interrupted queue publication; a partial copy is removed by history initialization and cannot be adopted. */
+internal fun RecordingHistory.stagedImport(id: String): RecordingHistory.OwnedImport? = synchronized(this) {
+    initialize()
+    val entry = runCatching { get(id) }.getOrNull()?.takeIf { it.importMetadata != null } ?: return null
+    RecordingHistory.OwnedImport(entry, acquire(id, true))
+}
+
 /** Shared source-close / owned-copy boundary, independent of Android providers. */
 internal fun copyImportedAudio(history: RecordingHistory, source: InputStream, extension: String,
-    metadata: AudioImportMetadata, retention: ImportRetentionChoice, speakerLabels: Boolean? = null): RecordingHistory.OwnedImport {
+    metadata: AudioImportMetadata, retention: ImportRetentionChoice, speakerLabels: Boolean? = null, importId: String? = null): RecordingHistory.OwnedImport {
     // runInterruptible can stop large local copies between read operations.
     val input = object : FilterInputStream(source) {
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
@@ -19,7 +26,7 @@ internal fun copyImportedAudio(history: RecordingHistory, source: InputStream, e
     }
     var owned: RecordingHistory.OwnedImport? = null
     try {
-        input.use { owned = history.importAudioOwned(it, extension, metadata, retention, speakerLabels) }
+        input.use { owned = history.importAudioOwned(it, extension, metadata, retention, speakerLabels, importId) }
         return checkNotNull(owned)
     } catch (error: Throwable) {
         // Source close happens after publication, but before the caller receives

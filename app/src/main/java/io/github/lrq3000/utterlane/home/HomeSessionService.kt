@@ -12,6 +12,7 @@ import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 
 /** No sticky restart: Android must never reopen the microphone without a new user action. */
 class HomeSessionService : Service() {
@@ -51,7 +52,26 @@ class HomeSessionService : Service() {
             controller.serviceStarted(requested)
             observer?.cancel()
             observer = scope.launch {
-                controller.state.collect { state ->
+                var hadMicrophone = microphone
+                val queue = (application as UtterlaneApp).transcriptionQueue
+                fun handedOff(state: HomeState) = microphone && state.capture.phase == HomeCapturePhase.PROCESSING && state.queuedTail && queue.foreground.value != null
+                controller.state.combine(queue.foreground) { state, _ -> state }.collect { state ->
+                    if (controller.ownsService(requested) && handedOff(state)) {
+                        // The processing service is already in the foreground, not merely requested. Its per-job notification now replaces the microphone service's recording indicator.
+                        expectedStop = true
+                        controller.serviceStopping(requested)
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                        return@collect
+                    }
+                    if (controller.ownsService(requested) && hadMicrophone && state.capture.phase == HomeCapturePhase.PROCESSING) {
+                        hadMicrophone = false
+                        // The existing capture service can cover the handoff even when Android refuses a new background service start. Never continue to advertise recording or a Stop action.
+                        val processing = notification(requested, microphone = false)
+                        if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION, processing,
+                            if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
+                        else startForeground(NOTIFICATION, processing)
+                    }
                     if (controller.ownsService(requested) && !state.busy) {
                         HomeServiceIdleStop.recheck(
                             isIdle = { controller.ownsService(requested) && !controller.state.value.busy },

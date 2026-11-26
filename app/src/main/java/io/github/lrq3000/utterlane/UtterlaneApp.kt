@@ -39,6 +39,7 @@ class UtterlaneApp : Application() {
         internal set
     val audioPlayback by lazy { io.github.lrq3000.utterlane.transcribe.AudioPlaybackController(this) }
     val homeController by lazy { io.github.lrq3000.utterlane.home.HomeController(this) }
+    internal val transcriptionQueue by lazy { io.github.lrq3000.utterlane.transcribe.TranscriptionQueue(this) }
 
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var modelWakeObserver: DeviceWakeObserver? = null
@@ -111,6 +112,8 @@ class UtterlaneApp : Application() {
         recordingHistory = RecordingHistory(File(filesDir, "microphone-history"), archiveJobs,
             io.github.lrq3000.utterlane.archive.AndroidAudioAssetIO(this))
         transcriptHistory = io.github.lrq3000.utterlane.history.TranscriptHistory(File(noBackupFilesDir, "transcript-history"), archiveJobs)
+        recordingHistory.awaitingQueueReview = transcriptionQueue::protectsAudio
+        transcriptHistory.awaitingQueueReview = transcriptionQueue.journal::protectsText
         archival = io.github.lrq3000.utterlane.archive.ArchivalCoordinator(this, archiveJobs)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: android.app.Activity) = archival.visible(activity, true)
@@ -123,6 +126,10 @@ class UtterlaneApp : Application() {
         })
         historyCleanup = io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator(this)
         createNotificationChannel()
+        // Repair descriptors and any missed terminal notification even when a service rather than Home first recreates the main process. Recovery does not start a queue producer.
+        applicationScope.launch(Dispatchers.IO) {
+            try { transcriptionQueue.initialized() } catch (e: Exception) { Log.e(TAG, "Queue recovery failed", e) }
+        }
 
         // Policy changes update schedules without scanning histories. Background
         // process startup must not release Immediate-unpin user-launch holds.

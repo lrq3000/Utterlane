@@ -18,7 +18,9 @@ data class HistoryEntry(val id: String, val directory: File, val started: Long, 
     val processingAttempts: Set<String> = emptySet(), val externalParts: Map<Int, String> = emptyMap(), val archivePlan: ArchivePlan? = null,
     val rollingAudio: RollingAudio? = null, val representation: String = AudioRepresentation.ORIGINAL,
     val sourceOverride: OriginalAudioSource? = null, val microphone: MicrophoneOptions? = null,
-    val fileSpeakerLabels: Boolean? = null) {
+    val fileSpeakerLabels: Boolean? = null, val captureSpeakerRequest: Boolean? = null) {
+    /** A missing optional labeler does not cancel a user's request. Older recordings have only evidence of actual labels, not the user's current global preference. */
+    val retrySpeakers get() = fileSpeakerLabels ?: captureSpeakerRequest ?: speakerLabels
     val retention get() = RetentionMark(reference, pinned, holdForLaunch)
     /** The user already declined archival, but not recovery of unfinished work. */
     val completedTransientImport get() = importRetention == ImportRetentionChoice.DISCARD && temporary &&
@@ -37,6 +39,12 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
     private val audioIO: AudioAssetIO = PrivateAudioAssetIO,
     private val installOriginal: (HistoryEntry) -> OriginalAudioSource = OriginalAudioSource::capture,
     private val clock: () -> Long = System::currentTimeMillis) {
+    internal var awaitingQueueReview: (String) -> Boolean = { false }
+    @Synchronized internal fun refreshQueueHold(id: String) {
+        val entry = entries[id] ?: return
+        indexExpiry(entry)
+        if (entry.completedTransientImport && !awaitingQueueReview(id) && (leases[id] ?: 0) == 0) delete(id)
+    }
     fun planEncoding(id: String, epoch: Long) {
         val entry = synchronized(this) { get(id).takeUnless { id in deferred || it.temporary } } ?: return
         val layout = entry.rollingAudio ?: return
@@ -312,10 +320,11 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
                 microphone = if (properties.containsKey("microphone.gain")) MicrophoneOptions.fromMap(
                     MicrophoneOptions.HFP.toMap().keys.mapNotNull { name -> properties.getProperty("microphone.$name")?.let { name to it } }.toMap(),
                      MicrophoneOptions.STANDARD) else null,
-                 fileSpeakerLabels = properties.getProperty("fileSpeakerLabels")?.toBooleanStrictOrNull())
+                 fileSpeakerLabels = properties.getProperty("fileSpeakerLabels")?.toBooleanStrictOrNull(),
+                 captureSpeakerRequest = properties.getProperty("captureSpeakerRequest")?.toBooleanStrictOrNull())
             // A successful transcript-only import has no recovery obligation. All
             // runtime owners disappeared with the old process, so finish cleanup.
-            if (entry.completedTransientImport) {
+            if (entry.completedTransientImport && !awaitingQueueReview(entry.id)) {
                 if (!directory.deleteRecursively()) { put(entry); delete(entry.id) }
                 return@forEach
             }
@@ -329,7 +338,7 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
     }
 
     @Synchronized fun begin(retention: HistoryRetention, automatic: Boolean = retention != HistoryRetention.NONE,
-        keepUntilDismissed: Boolean = false, quality: AudioQuality = AudioQuality(), microphone: MicrophoneOptions? = null): Recording {
+        keepUntilDismissed: Boolean = false, quality: AudioQuality = AudioQuality(), microphone: MicrophoneOptions? = null, speakerRequest: Boolean? = null): Recording {
         initialize()
         val id = UUID.randomUUID().toString()
         val directory = File(root, id)
@@ -339,7 +348,7 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
         val rolling = if (quality.compress) RollingPcmJournal.create(directory, quality) else null
         val entry = HistoryEntry(id, directory, clock(), clock(), 0, "active", needsRecovery = true,
             temporary = !automatic || (keepUntilDismissed && retention == HistoryRetention.NONE),
-            rollingAudio = rolling?.let { RollingAudio(quality, it.partFrames) }, microphone = microphone)
+            rollingAudio = rolling?.let { RollingAudio(quality, it.partFrames) }, microphone = microphone, captureSpeakerRequest = speakerRequest)
         save(entry)
         put(entry)
         return Recording(entry, retention, keepUntilDismissed, rolling).also { active[id] = it; leases[id] = 1 }
@@ -355,20 +364,33 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
      * complete copy. The caller must publish/close it on IO before a cancellable
      * dispatch; there is no prune window between return and viewer acquisition. */
     fun importAudioOwned(input: InputStream, extension: String, metadata: AudioImportMetadata,
-         retention: ImportRetentionChoice, speakerLabels: Boolean? = null): OwnedImport = copyImport(input, extension,
+         retention: ImportRetentionChoice, speakerLabels: Boolean? = null, importId: String? = null): OwnedImport = copyImport(input, extension,
         metadata.mimeType ?: metadata.trackMimeType ?: "audio/*", metadata.durationMs ?: 0, retention, metadata,
-         protectFromPruning = true, speakerLabels = speakerLabels) { entry, lease ->
+         protectFromPruning = true, speakerLabels = speakerLabels, importId = importId) { entry, lease ->
         OwnedImport(entry, checkNotNull(lease))
     }
 
     private fun <T> copyImport(input: InputStream, extension: String, mime: String, durationMs: Long,
-         retention: ImportRetentionChoice?, metadata: AudioImportMetadata?, protectFromPruning: Boolean, speakerLabels: Boolean?,
+         retention: ImportRetentionChoice?, metadata: AudioImportMetadata?, protectFromPruning: Boolean, speakerLabels: Boolean?, importId: String? = null,
         publish: (HistoryEntry, AudioLease?) -> T): T {
         val entry = synchronized(this) {
             initialize()
-            val id = UUID.randomUUID().toString()
+            val id = importId?.also { require(UUID.fromString(it).toString() == it) } ?: UUID.randomUUID().toString()
             val directory = File(root, id)
-            check(directory.mkdir())
+            if (!directory.mkdir()) {
+                // A deterministic batch member can die between mkdir and the first atomic metadata rename. Never truncate a payload, follow a link, or adopt another recording's directory.
+                check(importId != null && java.nio.file.Files.isDirectory(directory.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS))
+                val files = checkNotNull(directory.listFiles())
+                if (files.isNotEmpty()) {
+                    val tmp = files.singleOrNull()
+                    check(tmp != null && tmp.name == "recording.properties.tmp" &&
+                        java.nio.file.Files.isRegularFile(tmp.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS) &&
+                        (tmp.length() == 0L || (tmp.length() in 1..65536 &&
+                            tmp.bufferedReader(Charsets.ISO_8859_1).use { it.readLine() } == "#Utterlane private history" &&
+                            runCatching { HistoryMetadata.read(tmp).getProperty("status") }.getOrNull() == "importing")))
+                    java.nio.file.Files.delete(tmp.toPath())
+                }
+            }
             val suffix = extension.filter { it.isLetterOrDigit() }.take(8).ifEmpty { "audio" }
             HistoryEntry(id, directory, clock(), clock(), 0, "importing", needsRecovery = true,
                 temporary = retention != ImportRetentionChoice.KEEP,
@@ -431,7 +453,7 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
                         status = if (kind == null) "interrupted" else "failed",
                         failureMessage = message ?: entry.failureMessage, failureKind = kind ?: entry.failureKind)
                 save(updated); put(updated)
-                if (updated.completedTransientImport && (leases[audioId] ?: 0) == 0) delete(audioId)
+                if (updated.completedTransientImport && !awaitingQueueReview(audioId) && (leases[audioId] ?: 0) == 0) delete(audioId)
             } finally {
                 // Even failed metadata IO retires the runtime owner. The already
                 // durable token remains pending and can be claimed by a retry.
@@ -581,12 +603,16 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
         save(updated); put(updated)
     }
 
-    /** Record actual labeled output, including before capture finalization. Late
-     * processing must never republish input the user has already discarded. */
-    @Synchronized fun setSpeakerLabels(id: String, value: Boolean) {
+    /** Preserve a session toggle for retry even when the optional labeler is unavailable or the process dies before capture finalization. */
+    @Synchronized fun setSpeakerRequest(id: String, requested: Boolean) {
         val entry = entries[id]?.takeUnless { id in deferred } ?: return
-        if (entry.speakerLabels == value) return
-        val updated = entry.copy(speakerLabels = value)
+        if (entry.captureSpeakerRequest != requested) entry.copy(captureSpeakerRequest = requested).let { save(it); put(it) }
+    }
+    /** Record actual labeled output. Late processing must never republish input the user has already discarded. */
+    @Synchronized fun setSpeakerLabels(id: String, value: Boolean, requested: Boolean? = null) {
+        val entry = entries[id]?.takeUnless { id in deferred } ?: return
+        if (entry.speakerLabels == value && (requested == null || entry.captureSpeakerRequest == requested)) return
+        val updated = entry.copy(speakerLabels = value, captureSpeakerRequest = requested ?: entry.captureSpeakerRequest)
         save(updated); put(updated)
     }
 
@@ -600,7 +626,7 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
         val completed = completedProcessing(entry, emptySet())
         save(completed)
         put(completed)
-        if (completed.completedTransientImport && (leases[id] ?: 0) == 0) delete(id)
+        if (completed.completedTransientImport && !awaitingQueueReview(id) && (leases[id] ?: 0) == 0) delete(id)
     }
 
     private fun completedProcessing(entry: HistoryEntry, remaining: Set<String>): HistoryEntry = entry.copy(
@@ -713,13 +739,13 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
     }
     private fun indexExpiry(entry: HistoryEntry) = expiry.put(entry.id, entry.retention,
         eligible = !entry.temporary && entry.status != "active" && entry.status != "discarded" &&
-            entry.id !in deferred && entry.id !in viewers)
+            entry.id !in deferred && entry.id !in viewers && !awaitingQueueReview(entry.id))
     private fun release(id: String) {
         val count = (leases[id] ?: 1) - 1
         if (count == 0) {
             leases.remove(id)
             if (id in deferred) remove(id)
-            else if (entries[id]?.completedTransientImport == true) delete(id)
+            else if (entries[id]?.completedTransientImport == true && !awaitingQueueReview(id)) delete(id)
             else entries[id]?.let(::releasePrivateParts)
             artifacts?.readerReleased(ArtifactOwner(ArtifactKind.AUDIO, id))
         } else leases[id] = count
@@ -835,6 +861,7 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
             entry.microphone?.toMap()?.forEach { (name, value) -> setProperty("microphone.$name", value) }
             entry.importRetention?.let { setProperty("importRetention", it.name) }
             entry.fileSpeakerLabels?.let { setProperty("fileSpeakerLabels", it.toString()) }
+            entry.captureSpeakerRequest?.let { setProperty("captureSpeakerRequest", it.toString()) }
             entry.importMetadata?.let { metadata ->
                 setProperty("importMetadata", "true")
                 metadata.displayName?.let { setProperty("importName", it) }

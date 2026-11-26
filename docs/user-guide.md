@@ -381,6 +381,14 @@ are no page buttons. Opening a record and returning, or recreating the screen,
 retains the browsing position. The list keeps a small window of previews in memory
 instead of reading every transcript while you explore a large history.
 
+### Background transcription and review
+
+**Transcription queue.** Select one or more audio files from Home, confirm the settings, and Utterlane takes a private copy of each accepted file. Files are transcribed in order. Tap **Continue in background** to leave the app; the notification for each file changes from processing to ready and opens that exact result. The **Transcription queue** on Home also lists results awaiting review, including when Android notifications are disabled.
+
+You can dictate while a file is processing. The microphone captures immediately once available; ready live speech gets the next turn on the shared recognizer after the current operation finishes. After Stop, remaining recognition can continue in the background while you start another recording. With history off or Immediate retention, each queued result is held for review. Closing the result applies the separate audio and text policies; backgrounding the app or swiping away a notification does not discard either.
+
+If Android interrupts processing, review the partial result and retry from its retained audio. Retrying creates a separate result. If access to an imported file expires before its private copy is complete, reopen the pending import on Home and select that file again. Files already accepted from that batch do not need to be submitted again.
+
 ### Saved audio quality and background archival
 
 Open the initially collapsed **Saved audio quality** section in Settings.
