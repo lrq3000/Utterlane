@@ -1,6 +1,8 @@
 package io.github.lrq3000.utterlane
 
 import android.app.Activity
+import android.app.Instrumentation.ActivityMonitor
+import android.app.Instrumentation.ActivityResult
 import android.content.Intent
 import android.view.KeyEvent
 import androidx.core.content.FileProvider
@@ -53,6 +55,42 @@ class SettingsNavigationAndroidTest {
             }
             ui.scrollTo("settings_onboarding")
             ui.scrollToText(activity.getString(R.string.privacy_policy))
+        } finally { finish(activity) }
+    }
+
+    @Test fun aboutShowsInstalledVersionAndProjectInformation(): Unit = runBlocking {
+        ui.prepare()
+        val activity = launchNativeActivity(Intent(app, SettingsActivity::class.java)
+            .putExtra(HistoryCleanupCoordinator.INTERNAL_NAVIGATION, true))
+        try {
+            ui.click("settings_open_about")
+            ui.node("settings_page_about").recycle()
+            ui.scrollToText(app.getString(R.string.app_name))
+            @Suppress("DEPRECATION")
+            val installed = app.packageManager.getPackageInfo(app.packageName, 0).versionName
+            ui.scrollToText("Version $installed")
+            ui.scrollToText("Free and open-source software, made with love ❤️")
+            ui.scrollToText("Stephen Karl Larroque")
+            ui.scrollToText("Apache-2.0")
+            ui.scrollToText("github.com/lrq3000/Utterlane")
+            var destination: Intent? = null
+            val link = object : ActivityMonitor() {
+                override fun onStartActivity(intent: Intent): ActivityResult? {
+                    if (intent.action != Intent.ACTION_VIEW) return null
+                    destination = intent
+                    return ActivityResult(Activity.RESULT_CANCELED, null)
+                }
+            }
+            instrumentation.addMonitor(link)
+            try {
+                ui.click("settings_about_github", scroll = false)
+                instrumentation.waitForIdleSync()
+                assertEquals("https://github.com/lrq3000/Utterlane", destination?.dataString)
+            } finally { instrumentation.removeMonitor(link) }
+            ui.scrollToText("All speech processing happens on your device. Internet access is only needed for model downloads and external links.")
+            ui.screenshot("settings-about")
+            back()
+            ui.node("settings_page_root").recycle()
         } finally { finish(activity) }
     }
 
