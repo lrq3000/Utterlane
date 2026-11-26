@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.3.3] - 2026-11-26
+
+### Changed
+- Import and Share now stack Speaker labels and Run in background, with scroll indicators when the options do not fit the window.
+- Transcription progress uses icon controls separate from audio playback. Pause parks an attempt in the queue; Stop removes it from the active queue and keeps its partial result in Transcript History. Continue resumes a verified checkpoint; Restart starts a new attempt without replacing the partial.
+
+### Fixed
+- Pause and Stop no longer wait for an unfinished recognition window in plain or fixed-one-speaker mode. Continue reprocesses the uncommitted audio without replacing the text already saved. Multi-speaker mode still drains buffered words before it checkpoints.
+
 ## [2.3.1] - 2026-11-26
 
 ### Changed

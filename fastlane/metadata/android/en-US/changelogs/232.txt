@@ -1,0 +1,3 @@
+Import and Share stack the two switches and scroll on small screens.
+Use icons in the progress panel, separate from audio playback.
+Pause keeps the job in the queue. Stop moves it to Transcript History. Continue resumes a saved checkpoint; Restart keeps the partial and starts a new attempt.
