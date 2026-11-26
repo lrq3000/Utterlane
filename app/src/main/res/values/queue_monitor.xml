@@ -1,0 +1,8 @@
+<resources>
+    <string name="queue_monitor_heading">Transcription queue · %1$d active or queued</string>
+    <string name="queue_monitor_status">%1$s · %2$s</string>
+    <string name="queue_list_stage">#%1$d · %2$s</string>
+    <string name="queue_list_delete_attempt">Cancel or delete transcription #%1$d: %2$s</string>
+    <string name="queue_list_draining">Finishing recorded audio</string>
+    <string name="queue_list_empty">No transcriptions in the queue.</string>
+</resources>

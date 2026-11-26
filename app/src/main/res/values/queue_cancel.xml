@@ -1,0 +1,7 @@
+<resources>
+    <string name="queue_cancel_title">Cancel and delete this transcription?</string>
+    <string name="queue_cancel_message">Remove “%1$s” from the queue and delete any transcript from this attempt. Other attempts and the original imported file are kept.</string>
+    <string name="queue_cancel_audio">Also delete the saved audio recording</string>
+    <string name="action_delete">Delete</string>
+    <string name="queue_cancel_failed">Deletion could not finish. Check the remaining items and try again.</string>
+</resources>
