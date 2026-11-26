@@ -238,7 +238,7 @@ class HomeController(private val app: UtterlaneApp) {
                     if (audio != null) handoff = scope.async {
                         try {
                             registering?.await()
-                            app.transcriptionQueue.captureEnded(queueId, audio, title, session?.speakerControl?.state?.value == true)
+                            app.transcriptionQueue.captureEnded(queueId, audio, title, session?.speakerControl?.retryPreference?.value == true)
                             app.transcriptionQueue.wake()
                             queueOwnsTail = true
                             if (isCurrent() && !delivered && inputAccepted) mutable.update { it.copy(queuedTail = true) }
@@ -311,7 +311,7 @@ class HomeController(private val app: UtterlaneApp) {
             inputAccepted = true
             val audio = session?.audioId
             if (audio != null && registering == null && handoff == null) registering = scope.async {
-                app.transcriptionQueue.captureStarted(queueId, audio, title)
+                app.transcriptionQueue.captureStarted(queueId, audio, title, session?.speakerControl?.retryPreference?.value == true)
             }
             if (queueOwnsTail && !delivered) mutable.update { it.copy(queuedTail = true) }
             rawStore = store
@@ -329,11 +329,14 @@ class HomeController(private val app: UtterlaneApp) {
         }
         private fun deliverResult(store: TranscriptStore?, failure: SessionFailure?) {
             val publication = handoff
-            if (publication != null) scope.launch {
-                if (publication.await()) {
-                    app.transcriptionQueue.completeCapture(queueId, failure?.message)
-                    if (detached) store?.keepForRecovery()
-                }
+            val registration = registering
+            if (publication != null || registration != null) scope.launch {
+                try {
+                    afterCapturePublication(registration, publication) {
+                        app.transcriptionQueue.completeCapture(queueId, failure?.message, session?.speakerControl?.retryPreference?.value)
+                        if (detached) store?.keepForRecovery()
+                    }
+                } catch (e: CancellationException) { throw e } catch (e: Exception) { showError(e) }
             }
             if (detached) return
             val audio = session?.audioId?.let { runCatching { app.recordingHistory.get(it) }.getOrNull() }

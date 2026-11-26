@@ -40,6 +40,13 @@ internal class QueueNotifications(private val app: UtterlaneApp) {
         return notification.build()
     }
     fun post(row: QueueRecord, percent: Int? = null) = manager.notify(row.notificationId, notification(row, percent))
+    fun publish(row: QueueRecord): Boolean = try {
+        if (!manager.areNotificationsEnabled() || manager.getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) false
+        else { post(row); true }
+    } catch (e: RuntimeException) {
+        android.util.Log.w("TranscriptionQueue", "Result notification unavailable; delivery stays pending", e)
+        false
+    }
     fun remove(row: QueueRecord) = manager.cancel(row.notificationId)
 }
 
@@ -57,7 +64,8 @@ class TranscriptionQueueService : Service() {
     private var anchor: QueueRecord? = null
     private var observer: Job? = null
     private val notices by lazy { QueueNotifications(application as UtterlaneApp) }
-    private fun foreground(row: QueueRecord?) {
+    private val delivery get() = (application as UtterlaneApp).transcriptionQueue.terminalDelivery
+    private fun foreground(candidate: QueueRecord?) = delivery.attach(candidate) { row ->
         val notification = row?.let { notices.notification(it) } ?: notices.serviceNotification()
         val id = row?.notificationId ?: 1031
         if (Build.VERSION.SDK_INT >= 29) startForeground(id, notification, when {
@@ -67,14 +75,9 @@ class TranscriptionQueueService : Service() {
         }) else startForeground(id, notification)
         anchor = row
     }
-    private fun detach(rows: List<QueueRecord>) {
-        val old = anchor
-        if (old == null) stopForeground(STOP_FOREGROUND_REMOVE)
-        else {
-            // Android normally removes the previous foreground notification on ID change or stop. Detach it first, then publish its terminal, dismissible form.
-            stopForeground(STOP_FOREGROUND_DETACH)
-            rows.firstOrNull { it.id == old.id }?.let { notices.post(it) } ?: notices.remove(old)
-        }
+    private fun detach() {
+        delivery.detach({ keep -> stopForeground(if (keep) STOP_FOREGROUND_DETACH else STOP_FOREGROUND_REMOVE) },
+            notices::remove, notices::publish)
         anchor = null
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -93,7 +96,7 @@ class TranscriptionQueueService : Service() {
         if (observer == null) observer = scope.launch {
             queue.rows.collect { rows ->
                 val next = rows.firstOrNull { it.id == anchor?.id && it.stage.needsProcessingService } ?: rows.firstOrNull { it.stage.needsProcessingService }
-                if (next?.id != anchor?.id && next != null) try { detach(rows); foreground(next) }
+                if (next?.id != anchor?.id) try { detach(); foreground(next) }
                 catch (e: RuntimeException) {
                     android.util.Log.w("TranscriptionQueue", "Foreground promotion failed", e)
                     queue.serviceRefused(); scope.cancel(); stopSelf()
@@ -103,15 +106,16 @@ class TranscriptionQueueService : Service() {
         queue.run(scope) {
             queue.admission.refused()
             queue.detached(this)
-            detach(queue.rows.value)
+            detach()
             observer?.cancel(); observer = null
             stopSelfResult(latestStart)
         }
         return START_NOT_STICKY
     }
-    override fun onTimeout(startId: Int, fgsType: Int) { detach((application as UtterlaneApp).transcriptionQueue.rows.value); scope.cancel(); stopSelf() }
+    override fun onTimeout(startId: Int, fgsType: Int) { detach(); scope.cancel(); stopSelf() }
     override fun onDestroy() {
         val queue = (application as UtterlaneApp).transcriptionQueue
+        if (anchor != null) detach()
         if (queue.admission.status.value == QueueServiceAdmission.Status.RUNNING) queue.serviceRefused()
         queue.detached(this); scope.cancel(); super.onDestroy()
     }

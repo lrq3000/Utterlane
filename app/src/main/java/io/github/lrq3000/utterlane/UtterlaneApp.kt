@@ -126,6 +126,10 @@ class UtterlaneApp : Application() {
         })
         historyCleanup = io.github.lrq3000.utterlane.history.HistoryCleanupCoordinator(this)
         createNotificationChannel()
+        // Repair descriptors and any missed terminal notification even when a service rather than Home first recreates the main process. Recovery does not start a queue producer.
+        applicationScope.launch(Dispatchers.IO) {
+            try { transcriptionQueue.initialized() } catch (e: Exception) { Log.e(TAG, "Queue recovery failed", e) }
+        }
 
         // Policy changes update schedules without scanning histories. Background
         // process startup must not release Immediate-unpin user-launch holds.

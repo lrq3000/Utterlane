@@ -21,6 +21,7 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
     private val root = File(app.noBackupFilesDir, "transcription-queue")
     val resultsDirectory = File(root, "results")
     val journal = QueueJournal(root)
+    val terminalDelivery = QueueTerminalDelivery(journal)
     val batchStore = ImportBatchStore(root)
     val imports = ImportBatches(app, batchStore)
     val admission = QueueServiceAdmission()
@@ -44,15 +45,21 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
     private val init = app.applicationScope.async(Dispatchers.IO, start = CoroutineStart.LAZY) {
         batchStore.reconcile(journal)
         imports.refresh()
-        val repaired = QueueRecovery(journal, app.recordingHistory, ::target).restore(startupCheckpoint,
+        QueueRecovery(journal, app.recordingHistory, ::target).restore(startupCheckpoint,
             app.getString(R.string.dialog_title), app.getString(R.string.queue_interrupted))
-        if (repaired.isNotEmpty()) QueueNotifications(app).let { notices -> repaired.forEach { notices.post(it) } }
+        val pending = journal.records().filter { it.stage.reviewable && !it.terminalPosted }
+        pending.forEach { deliverTerminal(it.id) }
         refresh()
         hydrated.value = true
     }
     fun target(id: String): File {
         require(UUID.fromString(id).toString() == id)
         return File(resultsDirectory.apply { check(isDirectory || mkdirs() || isDirectory) }, "$id.txt")
+    }
+    private val terminalNotices by lazy { QueueNotifications(app) }
+    private fun deliverTerminal(id: String) {
+        try { terminalDelivery.deliver(id) { terminalNotices.publish(it) } }
+        catch (e: Exception) { android.util.Log.w("TranscriptionQueue", "Terminal delivery is pending; result is still reviewable", e) }
     }
     @Synchronized private fun refresh() { mutable.value = journal.records(); changed.trySend(Unit) }
     fun visible() {
@@ -118,10 +125,10 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
         }
     }
 
-    suspend fun captureStarted(id: String, audio: String, label: String) {
+    suspend fun captureStarted(id: String, audio: String, label: String, speakers: Boolean) {
         init.await()
         withContext(Dispatchers.IO) {
-            if (journal.find(id) == null) journal.add(audio, label, false, QueueStage.CAPTURING, id)
+            if (journal.find(id) == null) journal.add(audio, label, speakers, QueueStage.CAPTURING, id)
             app.recordingHistory.refreshQueueHold(audio); refresh()
         }
     }
@@ -135,22 +142,20 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
             QueueNotifications(app).post(row)
         }
     }
-    suspend fun completeCapture(id: String, failure: String?) {
+    suspend fun completeCapture(id: String, failure: String?, speakers: Boolean?) {
         init.await()
         withContext(Dispatchers.IO) {
-            val row = journal.find(id) ?: return@withContext
-            if (row.stage != QueueStage.DRAINING) return@withContext
-            journal.update(row.copy(stage = if (failure == null) QueueStage.READY else QueueStage.FAILED, message = failure))
-            refresh(); QueueNotifications(app).post(journal.find(id)!!)
+            journal.finishCapture(id, failure, app.getString(R.string.queue_interrupted), speakers) ?: return@withContext
+            refresh(); deliverTerminal(id)
         }
     }
     suspend fun acknowledge(id: String) = withContext(Dispatchers.IO) {
         val row = journal.find(id) ?: return@withContext
         if (row.stage.reviewable) io.github.lrq3000.utterlane.home.HomeJournal(app).clearIfQueue(id)
-        if (journal.acknowledge(id)) {
+        if (terminalDelivery.acknowledge(id, QueueNotifications(app)::remove)) {
             app.recordingHistory.refreshQueueHold(row.audio)
             app.transcriptHistory.refreshQueueHold(row.textId)
-            refresh(); QueueNotifications(app).remove(row)
+            refresh()
             reviewedIds.emit(id)
         }
     }
@@ -160,9 +165,7 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
         val audio = runCatching { app.recordingHistory.get(row.audio) }.getOrNull()
         val saved = app.transcriptHistory.find(row.textId)
         val file = target(row.id).takeIf { it.isFile && !TranscriptSource.read(it).discarded }
-        DialogInput(audioId = row.audio, transcriptId = saved?.id, transcriptPath = file?.absolutePath,
-            transcriptOrigin = false, metadata = saved?.let(::TranscriptMetadata) ?: audio?.let(::TranscriptMetadata),
-            fileOptions = FileTranscriptionOptions(row.speakers), recovered = row.stage == QueueStage.FAILED, queueId = id)
+        row.reviewInput(saved, file, audio)
     }
     fun run(serviceScope: CoroutineScope, idle: () -> Unit) {
         if (runner?.isActive == true) { changed.trySend(Unit); return }
@@ -219,8 +222,20 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
             owner.viewModelStore.clear()
             withContext(NonCancellable + Dispatchers.IO) {
                 val finished = row.copy(stage = terminal, message = message)
-                journal.update(finished); refresh(); notices.post(finished)
+                journal.update(finished); refresh(); deliverTerminal(row.id)
             }
         }
     }
+}
+
+internal fun QueueRecord.reviewInput(saved: TranscriptEntry?, file: File?, entry: HistoryEntry?) = DialogInput(audioId = audio,
+    transcriptId = saved?.id, transcriptPath = file?.absolutePath, transcriptOrigin = false, modelId = modelId,
+    metadata = saved?.let(::TranscriptMetadata) ?: entry?.let(::TranscriptMetadata), fileOptions = FileTranscriptionOptions(speakers),
+    recovered = stage == QueueStage.FAILED, queueId = id)
+
+/** A teardown before Stop can suppress handoff after a preview already started registration. Complete that exact row after its writer exits; do not start a new producer. */
+internal suspend fun afterCapturePublication(registering: Deferred<Unit>?, handoff: Deferred<Boolean>?, complete: suspend () -> Unit) {
+    if (handoff == null && registering == null) return
+    if (handoff?.await() != true) registering?.await()
+    complete()
 }

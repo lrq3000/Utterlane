@@ -231,12 +231,10 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
     fun enqueueRetry(useCurrentModel: Boolean = false, onQueued: (String) -> Unit = {}) {
         if (state.value.exitRequest != null || state.value.checkingExit || state.value.running || state.value.importing || state.value.saving || state.value.closing || state.value.deleting || operation?.isActive == true) return
         ownedAudioId?.let { id ->
-            val speakers = input.fileOptions?.speakerLabels ?: state.value.audio?.fileSpeakerLabels
-            viewModelScope.launch {
-                app.transcriptionQueue.retry(id, speakers ?: app.settingsRepository.diarizationEnabled.first(),
-                    modelId = if (useCurrentModel) app.modelManager.selected.value.id else resultModelId ?: app.modelManager.selected.value.id,
-                    accepted = onQueued)
-            }
+            val speakers = input.fileOptions?.speakerLabels ?: state.value.audio?.retrySpeakers ?: resultMetadata.speakerLabels
+            app.transcriptionQueue.retry(id, speakers,
+                modelId = if (useCurrentModel) app.modelManager.selected.value.id else resultModelId ?: app.modelManager.selected.value.id,
+                accepted = onQueued)
         }
     }
 

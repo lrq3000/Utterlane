@@ -79,6 +79,7 @@ class MicrophoneSession(
             var rollingMaintenance: Job? = null
             var visualOptionsObserver: Job? = null
             var speakerAvailabilityObserver: Job? = null
+            var speakerRequestObserver: Job? = null
             var archival: io.github.lrq3000.utterlane.archive.ArchivalCoordinator.Producer? = null
             var hardwareClosed = false
             fun releaseRecorder() {
@@ -148,9 +149,16 @@ class MicrophoneSession(
                 // verification/loading/warm-up do not. The file is also the
                 // processing backlog when completed-recording history is off.
                 val saved = app.recordingHistory.begin(retention, automaticHistory,
-                    keepUntilDismissed = keepResultAudio, quality = actualQuality, microphone = microphoneOptions)
+                    keepUntilDismissed = keepResultAudio, quality = actualQuality, microphone = microphoneOptions,
+                    speakerRequest = speakerControl.retryPreference.value)
                 recording = saved
                 recordingId = saved.entry.id
+                speakerRequestObserver = launch {
+                    speakerControl.retryPreference.collect { requested ->
+                        if (requested != null) try { app.recordingHistory.setSpeakerRequest(saved.entry.id, requested) }
+                        catch (e: Exception) { Log.w("MicrophoneSession", "Could not checkpoint speaker preference", e) }
+                    }
+                }
                 archival?.audio(saved.entry.id)
                 if (actualQuality.encoding && !archival.encode(saved.entry.id))
                     saved.rolling?.preservePcm("Compression could not start; original PCM capture is being preserved")
@@ -284,6 +292,7 @@ class MicrophoneSession(
                 rollingMaintenance?.cancel()
                 visualOptionsObserver?.cancel()
                 speakerAvailabilityObserver?.cancel()
+                speakerRequestObserver?.cancel()
                 activityObserver?.cancel()
                 diagnosticObserver?.cancel()
                 try {
@@ -293,10 +302,11 @@ class MicrophoneSession(
                         if (!hardwareClosed) failure = SessionFailure(SessionFailure.Kind.AUDIO,
                             listOfNotNull(failure?.message, releaseFailureMessage()).joinToString("\n"))
                         rollingMaintenance?.join()
+                        speakerRequestObserver?.join()
                         try { session?.close() } catch (e: Exception) { Log.e("MicrophoneSession", "Recognition cleanup failed", e) }
                         session?.store?.finishProducing()
                         speakerLabels = session?.hasSpeakerLabels == true
-                        try { recording?.let { UtterlaneApp.instance.recordingHistory.setSpeakerLabels(it.entry.id, speakerLabels) } }
+                        try { recording?.let { UtterlaneApp.instance.recordingHistory.setSpeakerLabels(it.entry.id, speakerLabels, speakerControl.retryPreference.value) } }
                         catch (e: Exception) { Log.e("MicrophoneSession", "Could not save speaker metadata", e) }
                         try { if (discardRequested) recording?.let { UtterlaneApp.instance.recordingHistory.dismiss(it.entry.id) } }
                         catch (e: Exception) { Log.e("MicrophoneSession", "Discard persistence failed; still finalizing audio", e) }

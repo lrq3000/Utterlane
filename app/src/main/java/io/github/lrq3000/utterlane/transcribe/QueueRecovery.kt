@@ -16,7 +16,7 @@ internal class QueueRecovery(private val journal: QueueJournal, private val reco
             val text = target(id)
             if (audio?.let { it.samples > 0 && it.status != "active" && it.status != "discarded" } == true ||
                 (text.length() > 0 && !TranscriptSource.read(text).discarded)) {
-                journal.add(checkpoint.audioId, label, checkpoint.metadata?.speakerLabels == true, QueueStage.DRAINING, id)
+                journal.add(checkpoint.audioId, label, audio?.captureSpeakerRequest ?: (checkpoint.metadata?.speakerLabels == true || audio?.speakerLabels == true), QueueStage.DRAINING, id)
                 recordings.refreshQueueHold(checkpoint.audioId)
             }
         }
@@ -26,7 +26,8 @@ internal class QueueRecovery(private val journal: QueueJournal, private val reco
             val file = target(row.id)
             val source = if (file.isFile) TranscriptSource.read(file) else null
             val complete = audio?.status == "saved" && source?.audioId == row.audio && !source.discarded && source.completion == TranscriptCompletion.COMPLETE
-            row.copy(stage = if (complete) QueueStage.READY else QueueStage.FAILED, message = if (complete) null else interrupted).also(journal::update)
+            row.copy(stage = if (complete) QueueStage.READY else QueueStage.FAILED, message = if (complete) null else interrupted,
+                speakers = if (row.stage == QueueStage.CAPTURING) audio?.captureSpeakerRequest ?: row.speakers else row.speakers).also(journal::update)
         }
     }
 }
