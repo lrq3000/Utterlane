@@ -280,7 +280,13 @@ class TranscriptionProgressAndroidTest {
                 bar.centerY() in pause.top..pause.bottom)
             assertTrue(bounds("audio_play").top >= dock.bottom)
             assertTrue(bounds("dialog_background").top >= dock.bottom)
-            ui.descriptionNode(app.getString(R.string.reader_pause_transcription)).recycle()
+            ui.node("queue_pause").let { node ->
+                try {
+                    assertEquals(app.getString(R.string.reader_pause_transcription), node.contentDescription?.toString())
+                    assertTrue("The named icon must be independently actionable", node.isClickable)
+                    assertTrue("Icon action should not render a text button", node.text.isNullOrBlank())
+                } finally { node.recycle() }
+            }
             ui.click("queue_pause")
             ui.click("queue_continue")
             ui.click("queue_stop")

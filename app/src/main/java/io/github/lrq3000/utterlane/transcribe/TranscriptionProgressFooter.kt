@@ -6,15 +6,18 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -92,7 +95,7 @@ internal fun TranscriptionProgressFooter(state: TranscriptionDialogState, statis
             }
             if (jobControls != null && hasTransport) BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val showBar = active && !complete
-                if (showBar && maxWidth >= 264.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)) {
+                if (showBar && maxWidth >= 230.dp) {
                     val controlsWidth = maxWidth - 64.dp
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box(Modifier.weight(1f)) { bar() }
@@ -132,22 +135,13 @@ internal fun QueueProcessingControls(jobControls: QueueJobControls, canRestart: 
     if (!stage.hasProcessingControls) return
     FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         if (stage == QueueStage.PAUSED)
-            ProcessingButton(R.string.reader_continue, R.string.reader_continue_transcription, "queue_continue", jobControls.resume)
+            DialogAction(Icons.Outlined.PlayArrow, stringResource(R.string.reader_continue_transcription), "queue_continue", onClick = jobControls.resume)
         else if (stage != QueueStage.STOPPED)
-            ProcessingButton(R.string.reader_pause, R.string.reader_pause_transcription, "queue_pause", jobControls.pause)
+            DialogAction(Icons.Outlined.Pause, stringResource(R.string.reader_pause_transcription), "queue_pause", onClick = jobControls.pause)
         if (stage != QueueStage.STOPPED)
-            ProcessingButton(R.string.action_stop, R.string.reader_stop_transcription, "queue_stop", jobControls.stop)
+            DialogAction(Icons.Outlined.Stop, stringResource(R.string.reader_stop_transcription), "queue_stop", onClick = jobControls.stop)
         if (canRestart)
-            ProcessingButton(R.string.reader_restart, R.string.reader_restart_transcription, "queue_restart", jobControls.restart)
-    }
-}
-
-@Composable
-private fun ProcessingButton(text: Int, description: Int, tag: String, action: () -> Unit) {
-    val label = stringResource(description)
-    FilledTonalButton(onClick = action, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-        modifier = Modifier.testTag(tag).semantics { contentDescription = label }) {
-        Text(stringResource(text), style = MaterialTheme.typography.labelMedium)
+            DialogAction(Icons.Outlined.RestartAlt, stringResource(R.string.reader_restart_transcription), "queue_restart", onClick = jobControls.restart)
     }
 }
 
