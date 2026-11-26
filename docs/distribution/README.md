@@ -59,6 +59,8 @@ Central dependencies under its inclusion policy. Runtime licenses/notices are
 packaged in `assets/native-licenses/`; CrispASR/ggml notices are in
 `assets/native-licenses.txt`. Model weights are separate CC-BY-4.0 downloads.
 
+The ONNX Runtime Android AAR does not contain the license texts. The original `LICENSE` and `ThirdPartyNotices.txt` from upstream `v1.23.2` are preserved byte-for-byte under `tools/native-licenses/onnxruntime-1.23.2/` and verified before packaging. When upgrading ONNX Runtime, update the notice texts and their pinned hashes alongside the Maven artifact.
+
 ## Signing and GitHub Releases
 
 ### Key choice

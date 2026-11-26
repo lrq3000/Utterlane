@@ -75,13 +75,6 @@ class SherpaBuilder:
         if subprocess.check_output(["git", "-C", str(self.source), "diff", "HEAD", "--", "."], text=True):
             raise ValueError("Refusing to build modified sherpa sources")
         self.deps.mkdir(exist_ok=True)
-        notices = self.cache / "onnxruntime-notices"
-        notices.mkdir(exist_ok=True)
-        for name, digest in ORT_NOTICES.items():
-            path = notices / name
-            if not path.exists():
-                path.write_bytes(self.download(f"https://raw.githubusercontent.com/microsoft/onnxruntime/v{ORT_VERSION}/{name}", digest))
-            verify_digest(path.read_bytes(), digest)
         for name, (repo, revision, digest) in SOURCES.items():
             destination = self.deps / name
             if destination.exists():
@@ -104,6 +97,16 @@ class SherpaBuilder:
             staging.rmdir()
             print(f"Source verified: {name}", flush=True)
 
+    def stage_onnxruntime_notices(self, assets):
+        # Maven's Android AAR omits these texts, so use the exact notices retained from the pinned upstream release.
+        source = self.root / "tools/native-licenses" / f"onnxruntime-{ORT_VERSION}"
+        destination = assets / "onnxruntime"
+        destination.mkdir(parents=True, exist_ok=True)
+        for name, digest in ORT_NOTICES.items():
+            data = (source / name).read_bytes()
+            verify_digest(data, digest)
+            (destination / name).write_bytes(data)
+
     def build(self, jobs, gradle=None):
         if not all((self.deps / name / "CMakeLists.txt").exists() for name in SOURCES):
             raise ValueError("Run --sources-only first; all dependencies must exist before scanning")
@@ -118,6 +121,8 @@ class SherpaBuilder:
         for tool in (cmake, ninja, ndk / "build/cmake/android.toolchain.cmake"):
             if not tool.exists():
                 raise ValueError(f"Missing build prerequisite: {tool}")
+        assets = self.cache / "sherpa-package/assets/native-licenses"
+        self.stage_onnxruntime_notices(assets)
         runtime = self.cache / f"onnxruntime-{ORT_VERSION}"
         runtime.mkdir(exist_ok=True)
         archive_path = runtime / "runtime.aar"
@@ -158,9 +163,7 @@ class SherpaBuilder:
             shutil.copy2(library, package / library.name)
         # Include upstream license/notice texts with the binaries they cover.
         # Keep the original wording, including broader upstream third-party lists.
-        assets = self.cache / "sherpa-package/assets/native-licenses"
-        for name, source in {"sherpa-onnx": self.source, "onnxruntime": self.cache / "onnxruntime-notices",
-                             **{name: self.deps / name for name in SOURCES}}.items():
+        for name, source in {"sherpa-onnx": self.source, **{name: self.deps / name for name in SOURCES}}.items():
             destination = assets / name
             destination.mkdir(parents=True, exist_ok=True)
             for path in source.iterdir():

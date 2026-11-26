@@ -47,7 +47,7 @@ jobs:
         with:
           path: app/libs/sherpa-onnx-*.aar
           # No fallback keys: native binaries must match the current build inputs.
-          key: ${{ runner.os }}-${{ runner.arch }}-sherpa-ndk28.2.13676358-java21-${{ hashFiles('tools/build_sherpa.py', 'tools/release_artifacts.py', 'tools/sherpa-android/**', 'gradle/wrapper/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-sherpa-ndk28.2.13676358-java21-${{ hashFiles('tools/build_sherpa.py', 'tools/release_artifacts.py', 'tools/native-licenses/**', 'tools/sherpa-android/**', 'gradle/wrapper/gradle-wrapper.properties') }}
 
       - name: Build sherpa-onnx AAR
         if: steps.sherpa-cache.outputs.cache-hit != 'true'

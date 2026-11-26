@@ -50,7 +50,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: app/libs/sherpa-onnx-*.aar
-        key: ${{ runner.os }}-${{ runner.arch }}-sherpa-ndk28.2.13676358-java21-${{ hashFiles('tools/build_sherpa.py', 'tools/release_artifacts.py', 'tools/sherpa-android/**', 'gradle/wrapper/gradle-wrapper.properties') }}
+        key: ${{ runner.os }}-${{ runner.arch }}-sherpa-ndk28.2.13676358-java21-${{ hashFiles('tools/build_sherpa.py', 'tools/release_artifacts.py', 'tools/native-licenses/**', 'tools/sherpa-android/**', 'gradle/wrapper/gradle-wrapper.properties') }}
 
     - name: Build sherpa-onnx AAR from source
       if: steps.cache-aar.outputs.cache-hit != 'true'
@@ -113,7 +113,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: app/libs/sherpa-onnx-*.aar
-        key: ${{ runner.os }}-${{ runner.arch }}-sherpa-ndk28.2.13676358-java21-${{ hashFiles('tools/build_sherpa.py', 'tools/release_artifacts.py', 'tools/sherpa-android/**', 'gradle/wrapper/gradle-wrapper.properties') }}
+        key: ${{ runner.os }}-${{ runner.arch }}-sherpa-ndk28.2.13676358-java21-${{ hashFiles('tools/build_sherpa.py', 'tools/release_artifacts.py', 'tools/native-licenses/**', 'tools/sherpa-android/**', 'gradle/wrapper/gradle-wrapper.properties') }}
 
     - name: Build sherpa-onnx AAR from source
       if: steps.cache-aar.outputs.cache-hit != 'true'
