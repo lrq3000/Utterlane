@@ -1,0 +1,1 @@
+On Android 13 and later, onboarding now helps users who installed Utterlane outside Google Play find the system setting to allow restricted accessibility or overlay access. Shortcut setup remains optional.

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.2.6] - 2026-11-26
+
+### Fixed
+- On Android 13 and later, onboarding now explains how to open Utterlane’s App info and allow restricted settings if Android blocks accessibility or overlay access for an installation outside Google Play. Shortcut setup remains optional.
+
 ## [2.2.5] - 2026-11-25
 
 ### Fixed
