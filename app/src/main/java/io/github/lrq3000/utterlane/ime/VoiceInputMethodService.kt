@@ -133,7 +133,7 @@ class VoiceInputMethodService : InputMethodService() {
                 handoff.complete(store, error?.message, session?.speakerControl?.retryPreference?.value) {
                     val audio = session?.audioId
                     target.finish(store, preserve = error != null, afterDelivery = openSettings,
-                        editorReceivedResult = { if (error == null) finishForegroundDictation(this, audio, null) })
+                        onResultDelivered = { if (error == null) finishForegroundDictation(this, audio, null) })
                     if (error != null || store == null) finishForegroundDictation(this, audio, error)
                     error?.let { Toast.makeText(this, it.message, Toast.LENGTH_LONG).show() }
                     if (editorActive) switchBackToPreviousKeyboard()

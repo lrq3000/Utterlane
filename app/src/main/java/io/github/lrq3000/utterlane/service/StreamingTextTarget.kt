@@ -63,7 +63,7 @@ class StreamingTextTarget(
     }
 
     fun finish(store: TranscriptStore?, preserve: Boolean = false, afterDelivery: (() -> Unit)? = null,
-        editorReceivedResult: (() -> Unit)? = null) {
+        onResultDelivered: (() -> Unit)? = null) {
         if (store == null) { close(); afterDelivery?.invoke(); return }
         if (finishing) return
         finishing = true
@@ -79,8 +79,9 @@ class StreamingTextTarget(
                     }
                     try {
                         drain(store)
-                        if ((!cursor.hasPending(store) && !preserve) || store.file.length() == 0L) {
-                            editorReceivedResult?.invoke()
+                        val empty = store.file.length() == 0L
+                        if (empty || (!preserve && !cursor.hasPending(store))) {
+                            if (!empty) onResultDelivered?.invoke()
                             withContext(Dispatchers.IO) { store.dispose() }
                         } else {
                             try {
@@ -88,6 +89,8 @@ class StreamingTextTarget(
                                     val text = withContext(Dispatchers.IO) { store.readForTransfer() }
                                     if (text != null) {
                                         (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Transcription", text))
+                                        // A complete clipboard fallback retires temporary audio just like editor delivery; the recovery copy keeps the text.
+                                        if (!preserve) onResultDelivered?.invoke()
                                         Toast.makeText(context, context.getString(R.string.toast_no_field_clipboard), Toast.LENGTH_LONG).show()
                                     }
                                 }
