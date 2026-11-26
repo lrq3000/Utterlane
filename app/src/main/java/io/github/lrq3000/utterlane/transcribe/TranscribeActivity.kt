@@ -9,6 +9,17 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import androidx.activity.compose.BackHandler
+import androidx.lifecycle.lifecycleScope
+import io.github.lrq3000.utterlane.R
+import kotlinx.coroutines.launch
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -37,6 +48,10 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
         val app = UtterlaneApp.instance
         app.historyCleanup.userEntry(intent, savedInstanceState)
         setFinishOnTouchOutside(false)
+        intent.getStringExtra(QueueNotifications.JOB)?.let { id ->
+            showQueueJob(app, id)
+            return
+        }
         val audio = savedInstanceState?.getString("owned_audio") ?: intent.getStringExtra(EXTRA_AUDIO_ID) ?: intent.getStringExtra(EXTRA_RECOVERY_ID)
         val textId = if (savedInstanceState?.containsKey("saved_text") == true) savedInstanceState.getString("saved_text") else intent.getStringExtra(EXTRA_TRANSCRIPT_ID)
         val request = DialogInput(extractAudioUri(intent), intent.getStringExtra(EXTRA_FILE_PATH), audio, textId,
@@ -62,6 +77,47 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
         }
     }
 
+    private fun showQueueJob(app: UtterlaneApp, id: String) {
+        val queue = app.transcriptionQueue
+        queue.visible()
+        setContent {
+            val rows by queue.rows.collectAsStateWithLifecycle()
+            val active by queue.active.collectAsStateWithLifecycle()
+            val record = rows.firstOrNull { it.id == id }
+            var review by remember { mutableStateOf<TranscriptionDialogModel?>(null) }
+            LaunchedEffect(record?.stage) {
+                val input = if (record?.stage?.reviewable == true) queue.input(id) else null
+                if (input != null) review = ViewModelProvider(this@TranscribeActivity, object : ViewModelProvider.Factory {
+                    @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = TranscriptionDialogModel(app, input) as T
+                })["review-$id", TranscriptionDialogModel::class.java]
+            }
+            val theme by app.settingsRepository.themeMode.collectAsStateWithLifecycle(SettingsRepository.THEME_SYSTEM)
+            UtterlaneTheme(darkTheme = when (theme) { SettingsRepository.THEME_DARK -> true; SettingsRepository.THEME_LIGHT -> false; else -> isSystemInDarkTheme() }) {
+                val reader = review
+                val processing = active?.takeIf { it.first == id }?.second
+                val hide = { if (!moveTaskToBack(true)) finish(); Unit }
+                if (reader != null) {
+                    val state by reader.state.collectAsStateWithLifecycle()
+                    val close = { if (!state.importing) reader.requestExit(); Unit }
+                    BackHandler(onBack = close)
+                    Column {
+                        record?.message?.let { Text(it, Modifier.padding(8.dp)) }
+                        TranscriptionDialog(reader, close, onEmpty = ::finish)
+                    }
+                } else if (processing != null) {
+                    BackHandler { finish() }
+                    TranscriptionDialog(processing, onClose = ::finish, onEmpty = ::finish, onBackground = hide)
+                } else Surface {
+                    Column(Modifier.padding(20.dp)) {
+                        record?.let { Text(it.label) }
+                        Text(stringResource(record?.stage?.label() ?: R.string.queue_missing))
+                        TextButton(hide) { Text(stringResource(R.string.queue_background)) }
+                    }
+                }
+            }
+        }
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         if (::model.isInitialized) model.saveInstanceState(outState)
         super.onSaveInstanceState(outState)
@@ -80,6 +136,6 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
         super.onDestroy()
         // Activity destruction is not explicit dismissal. The ViewModel releases
         // its runtime owners while disk-backed recovery survives unexpected loss.
-        getSystemService(NotificationManager::class.java).cancel(AudioMonitorService.AUDIO_DETECTED_NOTIFICATION_ID)
+        if (!intent.hasExtra(QueueNotifications.JOB)) getSystemService(NotificationManager::class.java).cancel(AudioMonitorService.AUDIO_DETECTED_NOTIFICATION_ID)
     }
 }

@@ -33,7 +33,7 @@ import io.github.lrq3000.utterlane.settings.SpeakerModelNotice
  * user's thumbs. The reader alone consumes the remaining height and scrolls. */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, onEmpty: () -> Unit) {
+fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, onEmpty: () -> Unit, onBackground: (() -> Unit)? = null) {
     val state by model.state.collectAsStateWithLifecycle()
     val app = UtterlaneApp.instance
     val context = LocalContext.current
@@ -127,6 +127,9 @@ fun TranscriptionDialog(model: TranscriptionDialogModel, onClose: () -> Unit, on
                             modifier = Modifier.testTag("transcript_partial"))
                     }
                     Spacer(Modifier.height(8.dp))
+                    if (onBackground != null) TextButton(onClick = onBackground, modifier = Modifier.testTag("dialog_background")) {
+                        Text(stringResource(R.string.queue_background))
+                    }
                     TranscriptReader(model.document, state, Modifier.weight(1f).fillMaxWidth()) {
                         TranscriptionProgressFooter(state, stats)
                     }

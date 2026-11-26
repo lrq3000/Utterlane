@@ -39,6 +39,7 @@ class UtterlaneApp : Application() {
         internal set
     val audioPlayback by lazy { io.github.lrq3000.utterlane.transcribe.AudioPlaybackController(this) }
     val homeController by lazy { io.github.lrq3000.utterlane.home.HomeController(this) }
+    internal val transcriptionQueue by lazy { io.github.lrq3000.utterlane.transcribe.TranscriptionQueue(this) }
 
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var modelWakeObserver: DeviceWakeObserver? = null
@@ -111,6 +112,8 @@ class UtterlaneApp : Application() {
         recordingHistory = RecordingHistory(File(filesDir, "microphone-history"), archiveJobs,
             io.github.lrq3000.utterlane.archive.AndroidAudioAssetIO(this))
         transcriptHistory = io.github.lrq3000.utterlane.history.TranscriptHistory(File(noBackupFilesDir, "transcript-history"), archiveJobs)
+        recordingHistory.awaitingQueueReview = transcriptionQueue.journal::protectsAudio
+        transcriptHistory.awaitingQueueReview = transcriptionQueue.journal::protectsText
         archival = io.github.lrq3000.utterlane.archive.ArchivalCoordinator(this, archiveJobs)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: android.app.Activity) = archival.visible(activity, true)

@@ -34,8 +34,14 @@ import io.github.lrq3000.utterlane.history.ImportRetentionChoice
 fun ImportRetentionQuestion(model: TranscriptionDialogModel) {
     val state by model.state.collectAsStateWithLifecycle()
     val request = state.importQuestion ?: return
-    var remember by rememberSaveable(model.playbackOwner) { mutableStateOf(false) }
-    AlertDialog(onDismissRequest = model::cancelImport,
+    ImportRetentionQuestion(request, model::chooseImportRetention, model::cancelImport)
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+internal fun ImportRetentionQuestion(request: ImportRetentionRequest, answer: (ImportRetentionChoice, Boolean) -> Unit, cancel: () -> Unit) {
+    var remember by rememberSaveable(request.category.name, request.metadata.displayName) { mutableStateOf(false) }
+    AlertDialog(onDismissRequest = cancel,
         modifier = Modifier.semantics { testTagsAsResourceId = true }.testTag("import_retention_question"),
         title = { Text(stringResource(R.string.import_retention_title)) },
         text = {
@@ -54,14 +60,14 @@ fun ImportRetentionQuestion(model: TranscriptionDialogModel) {
         },
         confirmButton = {
             Column {
-                TextButton(onClick = { model.chooseImportRetention(ImportRetentionChoice.KEEP, remember) },
+                TextButton(onClick = { answer(ImportRetentionChoice.KEEP, remember) },
                     modifier = Modifier.testTag("import_keep_audio")) { Text(stringResource(R.string.import_keep_audio)) }
-                TextButton(onClick = { model.chooseImportRetention(ImportRetentionChoice.DISCARD, remember) },
+                TextButton(onClick = { answer(ImportRetentionChoice.DISCARD, remember) },
                     modifier = Modifier.testTag("import_transcript_only")) { Text(stringResource(R.string.import_transcript_only)) }
             }
         },
         dismissButton = {
-            TextButton(onClick = model::cancelImport, modifier = Modifier.testTag("import_cancel")) {
+            TextButton(onClick = cancel, modifier = Modifier.testTag("import_cancel")) {
                 Text(stringResource(R.string.action_cancel))
             }
         })

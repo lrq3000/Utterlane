@@ -37,6 +37,12 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
     private val audioIO: AudioAssetIO = PrivateAudioAssetIO,
     private val installOriginal: (HistoryEntry) -> OriginalAudioSource = OriginalAudioSource::capture,
     private val clock: () -> Long = System::currentTimeMillis) {
+    internal var awaitingQueueReview: (String) -> Boolean = { false }
+    @Synchronized internal fun refreshQueueHold(id: String) {
+        val entry = entries[id] ?: return
+        indexExpiry(entry)
+        if (entry.completedTransientImport && !awaitingQueueReview(id) && (leases[id] ?: 0) == 0) delete(id)
+    }
     fun planEncoding(id: String, epoch: Long) {
         val entry = synchronized(this) { get(id).takeUnless { id in deferred || it.temporary } } ?: return
         val layout = entry.rollingAudio ?: return
@@ -315,7 +321,7 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
                  fileSpeakerLabels = properties.getProperty("fileSpeakerLabels")?.toBooleanStrictOrNull())
             // A successful transcript-only import has no recovery obligation. All
             // runtime owners disappeared with the old process, so finish cleanup.
-            if (entry.completedTransientImport) {
+            if (entry.completedTransientImport && !awaitingQueueReview(entry.id)) {
                 if (!directory.deleteRecursively()) { put(entry); delete(entry.id) }
                 return@forEach
             }
@@ -431,7 +437,7 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
                         status = if (kind == null) "interrupted" else "failed",
                         failureMessage = message ?: entry.failureMessage, failureKind = kind ?: entry.failureKind)
                 save(updated); put(updated)
-                if (updated.completedTransientImport && (leases[audioId] ?: 0) == 0) delete(audioId)
+                if (updated.completedTransientImport && !awaitingQueueReview(audioId) && (leases[audioId] ?: 0) == 0) delete(audioId)
             } finally {
                 // Even failed metadata IO retires the runtime owner. The already
                 // durable token remains pending and can be claimed by a retry.
@@ -600,7 +606,7 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
         val completed = completedProcessing(entry, emptySet())
         save(completed)
         put(completed)
-        if (completed.completedTransientImport && (leases[id] ?: 0) == 0) delete(id)
+        if (completed.completedTransientImport && !awaitingQueueReview(id) && (leases[id] ?: 0) == 0) delete(id)
     }
 
     private fun completedProcessing(entry: HistoryEntry, remaining: Set<String>): HistoryEntry = entry.copy(
@@ -713,13 +719,13 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
     }
     private fun indexExpiry(entry: HistoryEntry) = expiry.put(entry.id, entry.retention,
         eligible = !entry.temporary && entry.status != "active" && entry.status != "discarded" &&
-            entry.id !in deferred && entry.id !in viewers)
+            entry.id !in deferred && entry.id !in viewers && !awaitingQueueReview(entry.id))
     private fun release(id: String) {
         val count = (leases[id] ?: 1) - 1
         if (count == 0) {
             leases.remove(id)
             if (id in deferred) remove(id)
-            else if (entries[id]?.completedTransientImport == true) delete(id)
+            else if (entries[id]?.completedTransientImport == true && !awaitingQueueReview(id)) delete(id)
             else entries[id]?.let(::releasePrivateParts)
             artifacts?.readerReleased(ArtifactOwner(ArtifactKind.AUDIO, id))
         } else leases[id] = count

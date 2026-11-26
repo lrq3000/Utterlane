@@ -17,7 +17,7 @@ data class DialogExitRequest(val audioId: String? = null, val transcriptId: Stri
 
 /** IO-only policy/publication boundary. The ViewModel owns operation cancellation
  * and navigation, while repositories retain authority over IDs and deletion. */
-internal class DialogExitRetention(private val app: UtterlaneApp) {
+internal class DialogExitRetention(private val app: UtterlaneApp, private val reviewing: String? = null) {
     private val linked = LinkedHistory(app.recordingHistory, app.transcriptHistory)
     private data class Policies(val audio: HistoryExitPolicy, val text: HistoryExitPolicy)
     private suspend fun policies() = Policies(
@@ -34,7 +34,7 @@ internal class DialogExitRetention(private val app: UtterlaneApp) {
     }
     private fun loss(audioId: String?, store: TranscriptStore?, policy: Policies): DialogExitRequest {
         val now = System.currentTimeMillis()
-        val audio = linked.availableAudio(audioId)
+        val audio = linked.availableAudio(audioId)?.takeUnless { app.transcriptionQueue.journal.anotherOwnsAudio(it.id, reviewing) }
         val text = useful(store)
         val entry = text?.let(::saved)
         val source = text?.let { TranscriptSource.read(it.file) }
@@ -43,7 +43,7 @@ internal class DialogExitRetention(private val app: UtterlaneApp) {
             // Only explicit Pin may create a replacement; navigation cannot revive it.
             else source?.transcriptId == null && policy.text.keeps(RetentionMark(text.file.lastModified()), stored = false, now)
         return DialogExitRequest(
-            audio?.takeIf { policy.audio.requiresConfirmation(it, now) }?.id,
+            audio?.takeIf { policy.audio.requiresConfirmation(it, now) || (reviewing != null && it.completedTransientImport) }?.id,
             if (keepText) null else source?.transcriptId ?: text?.let { TranscriptHistory.idForAttempt(it.file.name) })
     }
 
@@ -68,7 +68,7 @@ internal class DialogExitRetention(private val app: UtterlaneApp) {
                     reference = text.file.lastModified(), archivePlan = source.archivePlan ?: archivePlan)
                 text.attachSource(source.copy(transcriptId = entry.id, recovered = entry.recovered))
             }
-            if (audioId != null && !app.recordingHistory.retainOnExit(audioId, policy.audio,
+            if (audioId != null && !app.transcriptionQueue.journal.anotherOwnsAudio(audioId, reviewing) && !app.recordingHistory.retainOnExit(audioId, policy.audio,
                     discardIfNeeded = consent?.audioId == audioId)) {
                 return@withPublicationLock fresh.copy(audioId = audioId)
             }
