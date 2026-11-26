@@ -282,6 +282,42 @@ class ExplicitCaptureRouteTest {
         }
     }
 
+    @Test fun alreadyConnectedScoNeedsNoNewConnectedBroadcast() {
+        AudioRoutingPlatform().use { p ->
+            val headset = p.addHeadset()
+            // AudioRecorder #183 (f9d83e4): Android may only return the existing state from registration.
+            p.initialScoState = AudioManager.SCO_AUDIO_STATE_CONNECTED
+            val route = p.route(headset.choice.key, MicrophoneOptions.STANDARD)
+            route.attach(p.record); route.started(); p.capture(route)
+            assertEquals(headset.source.id, p.preferred?.id)
+            p.observeRoute(headset.source, headset.sink)
+            p.capture(route)
+            repeat(12) {
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(500))
+                p.capture(route)
+            }
+            assertEquals(headset.choice.key, p.state.actual?.key)
+            assertFalse(p.state.connecting)
+            assertFalse(route.isFallback)
+            verify(exactly = 1) { p.manager.startBluetoothSco() }
+            route.close()
+            verify(exactly = 1) { p.manager.stopBluetoothSco() }
+        }
+    }
+
+    @Test fun stickyConnectedDoesNotAuthorizeScoAfterAnOwnedRequestFails() {
+        AudioRoutingPlatform().use { p ->
+            val headset = p.addHeadset()
+            p.initialScoState = AudioManager.SCO_AUDIO_STATE_CONNECTED
+            every { p.manager.startBluetoothSco() } throws SecurityException("SCO denied")
+            val route = p.route(headset.choice.key, MicrophoneOptions.STANDARD)
+            route.attach(p.record); route.started(); p.capture(route)
+            assertTrue(route.isFallback)
+            assertEquals(p.phone.id, p.preferred?.id)
+            verify(exactly = 1) { p.manager.stopBluetoothSco() }
+        }
+    }
+
     @Test @Config(sdk = [31, 36]) fun communicationDeviceIsAnExplicitChoiceAndHonorsBothModes() {
         for (mode in BluetoothAudioMode.entries) AudioRoutingPlatform().use { p ->
             val headset = p.addHeadset()
