@@ -1,0 +1,9 @@
+# Transcription controls and queue visibility
+
+Give an offline transcription a stable identity through pause, continue, stop and restart. Pause only this job, preserve its place and partial text, and let the next waiting job run. Only explicit Continue releases a manual pause, including after microphone or file completion. Stop keeps the partial attempt for review. Restart stops this attempt and queues a fresh one for the same source. Delete is distinct: confirm, retire the producer and remove this attempt's output and eligible app-owned input without touching the external original or another attempt's source.
+
+Place clearly labeled processing controls in the progress panel beside the bar, not in the playback toolbar. Put processed/total duration in secondary type beside the percentage. Give the transcript its own remembered text size and use a bottom background icon instead of reserving an extra row. Import and Share offer an independent background switch beside Speaker labels; preserve input grants, retention questions and recovery.
+
+Show a compact queue monitor on Home while work is active. Its list and Transcript History share row components and open an exact job. Paused items remain reachable from History even with nothing running. Queue rows use the same confirmed cancel/delete operation as job detail. Never offer a temporary processing copy as saved audio to delete when only a transcript was requested.
+
+Approaches: a queue-wide pause would unnecessarily hold other files. Pausing only the viewed job preserves live priority and matches the approved workflow. Keep controls in the processing panel rather than reusing media transport icons without context.
