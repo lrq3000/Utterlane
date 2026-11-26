@@ -7,11 +7,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -23,8 +26,9 @@ import kotlin.math.ceil
 
 /** Design D: A's quiet linear treatment at C's bottom reader edge. Operational
  * details share this bounded area so neither errors nor completion move its top. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun TranscriptionProgressFooter(state: TranscriptionDialogState, statistics: Boolean) {
+internal fun TranscriptionProgressFooter(state: TranscriptionDialogState, statistics: Boolean, jobControls: QueueJobControls? = null) {
     val context = LocalContext.current
     val progress = state.fileProgress
     val operation = when {
@@ -35,8 +39,10 @@ internal fun TranscriptionProgressFooter(state: TranscriptionDialogState, statis
         state.checkingDeletion -> R.string.dialog_checking_items
         else -> null
     }
-    if (operation == null && progress == null && state.message == null && !statistics) return
-    val active = operation != null || state.running
+    if (operation == null && progress == null && state.message == null && !statistics && jobControls == null) return
+    val queueStage = jobControls?.stage
+    // Only active recognition owns an ETA. An old snapshot is still useful as a position, but must not suggest that paused work is advancing.
+    val active = (operation != null || state.running) && (queueStage == null || queueStage == QueueStage.PROCESSING)
     val complete = operation == null && progress?.stage == FileProgressStage.COMPLETE
     val percent = progress?.percent?.takeIf { operation == null }
     val preparingStage = when (state.capture.recognition.stage) {
@@ -47,7 +53,8 @@ internal fun TranscriptionProgressFooter(state: TranscriptionDialogState, statis
         RecognitionStage.SPEAKER_LOAD -> R.string.recognition_speaker_load
         else -> null
     }.takeIf { state.capture.recognition.active }
-    val stage = operation ?: progress?.let {
+    val queueStatus = queueStage?.takeIf { it != QueueStage.PROCESSING && (!it.reviewable || it == QueueStage.STOPPED) }
+    val stage = queueStatus?.label() ?: operation ?: progress?.let {
         when (it.stage) {
             FileProgressStage.PREPARING -> preparingStage ?: R.string.progress_preparing
             FileProgressStage.TRANSCRIBING -> preparingStage ?: R.string.progress_transcribing
@@ -58,39 +65,50 @@ internal fun TranscriptionProgressFooter(state: TranscriptionDialogState, statis
             FileProgressStage.FAILED -> R.string.progress_interrupted
             FileProgressStage.CANCELLED -> R.string.progress_cancelled
         }
-    }
+    } ?: queueStage?.label()
+    val hasTransport = queueStage?.hasProcessingControls == true
     Column(Modifier.fillMaxWidth().heightIn(max = 180.dp).testTag("transcription_progress")) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (stage != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (stage != null) FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Announce phase changes, not every percent/ETA refresh.
-                Text(stringResource(stage), Modifier.weight(1f).testTag("transcription_stage").semantics { liveRegion = LiveRegionMode.Polite },
+                Text(stringResource(stage), Modifier.testTag("transcription_stage").semantics { liveRegion = LiveRegionMode.Polite },
                     style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                if (percent != null) Text(stringResource(if (progress?.estimatedTotal == true) R.string.progress_approximate_percent else R.string.progress_percent, percent),
-                    Modifier.testTag("transcription_percentage"), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-            }
-            if (active && !complete) {
-                val bar = Modifier.fillMaxWidth().height(4.dp).testTag("transcription_progress_bar")
-                if (percent == null) LinearProgressIndicator(modifier = bar)
-                else LinearProgressIndicator(progress = { percent / 100f }, modifier = bar)
-            }
-            if (progress != null && operation == null && !complete) {
-                // Weighted text wraps under narrow/large-font configurations;
-                // it never shrinks the text to keep a misleading single line.
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (active) {
-                        val eta = progress.remainingSeconds?.takeIf { preparingStage == null }?.let {
-                            context.getString(if (progress.additionalFinishing) R.string.progress_eta_finishing else R.string.progress_eta, etaDuration(context, it))
-                        } ?: context.getString(if (progress.stage == FileProgressStage.TRANSCRIBING && progress.totalSamples == null)
-                            R.string.progress_unknown_time else R.string.progress_estimating)
-                        Text(eta, Modifier.weight(1f).testTag("transcription_eta"), style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary)
-                    }
-                    Text(audioProgress(context, progress), Modifier.weight(1f).testTag("transcription_audio_progress"),
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Wrap the pair as a unit when space permits; the duration itself may wrap at large system font scales.
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (percent != null) Text(stringResource(if (progress?.estimatedTotal == true) R.string.progress_approximate_percent else R.string.progress_percent, percent),
+                        Modifier.testTag("transcription_percentage"), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                    if (progress != null && operation == null && (!complete || progress.totalSamples != null))
+                        Text(audioProgress(context, progress), Modifier.testTag("transcription_audio_progress"),
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            }
+            val bar: @Composable () -> Unit = {
+                val modifier = Modifier.fillMaxWidth().height(4.dp).testTag("transcription_progress_bar")
+                if (percent == null) LinearProgressIndicator(modifier = modifier)
+                else LinearProgressIndicator(progress = { percent / 100f }, modifier = modifier)
+            }
+            if (jobControls != null && hasTransport) BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val showBar = active && !complete
+                if (showBar && maxWidth >= 264.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)) {
+                    val controlsWidth = maxWidth - 64.dp
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(Modifier.weight(1f)) { bar() }
+                        QueueProcessingControls(jobControls, canRestart = state.audio != null, modifier = Modifier.widthIn(max = controlsWidth))
+                    }
+                } else Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (showBar) bar()
+                    QueueProcessingControls(jobControls, canRestart = state.audio != null)
+                }
+            } else if (active && !complete) bar()
+            if (active && progress != null && operation == null && !complete) {
+                val eta = progress.remainingSeconds?.takeIf { preparingStage == null }?.let {
+                    context.getString(if (progress.additionalFinishing) R.string.progress_eta_finishing else R.string.progress_eta, etaDuration(context, it))
+                } ?: context.getString(if (progress.stage == FileProgressStage.TRANSCRIBING && progress.totalSamples == null)
+                    R.string.progress_unknown_time else R.string.progress_estimating)
+                Text(eta, Modifier.testTag("transcription_eta"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
             state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (statistics) {
@@ -103,10 +121,40 @@ internal fun TranscriptionProgressFooter(state: TranscriptionDialogState, statis
     }
 }
 
+private val QueueStage.hasProcessingControls: Boolean
+    get() = this == QueueStage.WAITING || this == QueueStage.PROCESSING || this == QueueStage.PAUSED || this == QueueStage.STOPPED
+
+/** These callbacks operate on this queue job, never on the audio player or microphone. Transition stages cannot accept another transport command. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun QueueProcessingControls(jobControls: QueueJobControls, canRestart: Boolean = true, modifier: Modifier = Modifier) {
+    val stage = jobControls.stage
+    if (!stage.hasProcessingControls) return
+    FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (stage == QueueStage.PAUSED)
+            ProcessingButton(R.string.reader_continue, R.string.reader_continue_transcription, "queue_continue", jobControls.resume)
+        else if (stage != QueueStage.STOPPED)
+            ProcessingButton(R.string.reader_pause, R.string.reader_pause_transcription, "queue_pause", jobControls.pause)
+        if (stage != QueueStage.STOPPED)
+            ProcessingButton(R.string.action_stop, R.string.reader_stop_transcription, "queue_stop", jobControls.stop)
+        if (canRestart)
+            ProcessingButton(R.string.reader_restart, R.string.reader_restart_transcription, "queue_restart", jobControls.restart)
+    }
+}
+
+@Composable
+private fun ProcessingButton(text: Int, description: Int, tag: String, action: () -> Unit) {
+    val label = stringResource(description)
+    FilledTonalButton(onClick = action, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+        modifier = Modifier.testTag(tag).semantics { contentDescription = label }) {
+        Text(stringResource(text), style = MaterialTheme.typography.labelMedium)
+    }
+}
+
 private fun audioProgress(context: Context, progress: FileProgressSnapshot): String {
     val processed = DateUtils.formatElapsedTime(progress.processedSamples / 16000)
     val total = progress.totalSamples ?: return context.getString(R.string.progress_unknown_audio, processed)
-    return context.getString(if (progress.estimatedTotal) R.string.progress_approximate_audio else R.string.progress_audio,
+    return context.getString(if (progress.estimatedTotal) R.string.reader_estimated_duration else R.string.reader_known_duration,
         processed, DateUtils.formatElapsedTime(total / 16000))
 }
 

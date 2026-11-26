@@ -10,9 +10,14 @@ import androidx.paging.PagingState
 import androidx.paging.cachedIn
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.asr.TranscriptCompletion
+import io.github.lrq3000.utterlane.transcribe.QueueRecord
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -37,9 +42,28 @@ internal data class HistoryRow(val cursor: HistoryCursor, val detail: String,
 
 /** One retained pager per destination. Loaded previews stay bounded while dropped
  * pages can be fetched again in either direction using their stable creation keys. */
-internal class HistoryViewModel(app: UtterlaneApp, transcripts: Boolean) : ViewModel() {
+internal class HistoryViewModel(private val app: UtterlaneApp, transcripts: Boolean) : ViewModel() {
     @Volatile private var source: HistoryPagingSource? = null
     private val revisions = if (transcripts) app.transcriptHistory.revision else app.recordingHistory.revision
+    private val queue = if (transcripts) app.transcriptionQueue else null
+    val queueIndex = queue?.let { owner ->
+        combine(owner.rows, revisions) { jobs, revision -> QueueHistoryIndex.fromProvenance(jobs, app.transcriptHistory, owner::target, revision) }
+            .flowOn(Dispatchers.IO).stateIn(viewModelScope, SharingStarted.WhileSubscribed(), QueueHistoryIndex(emptyList()))
+    }
+
+    /** Resolve at tap time too: the pager may expose a newly pinned alias before its index arrives, particularly on cold launch. */
+    suspend fun jobForTranscript(id: String): QueueRecord? {
+        val owner = queue ?: return null
+        if (!owner.loaded.value) {
+            try { owner.initialized() } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { return null } // A failed queue recovery must not also prevent opening this saved transcript.
+        }
+        val jobs = owner.rows.value
+        val revision = revisions.value
+        val index = queueIndex?.value?.takeIf { it.isCurrent(jobs, revision) }
+            ?: withContext(Dispatchers.IO) { QueueHistoryIndex.fromProvenance(jobs, app.transcriptHistory, owner::target, revision) }
+        return index.jobForText(id)
+    }
 
     val pages = Pager(PagingConfig(pageSize = 30, initialLoadSize = 30,
         prefetchDistance = 6, maxSize = 90, enablePlaceholders = false)) {

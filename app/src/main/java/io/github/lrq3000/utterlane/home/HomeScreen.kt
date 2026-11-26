@@ -50,7 +50,6 @@ import io.github.lrq3000.utterlane.transcribe.TranscriptTransferActions
 import io.github.lrq3000.utterlane.transcribe.TranscriptionDialog
 import io.github.lrq3000.utterlane.transcribe.ImportRetentionQuestion
 import io.github.lrq3000.utterlane.transcribe.QueueNotifications
-import io.github.lrq3000.utterlane.transcribe.label
 import io.github.lrq3000.utterlane.transcribe.TranscriptionProgressFooter
 import io.github.lrq3000.utterlane.ui.AudioInputText
 import io.github.lrq3000.utterlane.ui.RecognitionStatusText
@@ -82,39 +81,7 @@ internal fun HomeScreen(controller: HomeController, onRecord: () -> Unit, onLoad
             .padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             HomeIntro(enabled = true, onLoad = onLoad)
             io.github.lrq3000.utterlane.transcribe.ImportRecoveryControls(app.transcriptionQueue, reopenImport)
-            val jobs by app.transcriptionQueue.rows.collectAsStateWithLifecycle()
-            if (jobs.isNotEmpty()) {
-                var expanded by rememberSaveable { mutableStateOf(false) }
-                TextButton({ expanded = !expanded }, modifier = Modifier.testTag("home_queue")) {
-                    Text("${stringResource(R.string.queue_title)} (${jobs.size})")
-                }
-                if (expanded) {
-                    if (jobs.any { it.stage.reviewable }) Text("${stringResource(R.string.queue_review)}: ${jobs.count { it.stage.reviewable }}",
-                        style = MaterialTheme.typography.labelMedium)
-                    // Window the list independently of the scrollable Home workspace.
-                    androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
-                        items(jobs.size, key = { jobs[it].id }) { index ->
-                            val row = jobs[index]
-                            TextButton({ context.startActivity(QueueNotifications.intent(context, row.id)) },
-                                modifier = Modifier.testTag("queue_job_${row.id}")) {
-                                Text("${row.label} · ${stringResource(row.stage.label())}")
-                            }
-                        }
-                    }
-                }
-                if (jobs.any { !it.stage.reviewable } && !state.canStop) {
-                    val audioEnabled by app.settingsRepository.audioHistoryEnabled.collectAsStateWithLifecycle(true)
-                    val textEnabled by app.settingsRepository.transcriptHistoryEnabled.collectAsStateWithLifecycle(true)
-                    val audioRetention by app.settingsRepository.audioHistoryRetention.collectAsStateWithLifecycle(io.github.lrq3000.utterlane.history.HistoryRetention.DEFAULT)
-                    val textRetention by app.settingsRepository.transcriptHistoryRetention.collectAsStateWithLifecycle(io.github.lrq3000.utterlane.history.HistoryRetention.DAY)
-                    if (!audioEnabled || !textEnabled || audioRetention == io.github.lrq3000.utterlane.history.HistoryRetention.NONE ||
-                        textRetention == io.github.lrq3000.utterlane.history.HistoryRetention.NONE) Text(stringResource(R.string.queue_after_close),
-                        style = MaterialTheme.typography.bodySmall)
-                    TextButton({ (context as? android.app.Activity)?.moveTaskToBack(true) }, modifier = Modifier.testTag("home_background")) {
-                        Text(stringResource(R.string.queue_background))
-                    }
-                }
-            }
+            HomeQueueMonitor(recording = state.canStop)
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 15.dp)) {

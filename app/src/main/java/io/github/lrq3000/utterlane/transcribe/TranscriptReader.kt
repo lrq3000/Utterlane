@@ -24,9 +24,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import io.github.lrq3000.utterlane.R
+import io.github.lrq3000.utterlane.UtterlaneApp
+import io.github.lrq3000.utterlane.settings.SettingsRepository
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
 import kotlin.math.floor
@@ -39,6 +43,10 @@ internal fun TranscriptReader(document: TranscriptPager, state: TranscriptionDia
     val list = rememberLazyListState()
     val shape = RoundedCornerShape(12.dp)
     val colors = MaterialTheme.colorScheme
+    val textSizeSp by UtterlaneApp.instance.settingsRepository.transcriptTextSize.collectAsStateWithLifecycle(SettingsRepository.DEFAULT_TRANSCRIPT_TEXT_SIZE)
+    val body = MaterialTheme.typography.bodyLarge
+    // Scale the document's leading with its type; Android's accessibility font scale still applies to both sp values.
+    val documentStyle = body.copy(fontSize = textSizeSp.sp, lineHeight = body.lineHeight * (textSizeSp / body.fontSize.value))
     var processingViewportHeight by remember(state.store) { mutableStateOf(0.dp) }
     // Conflate thumb moves instead of queuing a scroll coroutine for every pixel.
     val seeks = remember { Channel<Float>(Channel.CONFLATED) }
@@ -103,7 +111,7 @@ internal fun TranscriptReader(document: TranscriptPager, state: TranscriptionDia
                         items(pages.itemCount, key = { it }) { index ->
                             val chunk = pages[index]
                             if (chunk == null) Spacer(Modifier.height(128.dp))
-                            else if (chunk.text.isNotEmpty()) Text(chunk.text, style = MaterialTheme.typography.bodyLarge,
+                            else if (chunk.text.isNotEmpty()) Text(chunk.text, style = documentStyle,
                                 modifier = Modifier.fillMaxWidth().testTag("transcript_chunk_${chunk.index}"))
                         }
                     }

@@ -20,13 +20,16 @@ internal class QueueRecovery(private val journal: QueueJournal, private val reco
                 recordings.refreshQueueHold(checkpoint.audioId)
             }
         }
-        return journal.records().filter { it.stage in setOf(QueueStage.CAPTURING, QueueStage.DRAINING, QueueStage.PROCESSING) }.map { row ->
+        return journal.records().filter { it.stage in setOf(QueueStage.CAPTURING, QueueStage.DRAINING, QueueStage.PROCESSING, QueueStage.PAUSING, QueueStage.STOPPING) }.map { row ->
             recordings.initialize()
             val audio = runCatching { recordings.get(row.audio) }.getOrNull()
             val file = target(row.id)
             val source = if (file.isFile) TranscriptSource.read(file) else null
             val complete = audio?.status == "saved" && source?.audioId == row.audio && !source.discarded && source.completion == TranscriptCompletion.COMPLETE
-            row.copy(stage = if (complete) QueueStage.READY else QueueStage.FAILED, message = if (complete) null else interrupted,
+            val stopped = row.stage == QueueStage.STOPPING || row.stage == QueueStage.PAUSING
+            // If shutdown interrupted a manual pause before its text and offset were committed together, offer the partial result and an explicit restart; never replay onto an uncertain prefix.
+            row.copy(stage = if (stopped) QueueStage.STOPPED else if (complete) QueueStage.READY else QueueStage.FAILED,
+                message = if (complete || row.stage == QueueStage.STOPPING) null else interrupted,
                 speakers = if (row.stage == QueueStage.CAPTURING) audio?.captureSpeakerRequest ?: row.speakers else row.speakers).also(journal::update)
         }
     }

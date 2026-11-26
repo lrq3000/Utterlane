@@ -22,9 +22,9 @@ data class HistoryEntry(val id: String, val directory: File, val started: Long, 
     /** A missing optional labeler does not cancel a user's request. Older recordings have only evidence of actual labels, not the user's current global preference. */
     val retrySpeakers get() = fileSpeakerLabels ?: captureSpeakerRequest ?: speakerLabels
     val retention get() = RetentionMark(reference, pinned, holdForLaunch)
-    /** The user already declined archival, but not recovery of unfinished work. */
-    val completedTransientImport get() = importRetention == ImportRetentionChoice.DISCARD && temporary &&
-        !pinned && !needsRecovery && processingAttempts.isEmpty() && status == "saved"
+    /** A transcript-only import is processing input, not saved audio. An explicit Keep converts it to an ordinary retained entry. */
+    val transcriptOnlyStaging get() = temporary && !pinned && importRetention == ImportRetentionChoice.DISCARD
+    val completedTransientImport get() = transcriptOnlyStaging && !needsRecovery && processingAttempts.isEmpty() && status == "saved"
     val cursor get() = HistoryCursor(started, id)
     val durationMs: Long get() = sourceOverride?.durationMs ?: rollingAudio?.durationMs ?: if (sourceName == null) samples * 1000 / 16000 else importedDurationMs
     val seconds: Long get() = durationMs / 1000
@@ -40,6 +40,7 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
     private val installOriginal: (HistoryEntry) -> OriginalAudioSource = OriginalAudioSource::capture,
     private val clock: () -> Long = System::currentTimeMillis) {
     internal var awaitingQueueReview: (String) -> Boolean = { false }
+    internal var queueNeedsOriginal: (String) -> Boolean = { false }
     @Synchronized internal fun refreshQueueHold(id: String) {
         val entry = entries[id] ?: return
         indexExpiry(entry)
@@ -200,7 +201,7 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
      * A leased retry prefers retained original tail PCM; its already reclaimed
      * prefix is remuxed from the same authoritative continuous codec stream. */
     fun processingAudio(entry: HistoryEntry): HistoryEntry {
-        if (synchronized(this) { encodingCleanupOwner == entry.id } || File(entry.directory, "pcm-retired.properties").isFile) return entry
+        if (synchronized(this) { retiringOriginal(entry.id) } || File(entry.directory, "pcm-retired.properties").isFile) return entry
         OriginalAudioSource.open(entry.directory)?.let { original ->
             return entry.copy(rollingAudio = null, sourceName = original.sourceName, samples = original.samples,
                 mimeType = original.mimeType, importedDurationMs = original.durationMs, externalParts = emptyMap(),
@@ -234,7 +235,9 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
     private val processingOwners = mutableMapOf<String, MutableSet<String>>()
     private val deferred = mutableSetOf<String>()
     private val privateCleanup = mutableSetOf<String>()
-    private var encodingCleanupOwner: String? = null
+    private data class EncodingCleanup(val entry: HistoryEntry, val dropOriginal: Boolean)
+    private var encodingCleanup: EncodingCleanup? = null
+    private fun retiringOriginal(id: String) = encodingCleanup?.let { it.dropOriginal && it.entry.id == id } == true
     private val recoveries = mutableSetOf<String>()
     private val expiry = RetentionIndex()
     private var initialized = false
@@ -507,7 +510,7 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
         private var selectedOriginal: OriginalAudioSource? = null
         val originalSource: OriginalAudioSource? get() = synchronized(this@RecordingHistory) {
             check(!closed)
-            selectedOriginal ?: entries[id]?.takeUnless { encodingCleanupOwner == id || File(it.directory, "pcm-retired.properties").isFile }
+            selectedOriginal ?: entries[id]?.takeUnless { retiringOriginal(id) || File(it.directory, "pcm-retired.properties").isFile }
                 ?.let { OriginalAudioSource.open(it.directory) }?.also { selectedOriginal = it }
         }
         fun originalPcmReader(offset: Long = 0): OriginalAudioSource.PcmReader = synchronized(this@RecordingHistory) {
@@ -517,7 +520,7 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
         }
         /** Captured under the acquisition lock. Once cleanup reserves an owner,
          * new readers use its published representation even before old files unlink. */
-        val originalImportFile: File? = if (encodingCleanupOwner == id) null else entries[id]?.let { entry ->
+        val originalImportFile: File? = if (retiringOriginal(id)) null else entries[id]?.let { entry ->
             if (File(entry.directory, "pcm-retired.properties").isFile) null
             else entry.sourceName?.let { File(entry.directory, it).takeIf(File::isFile) }
         }
@@ -572,6 +575,17 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
         val entry = entries[id] ?: return
         if (entry.temporary) delete(id)
         else { val updated = entry.copy(needsRecovery = entry.processingAttempts.isNotEmpty()); save(updated); put(updated) }
+    }
+
+    /** An explicitly cancelled last attempt no longer needs recovery of its staged input. Use the normal last-owner cleanup instead of invalidating another viewer's lease. Caller checks queue siblings while holding the recording monitor. */
+    @Synchronized internal fun retireCancelledImport(id: String) {
+        val entry = entries[id]?.takeIf { it.transcriptOnlyStaging && id !in deferred } ?: return
+        if (!processingOwners[id].isNullOrEmpty()) return
+        if (!entry.completedTransientImport) {
+            val retired = completedProcessing(entry, emptySet())
+            save(retired); put(retired)
+        }
+        refreshQueueHold(id)
     }
 
     /** Ordinary navigation hands temporary ownership to history only if policy
@@ -774,10 +788,11 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
         it.liveCapture && !it.format.native && !File(entry.directory, "normalized-cleaned.properties").isFile
     } == true
     private fun originalCleanupAllowed(entry: HistoryEntry) = entry.rollingAudio?.complete == true &&
-        entry.status !in setOf("failed", "interrupted") && entry.processingAttempts.isEmpty()
+        entry.status !in setOf("failed", "interrupted") && entry.processingAttempts.isEmpty() && !queueNeedsOriginal(entry.id)
     private fun retireSuperseded(entry: HistoryEntry) {
-        if (entry.representation == AudioRepresentation.ORIGINAL || !originalCleanupAllowed(entry)) return
+        if (entry.representation == AudioRepresentation.ORIGINAL || entry.rollingAudio?.complete != true) return
         if (entry.archivePlan != null && entry.externalParts.size != entry.parts) return
+        // Once this fence exists, later attempts can select only the replacement. A new hold must not strand old external bindings whose private retirement already committed.
         if (!File(entry.directory, "pcm-retired.properties").isFile) return
         artifacts?.retireSupersededRepresentations(ArtifactOwner(ArtifactKind.AUDIO, entry.id), entry.representation)
     }
@@ -785,17 +800,17 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
      * ASR/capture completion path. A runtime lease protects directory ownership;
      * newly acquired readers choose the already-published encoded asset. */
     fun cleanupPublishedEncoding(budget: Int = 32): Boolean {
-        val selected = synchronized(this) {
-            if (encodingCleanupOwner != null) return false
-            val entry = privateCleanup.asSequence().mapNotNull(entries::get).firstOrNull {
-                it.id !in active && it.status != "active" && it.id !in deferred && (leases[it.id] ?: 0) == 0 &&
-                    (originalCleanupAllowed(it) || normalizedCleanupPending(it))
-            } ?: return false
-            encodingCleanupOwner = entry.id
-            entry to retain(entry.id)
+        val (work, lease) = synchronized(this) {
+            if (encodingCleanup != null) return false
+            val work = privateCleanup.asSequence().mapNotNull(entries::get).filter {
+                it.id !in active && it.status != "active" && it.id !in deferred && (leases[it.id] ?: 0) == 0
+            }.map { EncodingCleanup(it, originalCleanupAllowed(it)) }
+                .firstOrNull { it.dropOriginal || normalizedCleanupPending(it.entry) } ?: return false
+            // Fix the retirement decision before unlocking: a newly acquired reader must see the same representation the selected maintenance pass will leave available.
+            encodingCleanup = work
+            work to retain(work.entry.id)
         }
-        val (entry, lease) = selected
-        val dropOriginal = originalCleanupAllowed(entry)
+        val (entry, dropOriginal) = work
         var exhausted = true
         var complete = false
         try {
@@ -823,12 +838,13 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
             }
         } finally {
             synchronized(this) {
-                encodingCleanupOwner = null
+                encodingCleanup = null
                 if (complete) privateCleanup.remove(entry.id)
             }
             lease.close()
         }
-        return !exhausted
+        // Several checkpoints may have released before one conflated wake. Give the drain another bounded turn; a pass finding only held owners returns false above.
+        return !exhausted || synchronized(this) { entry.id !in privateCleanup }
     }
     private fun remove(id: String) {
         val entry = entries[id] ?: return

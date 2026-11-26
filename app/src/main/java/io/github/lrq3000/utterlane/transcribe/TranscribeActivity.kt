@@ -10,6 +10,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material.icons.outlined.PictureInPictureAlt
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.ui.Modifier
@@ -86,38 +88,56 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
             val loaded by queue.loaded.collectAsStateWithLifecycle()
             val active by queue.active.collectAsStateWithLifecycle()
             val record = rows.firstOrNull { it.id == id }
-            var review by remember { mutableStateOf<TranscriptionDialogModel?>(null) }
-            LaunchedEffect(record?.stage) {
-                val input = if (record?.stage?.reviewable == true) queue.input(id) else null
-                if (input != null) review = ViewModelProvider(this@TranscribeActivity, object : ViewModelProvider.Factory {
+            val stage = record?.stage
+            var confirmingDelete by rememberSaveable(id) { mutableStateOf(false) }
+            val showSnapshot = stage?.reviewable == true || stage == QueueStage.PAUSED || stage == QueueStage.WAITING
+            val snapshotOwner = remember(id, stage, record?.resumeSamples) {
+                object : androidx.lifecycle.ViewModelStoreOwner { override val viewModelStore = androidx.lifecycle.ViewModelStore() }
+            }
+            DisposableEffect(snapshotOwner) { onDispose { snapshotOwner.viewModelStore.clear() } }
+            var review by remember(id, stage, record?.resumeSamples) { mutableStateOf<TranscriptionDialogModel?>(null) }
+            LaunchedEffect(id, stage, record?.resumeSamples) {
+                val input = if (showSnapshot) queue.input(id) else null
+                if (input != null) review = ViewModelProvider(if (stage?.reviewable == true) this@TranscribeActivity else snapshotOwner, object : ViewModelProvider.Factory {
                     @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = TranscriptionDialogModel(app, input) as T
-                })["review-$id", TranscriptionDialogModel::class.java]
+                })["review-$id-$stage", TranscriptionDialogModel::class.java]
             }
             val theme by app.settingsRepository.themeMode.collectAsStateWithLifecycle(SettingsRepository.THEME_SYSTEM)
             UtterlaneTheme(darkTheme = when (theme) { SettingsRepository.THEME_DARK -> true; SettingsRepository.THEME_LIGHT -> false; else -> isSystemInDarkTheme() }) {
                 val reader = review
                 val processing = active?.takeIf { it.first == id }?.second
                 val hide = { if (!moveTaskToBack(true)) finish(); Unit }
-                if (reader != null) {
+                val controls = stage?.takeIf { it in setOf(QueueStage.WAITING, QueueStage.PAUSING, QueueStage.PAUSED, QueueStage.PROCESSING,
+                    QueueStage.STOPPING, QueueStage.STOPPED) }?.let {
+                    QueueJobControls(it, { queue.pause(id) }, { queue.resume(id) }, { queue.stop(id) },
+                        { queue.restart(id) { next -> startActivity(QueueNotifications.intent(this, next)); finish() } }, { confirmingDelete = true })
+                }
+                if (processing != null && stage?.reviewable == false) {
+                    BackHandler { finish() }
+                    TranscriptionDialog(processing, onClose = ::finish, onEmpty = ::finish, onBackground = hide, jobControls = controls)
+                } else if (reader != null) {
                     val state by reader.state.collectAsStateWithLifecycle()
-                    val close = { if (!state.importing) reader.requestExit(); Unit }
+                    val close = { if (stage?.reviewable != true) finish() else if (!state.importing) reader.requestExit(); Unit }
                     BackHandler(onBack = close)
                     Column {
                         record?.message?.let { Text(it, Modifier.padding(8.dp)) }
-                        TranscriptionDialog(reader, close, onEmpty = ::finish)
+                        val service by queue.admission.status.collectAsStateWithLifecycle()
+                        if (record != null && service.needsResume(record)) QueueResumeAction(queue)
+                        TranscriptionDialog(reader, close, onEmpty = ::finish, onBackground = hide.takeUnless { stage?.reviewable == true }, jobControls = controls)
                     }
-                } else if (processing != null) {
-                    BackHandler { finish() }
-                    TranscriptionDialog(processing, onClose = ::finish, onEmpty = ::finish, onBackground = hide)
                 } else Surface {
                     Column(Modifier.padding(20.dp)) {
                         record?.let { Text(it.label) }
                         val service by queue.admission.status.collectAsStateWithLifecycle()
                         if (record != null && service.needsResume(record)) QueueResumeAction(queue)
                         Text(stringResource(record?.stage?.label() ?: if (loaded) R.string.queue_missing else R.string.state_processing))
-                        TextButton(hide) { Text(stringResource(R.string.queue_background)) }
+                        IconButton(hide, Modifier.testTag("dialog_background")) {
+                            Icon(androidx.compose.material.icons.Icons.Outlined.PictureInPictureAlt, stringResource(R.string.queue_background))
+                        }
                     }
                 }
+                // Keep the confirmation outside the stage-dependent reader: joining a producer can change the stage and require a second identity check.
+                if (confirmingDelete) QueueCancelDialog(id) { confirmingDelete = false }
             }
         }
     }

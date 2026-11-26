@@ -87,6 +87,8 @@ class TranscriptionProgressAndroidTest {
                 val reader = bounds("transcript_viewport")
                 val progress = bounds("transcription_progress")
                 assertTrue("The dock belongs below the text, not above it", progress.top >= reader.bottom - 2)
+                assertEquals("Known duration belongs beside the percentage", bounds("transcription_percentage").centerY().toDouble(),
+                    bounds("transcription_audio_progress").centerY().toDouble(), 5.0 * app.resources.displayMetrics.density)
                 assertTrue(bounds("dialog_copy").top >= progress.bottom - 2)
                 ui.screenshot("transcription-progress-d-light")
             }
@@ -208,6 +210,89 @@ class TranscriptionProgressAndroidTest {
             }
             assertTrue(bounds("transcript_viewport").height() > 100 * density)
             ui.screenshot("transcription-progress-d-large-font")
+        }
+    }
+
+    @Test fun changingReaderSizeReflowsOnlyTheDocumentAndPersistsOnReopen() = runBlocking {
+        val settings = app.settingsRepository
+        val previous = settings.transcriptTextSize.first()
+        try {
+            settings.setTranscriptTextSize(16)
+            var enlargedHeight = 0
+            Fixture(paragraphs = 1).use { fixture ->
+                fixture.show(measured())
+                val normal = bounds("transcript_chunk_0").height()
+                val stageHeight = bounds("transcription_stage").height()
+                ui.clickDescription(app.getString(R.string.reader_font_size))
+                assertFontChoice(16, checked = true)
+                assertFontChoice(24, checked = false)
+                ui.click("reader_text_size_24")
+                withTimeout(5000) { settings.transcriptTextSize.first { it == 24 } }
+                withTimeout(5000) {
+                    do { enlargedHeight = bounds("transcript_chunk_0").height(); if (enlargedHeight <= normal) delay(50) }
+                    while (enlargedHeight <= normal)
+                }
+                assertEquals(stageHeight, bounds("transcription_stage").height())
+            }
+            Fixture(paragraphs = 1).use {
+                withTimeout(5000) { while (bounds("transcript_chunk_0").height() != enlargedHeight) delay(50) }
+                ui.clickDescription(app.getString(R.string.reader_font_size))
+                assertFontChoice(16, checked = false)
+                assertFontChoice(24, checked = true)
+            }
+        } finally { settings.setTranscriptTextSize(previous) }
+    }
+
+    private fun assertFontChoice(size: Int, checked: Boolean) {
+        val tag = "reader_text_size_$size"
+        ui.scrollTo(tag)
+        val node = ui.node(tag)
+        try {
+            assertEquals("android.widget.RadioButton", node.className.toString())
+            assertTrue("The radio option must be visible and checkable", node.isVisibleToUser && node.isCheckable)
+            if (!checked) assertTrue("An alternative size must accept clicks on its own named node", node.isClickable)
+            assertEquals(app.getString(if (size == SettingsRepository.DEFAULT_TRANSCRIPT_TEXT_SIZE) R.string.reader_size_default else R.string.reader_size_sp, size),
+                node.contentDescription.toString())
+            assertEquals(checked, node.isChecked)
+        } finally { node.recycle() }
+    }
+
+    @Test fun processingCommandsStayInTheDockAndPlaybackStaysBelowIt() = runBlocking {
+        Fixture().use { fixture ->
+            val density = app.resources.displayMetrics.density
+            val stage = androidx.compose.runtime.mutableStateOf(QueueStage.PROCESSING)
+            instrumentation.runOnMainSync {
+                fixture.activity.window.setLayout((392 * density).toInt(), WindowManager.LayoutParams.MATCH_PARENT)
+                (fixture.activity as ComponentActivity).setContent {
+                    UtterlaneTheme(darkTheme = false) {
+                        TranscriptionDialog(fixture.model, {}, {}, onBackground = {}, jobControls = QueueJobControls(stage.value,
+                            { stage.value = QueueStage.PAUSED }, { stage.value = QueueStage.PROCESSING },
+                            { stage.value = QueueStage.STOPPED }, {}, {}))
+                    }
+                }
+            }
+            fixture.show(measured())
+            val dock = bounds("transcription_progress")
+            val pause = bounds("queue_pause")
+            val bar = bounds("transcription_progress_bar")
+            assertTrue(dock.contains(pause))
+            assertTrue("On an ordinary phone the job controls sit beside the progress bar", pause.left >= bar.right &&
+                bar.centerY() in pause.top..pause.bottom)
+            assertTrue(bounds("audio_play").top >= dock.bottom)
+            assertTrue(bounds("dialog_background").top >= dock.bottom)
+            ui.descriptionNode(app.getString(R.string.reader_pause_transcription)).recycle()
+            ui.click("queue_pause")
+            ui.click("queue_continue")
+            ui.click("queue_stop")
+            ui.node("queue_restart").recycle()
+            assertFalse(ui.hasNode("queue_continue"))
+            assertFalse(ui.hasNode("queue_stop"))
+            for (transient in listOf(QueueStage.PAUSING, QueueStage.STOPPING)) {
+                instrumentation.runOnMainSync { stage.value = transient }
+                ui.textNode(app.getString(transient.label())).recycle()
+                assertFalse(ui.hasNode("queue_restart"))
+                assertFalse(ui.hasNode("queue_pause"))
+            }
         }
     }
 

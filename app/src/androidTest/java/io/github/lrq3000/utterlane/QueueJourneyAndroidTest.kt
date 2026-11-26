@@ -197,7 +197,7 @@ class QueueJourneyAndroidTest {
             assertTrue(app.recordingHistory.get(first.audio).part(0).isFile)
             readyNotice(first)
             // Exercise the independent in-app path for people who do not open the notification.
-            ui.click("home_queue")
+            ui.click("home_nav_transcripts")
             ui.click("queue_job_${first.id}")
             reader = awaitReader(first)
             assertEquals(first.id, reader.intent.getStringExtra(QueueNotifications.JOB))
@@ -213,6 +213,7 @@ class QueueJourneyAndroidTest {
             ui.click("exit_discard")
             withTimeout(15_000) { queue.rows.first { rows -> rows.singleOrNull()?.id == live.id } }
             withTimeout(30_000) { app.homeController.state.first { !it.busy && it.model?.input?.queueId == live.id && it.result.audio != null } }
+            ui.click("home_nav_record")
             instrumentation.runOnMainSync { app.homeController.dismiss() }
             ui.click("exit_discard")
             withTimeout(15_000) { queue.rows.first { it.isEmpty() } }

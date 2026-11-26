@@ -64,6 +64,14 @@ class CaptureMetrics(private val clock: () -> Long = { System.nanoTime() / 10000
         nextVisual = clock() * visualHz + 1000
     }
     @Synchronized fun visualRefreshIntervalMillis(): Long = VisualRefreshRate.intervalMillis(visualHz)
+    /** Resume from flushed file input without treating the recognized prefix as newly measured throughput. */
+    @Synchronized internal fun resumeFile(offset: Long) {
+        require(offset >= 0 && capturedSamples == 0L && processedEndSample == 0L)
+        fileInput = true
+        capturedSamples = offset
+        processedEndSample = offset
+        started()
+    }
     @Synchronized fun model(name: String) { pending = pending.copy(modelName = name); publish(true) }
     @Synchronized fun preparing(value: Boolean) { pending = pending.copy(modelPreparing = value); publish(true) }
     @Synchronized fun recognitionFailed(message: String) {

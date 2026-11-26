@@ -68,8 +68,11 @@ internal class DialogExitRetention(private val app: UtterlaneApp, private val re
                     reference = text.file.lastModified(), archivePlan = source.archivePlan ?: archivePlan)
                 text.attachSource(source.copy(transcriptId = entry.id, recovered = entry.recovered))
             }
-            if (audioId != null && !app.transcriptionQueue.journal.anotherOwnsAudio(audioId, reviewing) && !app.recordingHistory.retainOnExit(audioId, policy.audio,
-                    discardIfNeeded = consent?.audioId == audioId)) {
+            val retained = audioId == null || synchronized(app.recordingHistory) {
+                app.transcriptionQueue.journal.anotherOwnsAudio(audioId, reviewing) || app.recordingHistory.retainOnExit(audioId, policy.audio,
+                    discardIfNeeded = consent?.audioId == audioId)
+            }
+            if (!retained) {
                 return@withPublicationLock fresh.copy(audioId = audioId)
             }
             // Explicit deletion can still remove any entry; a view lease only

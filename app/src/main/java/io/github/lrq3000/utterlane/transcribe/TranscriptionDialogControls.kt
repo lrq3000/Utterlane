@@ -71,10 +71,10 @@ internal fun DialogPinControl(model: TranscriptionDialogModel, state: Transcript
                 enabled = !busy, onClick = { choose(DialogPinTarget.AUDIO, !audioPinned) }, modifier = Modifier.testTag("pin_choice_audio"))
             if (hasText) DropdownMenuItem(
                 text = { Text(stringResource(if (textPinned) R.string.dialog_unpin_transcript else R.string.dialog_pin_transcript)) },
-                enabled = !busy && !state.running, onClick = { choose(DialogPinTarget.TRANSCRIPT, !textPinned) }, modifier = Modifier.testTag("pin_choice_transcript"))
+                enabled = !busy && !state.running && !model.input.unfinishedQueueView, onClick = { choose(DialogPinTarget.TRANSCRIPT, !textPinned) }, modifier = Modifier.testTag("pin_choice_transcript"))
             if (hasAudio && hasText) DropdownMenuItem(
                 text = { Text(stringResource(if (audioPinned && textPinned) R.string.dialog_unpin_both else R.string.dialog_pin_both)) },
-                enabled = !busy && !state.running, onClick = { choose(DialogPinTarget.BOTH, !(audioPinned && textPinned)) }, modifier = Modifier.testTag("pin_choice_both"))
+                enabled = !busy && !state.running && !model.input.unfinishedQueueView, onClick = { choose(DialogPinTarget.BOTH, !(audioPinned && textPinned)) }, modifier = Modifier.testTag("pin_choice_both"))
         }
     }
 }
@@ -88,8 +88,7 @@ internal fun AutoFitDialogTitle(title: String, modifier: Modifier) {
     BoxWithConstraints(modifier) {
         val natural = remember(title, style, measurer) { measurer.measure(title, style, softWrap = false, maxLines = 1).size.width }
         val ratio = (constraints.maxWidth.toFloat() / natural.coerceAtLeast(1)).coerceIn(0.01f, 1f)
-        Text(title, style = style.copy(fontSize = (22 * ratio).sp), maxLines = 1, softWrap = false,
-            modifier = Modifier.testTag("dialog_title"))
+        Text(title, style = style.copy(fontSize = (22 * ratio).sp), maxLines = 1, softWrap = false)
     }
 }
 
@@ -98,7 +97,7 @@ internal fun AutoFitDialogTitle(title: String, modifier: Modifier) {
 internal fun DialogDeletionControl(model: TranscriptionDialogModel, state: TranscriptionDialogState, busy: Boolean) {
     val request = state.deletion
     Box {
-        DialogAction(Icons.Outlined.Delete, stringResource(R.string.history_delete), "dialog_delete",
+        DialogAction(Icons.Outlined.Delete, stringResource(R.string.action_delete), "dialog_delete",
             !busy && !state.checkingDeletion, tint = MaterialTheme.colorScheme.error, onClick = model::requestDeletion)
         DropdownMenu(expanded = request != null && request.target == null, onDismissRequest = model::dismissDeletionMenu,
             modifier = Modifier.semantics { testTagsAsResourceId = true }) {
@@ -141,7 +140,7 @@ internal fun DialogDeletionControl(model: TranscriptionDialogModel, state: Trans
                 TextButton(onClick = model::cancelDeletion, modifier = Modifier.testTag("delete_cancel")) { Text(stringResource(R.string.action_cancel)) }
             }, confirmButton = {
                 TextButton(onClick = model::confirmDeletion, modifier = Modifier.testTag("delete_confirm"),
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.history_delete)) }
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.action_delete)) }
             })
     }
 }
