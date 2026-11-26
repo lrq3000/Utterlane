@@ -70,6 +70,15 @@ class TranscriptStore(val file: File) {
 
     @Synchronized fun finishProducing() { producer?.close(); producer = null }
 
+    /** Resume only a flushed, journaled prefix of this same source and model. A new claim excludes concurrent writers. */
+    @Synchronized internal fun resumeTranscription(audio: String, model: String) {
+        check(source.completion == TranscriptCompletion.INCOMPLETE && source.audioId == audio && source.modelId == model && !source.discarded) {
+            "The paused transcript no longer matches its source"
+        }
+        check(producer == null)
+        producer = TranscriptSource.claimProducer(file)
+    }
+
     @Synchronized fun markComplete() {
         if (source.completion == TranscriptCompletion.COMPLETE) return
         check(source.completion == TranscriptCompletion.INCOMPLETE) { "Transcript attempt was not started" }

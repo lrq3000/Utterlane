@@ -36,7 +36,7 @@ internal class QueueNotifications(private val app: UtterlaneApp) {
         val text = app.getString(row.stage.label())
         val notification = builder().setContentTitle(row.label).setContentText(if (percent == null) text else "$text · $percent%")
             .setContentIntent(open).setOngoing(!row.stage.reviewable).setAutoCancel(false)
-        if (!row.stage.reviewable) notification.setProgress(100, percent ?: 0, percent == null)
+        if (!row.stage.reviewable && row.stage != QueueStage.PAUSED) notification.setProgress(100, percent ?: 0, percent == null)
         return notification.build()
     }
     fun post(row: QueueRecord, percent: Int? = null) = manager.notify(row.notificationId, notification(row, percent))
@@ -56,6 +56,10 @@ internal fun QueueStage.label() = when (this) {
     QueueStage.PROCESSING, QueueStage.DRAINING -> R.string.home_notification_processing
     QueueStage.READY -> R.string.queue_ready
     QueueStage.FAILED -> R.string.queue_failed
+    QueueStage.PAUSED -> R.string.queue_manually_paused
+    QueueStage.PAUSING -> R.string.queue_pause_pending
+    QueueStage.STOPPING -> R.string.queue_stop_pending
+    QueueStage.STOPPED -> R.string.queue_manually_stopped
 }
 
 class TranscriptionQueueService : Service() {

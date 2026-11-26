@@ -301,10 +301,14 @@ class RecognizerManager(
                     val hasSpeakerDecoder = liveSpeakers != null || diarize
                     val sessionBackend = checkNotNull(recognizer)
                     val directory = File(context.cacheDir, "transcripts").apply { mkdirs() }
-                    val store = TranscriptStore(currentCoroutineContext()[QueueTranscriptTarget]?.file ?: File.createTempFile("transcript-", ".txt", directory))
+                    val target = currentCoroutineContext()[QueueTranscriptTarget]
+                    val store = TranscriptStore(target?.file ?: File.createTempFile("transcript-", ".txt", directory))
                     val id = sessionIds.incrementAndGet()
                     synchronized(stateLock) {
-                        if (expected != generation) { store.dispose(); error("Model was unloaded") }
+                        if (expected != generation) {
+                            if (target?.resuming == true) store.keepForRecovery() else store.dispose()
+                            error("Model was unloaded")
+                        }
                         sessions[id] = owner
                         refreshIdleTimerLocked()
                     }
@@ -338,7 +342,11 @@ class RecognizerManager(
         } catch (error: Throwable) {
             // withContext may discard an already-constructed result on cancellation.
             // Dispose that unreturned session rather than leaking its busy lease.
-            withContext(NonCancellable + Dispatchers.IO) { created?.let { it.close(); it.store.dispose() } }
+            val resuming = currentCoroutineContext()[QueueTranscriptTarget]?.resuming == true
+            withContext(NonCancellable + Dispatchers.IO) { created?.let {
+                it.close()
+                if (resuming) it.store.keepForRecovery() else it.store.dispose()
+            } }
             throw error
         }
     }

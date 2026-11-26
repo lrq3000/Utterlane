@@ -17,6 +17,24 @@ class LinkedHistoryTest {
     private fun text(history: TranscriptHistory, audio: HistoryEntry, attempt: String): TranscriptEntry =
         history.save(folder.newFile().apply { writeText("Result from $attempt") }, attempt, audio.id, attempt = attempt)
 
+    @Test fun transcriptOnlyImportIsPlayableButNeverOfferedAsSavedAudioUntilExplicitlyKept() {
+        val recordings = RecordingHistory(folder.newFolder())
+        val texts = TranscriptHistory(folder.newFolder())
+        val linked = LinkedHistory(recordings, texts)
+        val owned = recordings.importAudioOwned(byteArrayOf(5, 4).inputStream(), "opus", AudioImportMetadata(), ImportRetentionChoice.DISCARD)
+        owned.lease.use {
+            val id = owned.entry.id
+            val saved = text(texts, owned.entry, "import")
+            recordings.completeRecovery(id, HistoryRetention.DAY)
+            for (textOrigin in listOf(false, true)) {
+                assertNotNull(linked.availableAudio(id))
+                assertEquals(listOf(HistoryDeletionTarget.TRANSCRIPTS), linked.plan(id, saved.id, textOrigin).choices)
+            }
+            recordings.setPinned(id, true, HistoryRetention.DAY, "launch")
+            assertEquals(HistoryDeletionTarget.entries.toList(), linked.plan(id, saved.id, true).choices)
+        }
+    }
+
     @Test fun reverseLinksSurviveRestartAndExcludeLeasedDeletedResults() {
         val recordings = RecordingHistory(folder.newFolder())
         val root = folder.newFolder()

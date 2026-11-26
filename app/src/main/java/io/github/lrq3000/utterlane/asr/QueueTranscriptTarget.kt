@@ -5,6 +5,6 @@ import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 
 /** A queued attempt owns its private append target even when no Activity or history row exists. */
-internal class QueueTranscriptTarget(val file: File) : AbstractCoroutineContextElement(Key) {
+internal class QueueTranscriptTarget(val file: File, val resuming: Boolean = false) : AbstractCoroutineContextElement(Key) {
     companion object Key : CoroutineContext.Key<QueueTranscriptTarget>
 }

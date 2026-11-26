@@ -22,9 +22,9 @@ data class HistoryEntry(val id: String, val directory: File, val started: Long, 
     /** A missing optional labeler does not cancel a user's request. Older recordings have only evidence of actual labels, not the user's current global preference. */
     val retrySpeakers get() = fileSpeakerLabels ?: captureSpeakerRequest ?: speakerLabels
     val retention get() = RetentionMark(reference, pinned, holdForLaunch)
-    /** The user already declined archival, but not recovery of unfinished work. */
-    val completedTransientImport get() = importRetention == ImportRetentionChoice.DISCARD && temporary &&
-        !pinned && !needsRecovery && processingAttempts.isEmpty() && status == "saved"
+    /** A transcript-only import is processing input, not saved audio. An explicit Keep converts it to an ordinary retained entry. */
+    val transcriptOnlyStaging get() = temporary && !pinned && importRetention == ImportRetentionChoice.DISCARD
+    val completedTransientImport get() = transcriptOnlyStaging && !needsRecovery && processingAttempts.isEmpty() && status == "saved"
     val cursor get() = HistoryCursor(started, id)
     val durationMs: Long get() = sourceOverride?.durationMs ?: rollingAudio?.durationMs ?: if (sourceName == null) samples * 1000 / 16000 else importedDurationMs
     val seconds: Long get() = durationMs / 1000
@@ -572,6 +572,17 @@ class RecordingHistory(private val root: File, private val artifacts: ArchivalJo
         val entry = entries[id] ?: return
         if (entry.temporary) delete(id)
         else { val updated = entry.copy(needsRecovery = entry.processingAttempts.isNotEmpty()); save(updated); put(updated) }
+    }
+
+    /** An explicitly cancelled last attempt no longer needs recovery of its staged input. Use the normal last-owner cleanup instead of invalidating another viewer's lease. Caller checks queue siblings while holding the recording monitor. */
+    @Synchronized internal fun retireCancelledImport(id: String) {
+        val entry = entries[id]?.takeIf { it.transcriptOnlyStaging && id !in deferred } ?: return
+        if (!processingOwners[id].isNullOrEmpty()) return
+        if (!entry.completedTransientImport) {
+            val retired = completedProcessing(entry, emptySet())
+            save(retired); put(retired)
+        }
+        refreshQueueHold(id)
     }
 
     /** Ordinary navigation hands temporary ownership to history only if policy

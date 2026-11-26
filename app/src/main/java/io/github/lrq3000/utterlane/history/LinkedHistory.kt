@@ -29,7 +29,8 @@ class LinkedHistory(private val recordings: RecordingHistory, private val transc
         // A manual save uses this same attempt ID, so a save that finishes while
         // the question is open neither doubles the count nor evades deletion.
         workingTranscriptId?.let(ids::add)
-        return HistoryDeletionPlan(availableAudio(sourceId)?.id, ids.toSet(), allLinked = !transcriptOrigin)
+        // A reader lease makes a transcript-only import playable, but does not turn the temporary processing copy into an audio-history deletion choice.
+        return HistoryDeletionPlan(availableAudio(sourceId)?.takeUnless { it.transcriptOnlyStaging }?.id, ids.toSet(), allLinked = !transcriptOrigin)
     }
 
     fun availableAudio(id: String?): HistoryEntry? {

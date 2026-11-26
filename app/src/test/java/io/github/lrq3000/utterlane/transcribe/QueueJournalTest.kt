@@ -10,6 +10,51 @@ import java.io.File
 class QueueJournalTest {
     @get:Rule val temp = TemporaryFolder()
 
+    @Test fun pausedFileIsNeverDispatchedByOtherFileOrMicCompletionEvenAfterReload() {
+        val journal = QueueJournal(temp.root)
+        val lecture = journal.add("lecture", "Lecture", false, QueueStage.PROCESSING)
+        val interview = journal.add("interview", "Interview", false)
+        val mic = journal.add("mic", "Dictation", false, QueueStage.DRAINING)
+        assertNotNull(journal.transition(lecture.id, setOf(QueueStage.PROCESSING)) {
+            it.copy(stage = QueueStage.PAUSED, resumeSamples = 73001)
+        })
+        journal.update(interview.copy(stage = QueueStage.READY))
+        journal.finishCapture(mic.id, null, "interrupted", false)
+        val restored = QueueJournal(temp.root)
+        assertNull(restored.records().firstOrNull { it.stage == QueueStage.WAITING })
+        assertNull(restored.transition(lecture.id, setOf(QueueStage.PROCESSING)) { it.copy(stage = QueueStage.READY) })
+        assertEquals(73001L, restored.transition(lecture.id, setOf(QueueStage.PAUSED)) { it.copy(stage = QueueStage.WAITING) }!!.resumeSamples)
+    }
+
+    @Test fun resumeSkipsExactlyTheFlushedAudioAcrossDifferentDecoderBlockSizes() {
+        val cursor = ResumeCursor(5L)
+        assertEquals(0, cursor.unprocessed(shortArrayOf(1, 2, 3)).size)
+        assertArrayEquals(shortArrayOf(6, 7), cursor.unprocessed(shortArrayOf(4, 5, 6, 7)))
+        assertArrayEquals(shortArrayOf(8), cursor.unprocessed(shortArrayOf(8)))
+        assertEquals(8L, cursor.position)
+        cursor.requireReached()
+        assertThrows(IllegalStateException::class.java) { ResumeCursor(5).requireReached() }
+    }
+
+    @Test fun manualPauseDoesNotDuplicateOrEraseTheCommittedPrefixAfterReopening() {
+        val file = File(temp.root, "attempt.txt")
+        val provenance = io.github.lrq3000.utterlane.asr.TranscriptSource("lecture", modelId = "model-A")
+        val first = io.github.lrq3000.utterlane.asr.TranscriptStore(file)
+        first.beginTranscription(provenance)
+        first.append("first part")
+        first.sync()
+        first.finishProducing(); first.keepForRecovery()
+        val next = io.github.lrq3000.utterlane.asr.TranscriptStore(file)
+        assertThrows(IllegalStateException::class.java) { next.resumeTranscription("another-recording", "model-A") }
+        next.resumeTranscription("lecture", "model-A")
+        assertThrows(IllegalStateException::class.java) { next.resumeTranscription("lecture", "model-A") }
+        next.append("remaining words")
+        next.markComplete()
+        next.finishProducing(); next.keepForRecovery()
+        assertEquals("first part remaining words", file.readText())
+        assertEquals(io.github.lrq3000.utterlane.asr.TranscriptCompletion.COMPLETE, io.github.lrq3000.utterlane.asr.TranscriptSource.read(file).completion)
+    }
+
     @Test fun reviewSecondAfterRestartPreservesOtherResultsAndTheirOriginalOrder() {
         val journal = QueueJournal(temp.root)
         val first = journal.add("audio-a", "First", false)

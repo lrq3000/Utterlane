@@ -7,13 +7,14 @@ import java.io.File
 import java.util.Properties
 import java.util.UUID
 
-internal enum class QueueStage { WAITING, PROCESSING, CAPTURING, DRAINING, READY, FAILED;
-    val reviewable get() = this == READY || this == FAILED
-    val needsProcessingService get() = this == WAITING || this == PROCESSING || this == DRAINING
+internal enum class QueueStage { WAITING, PROCESSING, CAPTURING, DRAINING, READY, FAILED, PAUSING, PAUSED, STOPPING, STOPPED;
+    val reviewable get() = this == READY || this == FAILED || this == STOPPED
+    val needsProcessingService get() = this == WAITING || this == PROCESSING || this == DRAINING || this == PAUSING || this == STOPPING
 }
 
 internal data class QueueRecord(val id: String, val sequence: Long, val audio: String, val label: String,
-    val speakers: Boolean, val stage: QueueStage, val message: String? = null, val modelId: String? = null, val terminalPosted: Boolean = false) {
+    val speakers: Boolean, val stage: QueueStage, val message: String? = null, val modelId: String? = null, val terminalPosted: Boolean = false,
+    val resumeSamples: Long = 0, val checkpointed: Boolean = false) {
     val textId: String get() = TranscriptHistory.idForAttempt("$id.txt")
     // Other services and recovery notifications use positive IDs. Android foreground IDs must be nonzero.
     val notificationId: Int get() = -sequence.toInt()
@@ -38,7 +39,7 @@ internal class QueueJournal(private val root: File) {
             val p = ArchiveDisk.read(file)
             QueueRecord(file.nameWithoutExtension, p.getProperty("order").toLong(), p.getProperty("audio"),
                 p.getProperty("label"), p.getProperty("speakers").toBoolean(), QueueStage.valueOf(p.getProperty("stage")), p.getProperty("message"), p.getProperty("model"),
-                p.getProperty("terminalPosted").toBoolean())
+                p.getProperty("terminalPosted").toBoolean(), p.getProperty("resumeSamples", "0").toLong(), p.getProperty("checkpointed").toBoolean())
         }.sortedBy { it.sequence }
         read.forEach(::index)
         loaded = true
@@ -49,6 +50,8 @@ internal class QueueJournal(private val root: File) {
         row.message?.let { setProperty("message", it) }
         row.modelId?.let { setProperty("model", it) }
         if (row.terminalPosted) setProperty("terminalPosted", "true")
+        if (row.checkpointed) setProperty("checkpointed", "true")
+        if (row.resumeSamples != 0L) setProperty("resumeSamples", row.resumeSamples.toString())
     })
     @Synchronized fun records(): List<QueueRecord> { load(); return jobs.values.toList() }
     @Synchronized fun find(id: String): QueueRecord? { load(); return jobs[id] }
@@ -73,6 +76,9 @@ internal class QueueJournal(private val root: File) {
         require(old.sequence == row.sequence && old.audio == row.audio)
         write(row); jobs[row.id] = row
     }
+    /** A stale selection, finalizer or double tap must not overwrite a newer disposition of this job. */
+    @Synchronized fun transition(id: String, from: Set<QueueStage>, change: (QueueRecord) -> QueueRecord): QueueRecord? =
+        find(id)?.takeIf { it.stage in from }?.let(change)?.also(::update)
     @Synchronized fun finishCapture(id: String, failure: String?, interrupted: String, speakers: Boolean?): QueueRecord? {
         val row = find(id) ?: return null
         if (row.stage != QueueStage.CAPTURING && row.stage != QueueStage.DRAINING) return null
