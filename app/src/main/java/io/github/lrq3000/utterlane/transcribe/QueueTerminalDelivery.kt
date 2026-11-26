@@ -8,8 +8,19 @@ internal class QueueTerminalDelivery(private val journal: QueueJournal) {
         if (!row.stage.reviewable || row.terminalPosted || anchor?.id == id) return false
         if (!post(row)) return false
         // Acknowledge uses the same monitor. It cannot remove a result between this check and notify and have a stale notification reappear afterward.
-        journal.update(row.copy(terminalPosted = true))
-        true
+        try {
+            journal.update(row.copy(terminalPosted = true))
+            true
+        } catch (e: java.io.IOException) {
+            unrecorded(e)
+        } catch (e: android.system.ErrnoException) {
+            unrecorded(e) // Android's directory fsync reports errno directly.
+        }
+    }
+    private fun unrecorded(error: Exception): Boolean {
+        java.util.logging.Logger.getLogger("TranscriptionQueue").log(java.util.logging.Level.WARNING,
+            "Result notification posted but receipt not saved; delivery remains pending", error)
+        return false
     }
     fun acknowledge(id: String, remove: (QueueRecord) -> Unit): Boolean = synchronized(journal) {
         val row = journal.find(id)?.takeIf { it.stage.reviewable } ?: return false

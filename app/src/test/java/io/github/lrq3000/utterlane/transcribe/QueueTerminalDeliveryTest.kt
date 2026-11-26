@@ -12,6 +12,29 @@ import org.junit.rules.TemporaryFolder
 class QueueTerminalDeliveryTest {
     @get:Rule val temp = TemporaryFolder()
 
+    @Test fun receiptWriteFailureAfterPostDoesNotEscapeForegroundDetachOrBlockAnotherResult() {
+        val journal = QueueJournal(temp.root)
+        val delivery = QueueTerminalDelivery(journal)
+        val first = journal.add("a", "First", false, QueueStage.PROCESSING)
+        val second = journal.add("b", "Second", false, QueueStage.READY)
+        delivery.attach(first) { assertEquals(first, it) }
+        journal.update(first.copy(stage = QueueStage.READY))
+        val posted = mutableListOf<Int>()
+        val obstruction = java.io.File(temp.root, "${first.id}.job.tmp")
+        delivery.detach({ keep -> assertTrue(keep) }, { fail("Result is still present") }) { row ->
+            posted.add(row.notificationId)
+            assertTrue(obstruction.mkdir()) // Android accepted the post; the following real atomic receipt write cannot open its temporary file.
+            true
+        }
+        assertFalse(QueueJournal(temp.root).find(first.id)!!.terminalPosted)
+        assertTrue(delivery.deliver(second.id) { posted.add(it.notificationId) })
+        assertTrue(obstruction.delete())
+        // The same manager must no longer consider first the foreground anchor, and a later cold start must not repost it.
+        assertTrue(delivery.deliver(first.id) { posted.add(it.notificationId) })
+        assertFalse(QueueTerminalDelivery(QueueJournal(temp.root)).deliver(first.id) { posted.add(it.notificationId) })
+        assertEquals(listOf(first.notificationId, second.notificationId, first.notificationId), posted)
+    }
+
     @Test fun deathAfterAndroidAcceptsPostRecoversUsingSameNotificationIdentity() {
         val journal = QueueJournal(temp.root)
         val row = journal.add("audio", "Result", false, QueueStage.READY)
