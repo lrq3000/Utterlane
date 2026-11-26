@@ -9,8 +9,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 
@@ -22,8 +20,8 @@ class RecognizerManager(
     private val backendFactory: (ModelDefinition, String) -> RecognitionBackend = { model, _ -> WorkerRecognitionBackend(context, model) }
 ) {
     companion object { private const val TAG = "RecognizerManager" }
-    private val mutex = Mutex()
-    private val sessionPreparation = RecognitionSessionPreparation(mutex) {
+    private val calls = RecognitionCallQueue()
+    private val sessionPreparation = RecognitionSessionPreparation(calls) {
         UtterlaneApp.instance.settingsRepository.runtimeOptions.first()
     }
     private val stateLock = Any()
@@ -59,11 +57,11 @@ class RecognizerManager(
     suspend fun initialize(): Boolean = withModelOperation { expected ->
         withContext(Dispatchers.IO) {
             val options = UtterlaneApp.instance.settingsRepository.runtimeOptions.first().requireValid()
-            mutex.withLock { initializeLocked(expected, options) }
+            calls.withTurn { initializeLocked(expected, options) }
         }
     }
 
-    /** Reserve before waiting for the inference mutex, including session creation. */
+    /** Reserve before waiting for a model turn, including session creation. */
     private suspend fun <T> withModelOperation(block: suspend (Long) -> T): T {
         val expected = synchronized(stateLock) {
             pendingOperations++
@@ -102,20 +100,18 @@ class RecognizerManager(
         val revision = idleRevision
         idleJob = idleScope.launch {
             delay(remaining)
-            mutex.withLock {
+            calls.withTurn {
                 val backend = synchronized(stateLock) {
-                    // Cancellation alone is insufficient: an old callback may
-                    // already be waiting on the mutex when new work starts.
-                    if (revision != idleRevision || pendingOperations != 0 || sessions.isNotEmpty() || _isLoading.value) return@withLock
+                    // Cancellation alone is insufficient: an old callback may already be waiting for a turn when new work starts.
+                    if (revision != idleRevision || pendingOperations != 0 || sessions.isNotEmpty() || _isLoading.value) return@withTurn
                     if (idlePolicy.remainingMillis() != 0L) {
                         refreshIdleTimerLocked()
-                        return@withLock
+                        return@withTurn
                     }
                     idleJob = null // Detaching must not cancel its own close operation.
                     detachLocked(clearFailure = false)
                 }
-                // Keep close inside the inference mutex: a replacement binds the
-                // same worker service, so it must not start before the old PID exits.
+                // Keep close inside this turn: a replacement binds the same worker service, so it must not start before the old PID exits.
                 backend?.close()
                 Log.i(TAG, "Recognition model unloaded after inactivity")
             }
@@ -132,8 +128,7 @@ class RecognizerManager(
                 when (runtimeConfiguration.change(options, sessions.isNotEmpty())) {
                     RecognitionRuntimeConfiguration.Change.KEEP -> return true
                     RecognitionRuntimeConfiguration.Change.CONFIGURE -> {
-                        // No active session may have its recovery budget changed by
-                        // another caller. The inference mutex also excludes live JNI.
+                        // No active session may have its recovery budget changed by another caller. This turn also excludes live JNI.
                         checkNotNull(recognizer).configure(options)
                         workerActivityOptions = options
                         runtimeConfiguration.applied(options)
@@ -258,20 +253,21 @@ class RecognizerManager(
         onSegment: suspend (String) -> Unit = {}): TranscriptionSession =
         createSessionWithOptions(options, onProcessed, onSegment, speakerOverride, onSpeakerUnavailable)
 
-    internal suspend fun createLiveSession(options: RuntimeOptions, speakerControl: LiveSpeakerControl,
+    internal suspend fun createLiveSession(options: RuntimeOptions, speakerControl: LiveSpeakerControl, capture: CaptureAdmission.Lease,
         onProcessed: (Long, Long) -> Unit, onSpeakerUnavailable: (SpeakerWarning) -> Unit,
         onSegment: suspend (String) -> Unit): TranscriptionSession =
         createSessionWithOptions(options, onProcessed, onSegment, onSpeakerUnavailable = onSpeakerUnavailable,
-            liveSpeakers = speakerControl)
+            liveSpeakers = speakerControl, capture = capture)
 
     private suspend fun createSessionWithOptions(providedOptions: RuntimeOptions?, onProcessed: (Long, Long) -> Unit,
         onSegment: suspend (String) -> Unit, speakerOverride: Boolean? = null,
-        onSpeakerUnavailable: ((SpeakerWarning) -> Unit)? = null, liveSpeakers: LiveSpeakerControl? = null): TranscriptionSession = withModelOperation { expected ->
+        onSpeakerUnavailable: ((SpeakerWarning) -> Unit)? = null, liveSpeakers: LiveSpeakerControl? = null,
+        capture: CaptureAdmission.Lease? = null): TranscriptionSession = withModelOperation { expected ->
         val owner = currentCoroutineContext()[Job]
         var created: TranscriptionSession? = null
         try {
             withContext(Dispatchers.IO) {
-                sessionPreparation.prepare(providedOptions) { options ->
+                sessionPreparation.prepare(providedOptions, capture) { options ->
                     val app = UtterlaneApp.instance
                     // Preparation, segmentation, attribution and diagnostic activity all
                     // consume the same entry-point snapshot, including while queued.
@@ -296,7 +292,7 @@ class RecognizerManager(
                     val hasSpeakerDecoder = liveSpeakers != null || diarize
                     val sessionBackend = checkNotNull(recognizer)
                     val directory = File(context.cacheDir, "transcripts").apply { mkdirs() }
-                    val store = TranscriptStore(File.createTempFile("transcript-", ".txt", directory))
+                    val store = TranscriptStore(currentCoroutineContext()[QueueTranscriptTarget]?.file ?: File.createTempFile("transcript-", ".txt", directory))
                     val id = sessionIds.incrementAndGet()
                     synchronized(stateLock) {
                         if (expected != generation) { store.dispose(); error("Model was unloaded") }
@@ -304,7 +300,7 @@ class RecognizerManager(
                         refreshIdleTimerLocked()
                     }
                     TranscriptionSession(store, StreamingCorrections(rules), onSegment, decode = { window ->
-                        withSessionBackend(expected, id, options) { backend ->
+                        withSessionBackend(expected, id, options, capture) { backend ->
                             // Arbitrary ASR models need not supply word timings. Decode
                             // disjoint ownership for them rather than inventing timestamps.
                             val pcm = if (modelManager.selected.value.isCustom) window.samples.copyOfRange(
@@ -323,13 +319,11 @@ class RecognizerManager(
                             }
                         }
                     }, onProcessed = onProcessed,
-                        decodeSpeakers = if (hasSpeakerDecoder) { window -> withSessionBackend(expected, id, options) { it.transcribeSpeakers(id, window, count, options) } } else null,
+                        decodeSpeakers = if (hasSpeakerDecoder) { window -> withSessionBackend(expected, id, options, capture) { it.transcribeSpeakers(id, window, count, options) } } else null,
                         speakerLabel = { speaker -> speakerLabels.getOrElse(speaker) { unknownSpeaker } },
                         options = options,
-                        // The session lease remains held until onClosed. Use the
-                        // same snapshot/mutex/activity owner for its native EOF
-                        // drain so even Immediate idle unloading cannot race it.
-                        finishSpeakers = if (hasSpeakerDecoder) { { withSessionBackend(expected, id, options) { it.finishSpeakers(id, options) } } } else null,
+                        // Hold the model lease through native EOF and use the same scheduling and activity ownership as other calls.
+                        finishSpeakers = if (hasSpeakerDecoder) { { withSessionBackend(expected, id, options, capture) { it.finishSpeakers(id, options) } } } else null,
                         speakerRequested = liveSpeakers?.let { { it.resolve(false) } },
                         speakerStart = ::speakersAvailable,
                         onSpeakersBypassed = { liveSpeakers?.unavailable(); onSpeakerUnavailable?.invoke(SpeakerWarning.PROCESSING_FAILED) }
@@ -344,8 +338,8 @@ class RecognizerManager(
         }
     }
 
-    private suspend fun <T> withSessionBackend(expected: Long, id: Long, options: RuntimeOptions, action: (RecognitionBackend) -> T): T = withContext(Dispatchers.IO) {
-        mutex.withLock {
+    private suspend fun <T> withSessionBackend(expected: Long, id: Long, options: RuntimeOptions, capture: CaptureAdmission.Lease?, action: (RecognitionBackend) -> T): T = withContext(Dispatchers.IO) {
+        calls.withTurn(capture) {
             val (backend, activityOperation) = synchronized(stateLock) {
                 check(expected == generation && sessions.containsKey(id)) { "Model was unloaded" }
                 checkNotNull(recognizer) to activityOwnership.begin(options, workerActivityOptions, id)
@@ -363,9 +357,9 @@ class RecognizerManager(
     }
 
     suspend fun selectModel(model: ModelDefinition) = withContext(Dispatchers.IO) {
-        mutex.withLock {
+        calls.withTurn {
             val old = synchronized(stateLock) {
-                check(sessions.isEmpty() && !MicrophoneSession.isBusy()) { context.getString(R.string.stream_busy) }
+                check(sessions.isEmpty() && !MicrophoneSession.hasSessions()) { context.getString(R.string.stream_busy) }
                 check(!modelManager.isTransferring) { "A model transfer is running" }
                 detachLocked()
             }
@@ -374,18 +368,18 @@ class RecognizerManager(
         }
     }
     suspend fun deleteDiarizationModel() = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            synchronized(stateLock) { check(sessions.isEmpty() && !MicrophoneSession.isBusy()) { context.getString(R.string.stream_busy) } }
+        calls.withTurn {
+            synchronized(stateLock) { check(sessions.isEmpty() && !MicrophoneSession.hasSessions()) { context.getString(R.string.stream_busy) } }
             UtterlaneApp.instance.diarizationModels.deleteModel()
         }
     }
     suspend fun deleteSelectedModel(expectedModelId: String = modelManager.selected.value.id) = withContext(Dispatchers.IO) {
-        mutex.withLock {
+        calls.withTurn {
             // Check inside the same lock as selection/deletion: a queued request
             // must never delete a different model than the user confirmed.
             check(modelManager.selected.value.id == expectedModelId) { context.getString(R.string.model_delete_selection_changed) }
             val old = synchronized(stateLock) {
-                check(sessions.isEmpty() && !MicrophoneSession.isBusy()) { context.getString(R.string.stream_busy) }
+                check(sessions.isEmpty() && !MicrophoneSession.hasSessions()) { context.getString(R.string.stream_busy) }
                 check(!modelManager.isTransferring) { "A model transfer is running" }
                 detachLocked()
             }
@@ -393,17 +387,20 @@ class RecognizerManager(
         }
     }
 
-    /** Safe even if a worker is stuck in load/decode. Never waits for the inference mutex. */
+    /** Safe even if a worker is stuck in load/decode. Never waits for a model turn. */
     fun forceUnload() {
         val pending: List<Job?>
+        val captures: List<CaptureAdmission.Lease>
         val backend: RecognitionBackend?
         synchronized(stateLock) {
             generation++
+            // Fix the capture reset targets at this generation change; a later admission must survive late cancellation of a draining owner.
+            captures = MicrophoneSession.resetTargets()
             pending = sessions.values.toList()
             sessions.clear()
             backend = detachLocked()
         }
-        MicrophoneSession.resetActive()
+        captures.forEach { it.reset() }
         pending.forEach { it?.cancel(CancellationException("Model forcibly unloaded")) }
         backend?.close()
         Log.i(TAG, "Recognition worker and active sessions reset")

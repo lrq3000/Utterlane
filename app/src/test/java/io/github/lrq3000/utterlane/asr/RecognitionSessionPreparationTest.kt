@@ -9,7 +9,6 @@ import java.io.File
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.sync.Mutex
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -30,8 +29,10 @@ class RecognitionSessionPreparationTest {
         val entryOptions = RuntimeOptions(diagnostics = false, asrThreads = 2, inferenceStallSeconds = 10)
         val preferences = MutableStateFlow(entryOptions)
         var reads = 0
-        val mutex = Mutex(locked = true)
-        val preparation = RecognitionSessionPreparation(mutex) { reads++; preferences.first() }
+        val queue = RecognitionCallQueue()
+        val release = CompletableDeferred<Unit>()
+        launch(start = CoroutineStart.UNDISPATCHED) { queue.withTurn { release.await() } }
+        val preparation = RecognitionSessionPreparation(queue) { reads++; preferences.first() }
         val directory = File(temporary.root, "queued")
         val log = BoundedDiagnosticLog(DiagnosticRingFiles(directory), { DiagnosticEnvironment() })
         val diagnostics = LocalRecognitionDiagnostics(log)
@@ -50,7 +51,7 @@ class RecognitionSessionPreparationTest {
         try {
             assertFalse(queued.isCompleted)
             preferences.value = entryOptions.copy(diagnostics = true, asrThreads = 8, inferenceStallSeconds = 900)
-            mutex.unlock()
+            release.complete(Unit)
             val prepared = queued.await()
             assertSame(entryOptions, prepared)
             assertFalse(prepared.diagnostics)
@@ -62,23 +63,26 @@ class RecognitionSessionPreparationTest {
         assertFalse("An entry-point opt-out must not write diagnostics while queued", directory.exists())
     }
 
-    @Test fun cancelledWaitDoesNotPrepareAndFailedPreparationReleasesMutex(): Unit = runBlocking {
+    @Test fun cancelledWaitDoesNotPrepareAndFailedPreparationReleasesTurn(): Unit = runBlocking {
         val options = RuntimeOptions(diagnostics = false)
-        val mutex = Mutex(locked = true)
-        val preparation = RecognitionSessionPreparation(mutex) { options }
+        val queue = RecognitionCallQueue()
+        val release = CompletableDeferred<Unit>()
+        launch(start = CoroutineStart.UNDISPATCHED) { queue.withTurn { release.await() } }
+        val preparation = RecognitionSessionPreparation(queue) { options }
         var prepared = false
         val queued = launch(start = CoroutineStart.UNDISPATCHED) {
             preparation.prepare(null) { prepared = true }
         }
         queued.cancelAndJoin()
         assertFalse(prepared)
-        assertTrue(mutex.isLocked) // Cancellation cannot unlock someone else's inference.
-        mutex.unlock()
+        val following = async(start = CoroutineStart.UNDISPATCHED) { preparation.prepare(options) { it } }
+        assertFalse(following.isCompleted) // Cancellation cannot unlock someone else's inference.
+        release.complete(Unit)
+        assertSame(options, following.await())
         try {
             preparation.prepare(options) { throw IllegalStateException("preparation failed") }
             fail("Expected preparation failure")
         } catch (_: IllegalStateException) { /* The caller's existing cleanup handles this. */ }
-        assertFalse(mutex.isLocked)
         assertSame(options, preparation.prepare(options) { it })
     }
 
