@@ -2,6 +2,7 @@ package io.github.lrq3000.utterlane
 
 import android.content.Intent
 import android.app.NotificationManager
+import android.graphics.Color
 import android.graphics.Rect
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
@@ -75,10 +76,16 @@ class FloatingControlsAndroidTest {
             val start = origin.exactCenterX() to origin.exactCenterY()
             send(time, MotionEvent.ACTION_DOWN, listOf(start))
             send(time, MotionEvent.ACTION_MOVE, listOf((start.first + 48) to start.second))
-            val targetNode = ui.descriptionNode(app.getString(R.string.floating_hide))
-            val target = Rect().also(targetNode::getBoundsInScreen)
-            @Suppress("DEPRECATION") targetNode.recycle()
-            val drop = target.exactCenterX() to target.exactCenterY()
+            // The target does not accept input, so older releases can omit its window from Accessibility.
+            // Locate the actual drawn red circle before releasing; do not reuse production hit-test geometry.
+            var target: Rect? = null
+            try {
+                await { dismissTargetBounds()?.let { target = it } != null }
+            } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
+                ui.screenshot("floating-drag-target-missing")
+                throw AssertionError("Dragging the mic above the recording panel did not draw a red drop target", timeout)
+            }
+            val drop = checkNotNull(target).let { it.exactCenterX() to it.exactCenterY() }
             send(time, MotionEvent.ACTION_MOVE, listOf(drop))
             send(time, MotionEvent.ACTION_UP, listOf(drop))
             var queued: QueueRecord? = null
@@ -231,6 +238,24 @@ class FloatingControlsAndroidTest {
     private fun buttonBounds(): Rect {
         val node = ui.node(buttonId())
         return try { Rect().also(node::getBoundsInScreen) } finally { @Suppress("DEPRECATION") node.recycle() }
+    }
+
+    private fun dismissTargetBounds(): Rect? {
+        val frame = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+        try {
+            val bounds = Rect()
+            var points = 0
+            for (y in frame.height * 3 / 4 until frame.height step 3) {
+                for (x in frame.width / 4 until frame.width * 3 / 4 step 3) {
+                    val pixel = frame.getPixel(x, y)
+                    if (Color.red(pixel) - maxOf(Color.green(pixel), Color.blue(pixel)) > 80) {
+                        bounds.union(x, y, x + 1, y + 1)
+                        points++
+                    }
+                }
+            }
+            return bounds.takeIf { points >= 16 }
+        } finally { frame.recycle() }
     }
 
     private suspend fun assertContinues(capture: ObservedAudioRecord, creations: AtomicInteger) {

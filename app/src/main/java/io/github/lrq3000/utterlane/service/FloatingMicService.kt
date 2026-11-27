@@ -403,12 +403,28 @@ class FloatingMicService : Service() {
                 }, finalized = ::onDictationFinalized)
             refreshWorkAction()
             microphoneSession?.start()
+            raiseMicAboveRecordingPanel()
         } catch (error: Exception) {
             Log.w(TAG, "Could not start dictation", error)
             microphoneSession?.cancel(discard = false)
             microphoneSession = null
             refreshWorkAction()
             showToast(getString(R.string.toast_recording_error))
+        }
+    }
+
+    private fun raiseMicAboveRecordingPanel() {
+        if (!floatingAttached) return
+        // Equal-type overlay windows stack in attachment order. On short screens the shared panel can reach
+        // the mic's saved position; reattach above it so the mic remains tappable and draggable during capture.
+        try {
+            windowManager.removeViewImmediate(floatingView)
+            floatingAttached = false
+            windowManager.addView(floatingView, layoutParams)
+            floatingAttached = true
+        } catch (error: RuntimeException) {
+            // A window failure must not cancel capture: the recording panel keeps its own Done control.
+            Log.w(TAG, "Could not keep the floating microphone above the recording panel", error)
         }
     }
 

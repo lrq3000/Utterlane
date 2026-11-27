@@ -58,4 +58,4 @@
 - [x] Run `*QueueJournalTest`, focused archival tests and the quit coordinator test; expect missing quit or pause behavior.
 - [x] Reuse queue pause checkpoints and archival pause before producer teardown, add the action to existing notifications and the queue screen, and retain completed notices and interrupted input.
 - [x] Rerun focused tests and `assembleDebug`, review the full candidate, and commit `feat(queue): stop active work safely and quit`.
-- [ ] Verify `.\gradlew.bat :app:testDebugUnitTest assembleDebug --offline` and exercise the real drag/notification path on an approved isolated emulator if available.
+- [x] Verify `.\gradlew.bat :app:testDebugUnitTest assembleDebug --offline` and exercise the real drag/notification path on an approved isolated emulator if available.
