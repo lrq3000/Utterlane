@@ -354,10 +354,7 @@ class MicrophoneSession(
                                 checkpointFailure = checkpointFailure ?: e
                                 Log.e("MicrophoneSession", "Could not save recovery details", e)
                             }
-                            finally {
-                                try { lease?.close() }
-                                finally { admission.finish(captureLease) }
-                            }
+                            finally { lease?.close() }
                         }
                     }
                     withContext(NonCancellable + Dispatchers.Main) {
@@ -386,7 +383,9 @@ class MicrophoneSession(
                 }
             }
         }
-        // Covers a scope cancelled before the launch body executes.
+        // Keep the session visible to Quit through the Main-thread publication callbacks. Hardware is
+        // released separately; another recording need not wait for this session's recovery or queue row.
+        // Completion also covers a scope cancelled before the launch body executes.
         job!!.invokeOnCompletion { admission.finish(captureLease) }
         // Reset can select an admitted capture on a different thread before launch publishes its job.
         if (cancelled) job!!.cancel()

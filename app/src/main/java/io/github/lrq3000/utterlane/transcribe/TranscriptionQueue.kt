@@ -121,7 +121,8 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
     fun trackStandalone(job: Job, stop: () -> Unit) {
         standalone[job] = stop
         standaloneCount.value = standalone.size
-        trackPublication(job).invokeOnCompletion {
+        // Standalone work is a Quit participant, but must not keep an already-empty queue service running.
+        job.invokeOnCompletion {
             app.applicationScope.launch { standalone.remove(job); standaloneCount.value = standalone.size }
         }
         if (isQuitting) stop()
@@ -148,8 +149,9 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
     }
 
     suspend fun awaitQuitIdle() {
-        combine(staging, rows, foreground) { publishing, all, foreground ->
-            publishing == 0 && foreground == null && all.none { it.stage.needsProcessingService || it.stage == QueueStage.CAPTURING }
+        combine(staging, rows, foreground, standaloneCount) { publishing, all, foreground, direct ->
+            publishing == 0 && direct == 0 && foreground == null &&
+                all.none { it.stage.needsProcessingService || it.stage == QueueStage.CAPTURING }
         }.first { it }
         imports.requireRecoverableForQuit()
     }
