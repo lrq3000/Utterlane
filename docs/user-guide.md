@@ -216,7 +216,7 @@ observed source, route, mode and effects. These process-local details contain no
 redact device addresses, and are copied only when you tap **Copy diagnostics**. They
 describe the recorded session, not the settings that will apply to the next one.
 
-### Resizing the floating microphone
+### Moving, resizing, and hiding the floating microphone
 
 Use **two fingers directly on the floating mic**: spread them to enlarge it, or pinch
 them together to shrink it. One finger drags it to another position; a deliberate tap
@@ -228,6 +228,8 @@ and inside the display. Resizing works during capture without restarting the rec
 There is no Button Size menu in Settings. Previously saved Small/Medium/Large sizes
 are retained until you resize. The floating mic can record without an installed speech
 model; after stopping, the retained audio is available through model recovery.
+
+To hide the button temporarily, drag it onto the red **×** and release. This does not turn off the floating microphone setting or close Utterlane. If the button is recording, new capture stops and the recorded speech continues in the background queue. Other jobs keep running. Reopen Utterlane to bring the floating button back.
 
 ## Models and languages
 

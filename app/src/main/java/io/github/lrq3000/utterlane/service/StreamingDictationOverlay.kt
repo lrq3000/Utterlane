@@ -53,6 +53,17 @@ internal class StreamingDictationOverlay(
         session.stop()
     }
 
+    fun stopInBackground(queued: () -> Unit) {
+        if (!hosting) return
+        recordingChanged(false)
+        session.stopInBackground {
+            // Publication owns the full transcript, including any prefix previously streamed to the editor.
+            target.close()
+            overlay.hide()
+            queued()
+        }
+    }
+
     fun cancel(discard: Boolean = true) {
         if (!hosting) return
         detach()

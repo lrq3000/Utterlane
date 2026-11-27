@@ -25,20 +25,23 @@ internal class DictationSession(
     private val handoff = DictationQueueHandoff.create(context)
     private lateinit var capture: MicrophoneSession
     private var completion: Job? = null
+    private var backgroundRequest: (() -> Unit)? = null
     val metrics get() = capture.metrics
     val speakers get() = capture.speakerControl
-    val ownsNavigation get() = handoff.ownsNavigation
+    val ownsNavigation get() = backgroundRequest != null || handoff.ownsNavigation
 
     init {
         capture = app.microphoneSessions.create(context, handoff.producerScope, onText,
             onComplete = { store, error ->
+                submitBackgroundIfReleased()
+                backgroundRequest = null
                 completion = handoff.complete(store, error?.message, speakers.retryPreference.value) {
                     onComplete(capture, store, error)
                 }
                 // Admission failure has no producer and therefore no platform close callback.
                 if (error?.kind == SessionFailure.Kind.BUSY) onClosed(false)
             },
-            onCaptureEnded = onCaptureEnded, onWarning = onWarning, onReady = onReady,
+            onCaptureEnded = { submitBackgroundIfReleased(); onCaptureEnded() }, onWarning = onWarning, onReady = onReady,
             onSessionClosed = {
                 val finalization = completion ?: handoff.interrupted(context.getString(R.string.stream_cancelled))
                 // When publication is outstanding, its accepted or foreground callback still owns the host.
@@ -53,6 +56,22 @@ internal class DictationSession(
     fun start() = capture.start()
     fun stop() { if (!ownsNavigation) capture.stop() }
     fun cancel(discard: Boolean = true) { if (!ownsNavigation) capture.cancel(discard) }
+
+    fun stopInBackground(accepted: () -> Unit) {
+        if (ownsNavigation || completion != null) return
+        backgroundRequest = accepted
+        if (capture.captureReleased) submitBackgroundIfReleased() else capture.stop()
+    }
+
+    private fun submitBackgroundIfReleased() {
+        val accepted = backgroundRequest ?: return
+        // Before release the microphone foreground service still owns capture. A tap/drop
+        // before any samples exist must not leave a spurious failed row in the queue.
+        if (!capture.captureReleased || metrics.state.value.capturedSamples == 0L) return
+        val audio = capture.audioId ?: return
+        backgroundRequest = null
+        handoff.submit(audio, speakers.retryPreference.value == true, accepted) { notifyDictationQueueFailure(context, it) }
+    }
 
     fun confirmSettings(phase: CapturePhase, open: () -> Unit): Boolean {
         if (metrics.state.value.phase != phase || ownsNavigation) return false

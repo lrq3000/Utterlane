@@ -58,6 +58,7 @@ class FloatingMicService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private lateinit var windowManager: WindowManager
+    private lateinit var dismissTarget: OverlayDismissTarget
     private lateinit var floatingView: View
     private lateinit var micButton: ImageView
     private lateinit var layoutParams: WindowManager.LayoutParams
@@ -69,6 +70,7 @@ class FloatingMicService : Service() {
     private var isIntentionalStop = false
     private var preferredDiameterDp = FloatingButtonSize.DEFAULT_DP
     private var floatingAttached = false
+    private var hiding = false
     private var legacyInsets = Insets.NONE
     private lateinit var touchListener: FloatingControlTouchListener
     private val displayListener = object : DisplayManager.DisplayListener {
@@ -92,6 +94,7 @@ class FloatingMicService : Service() {
         }
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        dismissTarget = OverlayDismissTarget(this, windowManager)
         setupFloatingView()
         getSystemService(DisplayManager::class.java).registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
     }
@@ -149,6 +152,9 @@ class FloatingMicService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        hiding = false
+        if (::touchListener.isInitialized) touchListener.cancel(persist = false)
+        if (::dismissTarget.isInitialized) dismissTarget.hide()
         // Only an explicit Stop disables the preference; unexpected teardown keeps recovery intact.
         if (isIntentionalStop) {
             UtterlaneApp.instance.applicationScope.launch {
@@ -210,9 +216,20 @@ class FloatingMicService : Service() {
             position = { layoutParams.x to layoutParams.y },
             diameterDp = { micButton.layoutParams.width / resources.displayMetrics.density },
             isRtl = { floatingView.layoutDirection == View.LAYOUT_DIRECTION_RTL },
-            onMove = { x, y -> layoutParams.x = x; layoutParams.y = y; updateFloatingLayout() },
+            onMove = { x, y ->
+                layoutParams.x = x; layoutParams.y = y
+                val geometry = displayGeometry()
+                updateFloatingLayout(geometry)
+                dismissTarget.highlight(isOverDismissTarget(geometry), micButton)
+            },
             onResize = { dp -> preferredDiameterDp = FloatingButtonSize.bounded(dp); updateFloatingLayout() },
-            onFinish = { resized -> persistFloatingGeometry(resized) }
+            onFinish = { resized -> persistFloatingGeometry(resized) },
+            onDragVisibility = { if (it) dismissTarget.show(displayGeometry()) else dismissTarget.hide() },
+            onDrop = {
+                val hit = isOverDismissTarget(displayGeometry())
+                if (hit) hideFloatingMic()
+                hit
+            }
         )
         micButton.setOnClickListener { toggleRecording() }
         micButton.setOnTouchListener(touchListener)
@@ -240,7 +257,7 @@ class FloatingMicService : Service() {
                 if (dp != preferredDiameterDp) touchListener.cancel(persist = false)
                 preferredDiameterDp = dp
                 updateFloatingLayout()
-                micButton.isEnabled = true
+                micButton.isEnabled = !hiding
             }
         }
     }
@@ -269,11 +286,12 @@ class FloatingMicService : Service() {
             legacyInsets.left, legacyInsets.top, legacyInsets.right, legacyInsets.bottom)
     }
 
-    private fun updateFloatingLayout() {
+    private fun updateFloatingLayout() = updateFloatingLayout(displayGeometry())
+
+    private fun updateFloatingLayout(geometry: FloatingControlGeometry) {
         val density = resources.displayMetrics.density
         val padding = (4 * density).roundToInt()
         floatingView.setPadding(padding, padding, padding, padding)
-        val geometry = displayGeometry()
         val diameter = geometry.diameterPx(preferredDiameterDp, density, 2 * padding, 2 * padding)
         if (micButton.layoutParams.width != diameter || micButton.layoutParams.height != diameter) {
             micButton.layoutParams = micButton.layoutParams.apply { width = diameter; height = diameter }
@@ -288,6 +306,37 @@ class FloatingMicService : Service() {
         layoutParams.x = x
         layoutParams.y = y
         if (floatingAttached) windowManager.updateViewLayout(floatingView, layoutParams)
+    }
+
+    private fun isOverDismissTarget(geometry: FloatingControlGeometry): Boolean = dismissTarget.contains(
+        geometry.physicalLeft(layoutParams.x, layoutParams.width, floatingView.layoutDirection == View.LAYOUT_DIRECTION_RTL) + layoutParams.width / 2f,
+        layoutParams.y + layoutParams.height / 2f, micButton.layoutParams.width / 2f)
+
+    private fun hideFloatingMic() {
+        if (hiding) return
+        hiding = true
+        micButton.isEnabled = false
+        dismissTarget.hide()
+        val session = microphoneSession
+        if (session == null) finishHiding()
+        else session.stopInBackground {
+            // Durable registration is not the same as an Android foreground service actually attaching.
+            // Leave the existing foreground owner valid until the queue attaches or the take finishes.
+            serviceScope.launch {
+                UtterlaneApp.instance.transcriptionQueue.foreground.first { it != null }
+                if (hiding && microphoneSession === session) finishHiding()
+            }
+        }
+    }
+
+    private fun finishHiding() {
+        microphoneSession = null
+        if (floatingAttached) {
+            floatingAttached = false
+            windowManager.removeView(floatingView)
+        }
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private fun initializeRecognizer() {
@@ -334,7 +383,10 @@ class FloatingMicService : Service() {
         try {
             microphoneSession = StreamingDictationOverlay(this, serviceScope, target,
                 recordingChanged = { isRecording.set(it); updateMicButtonState() },
-                warning = ::showToast, released = { microphoneSession = null })
+                warning = ::showToast, released = {
+                    microphoneSession = null
+                    if (hiding && floatingAttached) finishHiding()
+                })
             microphoneSession?.start()
         } catch (error: Exception) {
             Log.w(TAG, "Could not start dictation", error)

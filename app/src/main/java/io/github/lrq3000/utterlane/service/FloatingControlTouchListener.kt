@@ -13,7 +13,9 @@ internal class FloatingControlTouchListener(
     private val isRtl: () -> Boolean,
     private val onMove: (Int, Int) -> Unit,
     private val onResize: (Int) -> Unit,
-    private val onFinish: (resized: Boolean) -> Unit
+    private val onFinish: (resized: Boolean) -> Unit,
+    private val onDragVisibility: (Boolean) -> Unit,
+    private val onDrop: () -> Boolean
 ) : View.OnTouchListener {
     private var active = false
     private var dragged = false
@@ -46,11 +48,13 @@ internal class FloatingControlTouchListener(
 
         when (event.actionMasked) {
             MotionEvent.ACTION_POINTER_DOWN -> {
+                if (!multiple && dragged) onDragVisibility(false)
                 multiple = true
                 if (pinchFirst == -1) beginPinch(event)
             }
             MotionEvent.ACTION_MOVE -> {
                 if (event.pointerCount > 1) {
+                    if (!multiple && dragged) onDragVisibility(false)
                     multiple = true
                     if (pinchFirst == -1) beginPinch(event)
                     val span = span(event)
@@ -68,7 +72,8 @@ internal class FloatingControlTouchListener(
             MotionEvent.ACTION_UP -> {
                 if (!multiple) move(event)
                 val tap = !multiple && !dragged
-                cancel()
+                val dismissed = !multiple && dragged && onDrop()
+                cancel(persist = !dismissed)
                 if (tap) view.performClick()
             }
             MotionEvent.ACTION_CANCEL -> cancel()
@@ -80,12 +85,14 @@ internal class FloatingControlTouchListener(
     fun cancel(persist: Boolean = true) {
         if (!active) return
         active = false
+        if (dragged) onDragVisibility(false)
         if (persist && (dragged || resized)) onFinish(resized)
     }
 
     private fun move(event: MotionEvent) {
         val dx = event.rawX - downX
         val dy = event.rawY - downY
+        val wasDragging = dragged
         // Android can batch an excursion and return in one MOVE. Inspect its history
         // too, so returning within slop never revives a tap already used for dragging.
         for (i in 0 until event.historySize) {
@@ -94,6 +101,7 @@ internal class FloatingControlTouchListener(
             if (hypot(hx, hy) > touchSlop) dragged = true
         }
         if (hypot(dx, dy) > touchSlop) dragged = true
+        if (dragged && !wasDragging) onDragVisibility(true)
         if (dragged) onMove(start.first + horizontalDirection * dx.roundToInt(), start.second + dy.roundToInt())
     }
 
