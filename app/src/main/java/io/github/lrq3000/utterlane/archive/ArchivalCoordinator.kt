@@ -30,6 +30,9 @@ class ArchivalCoordinator(private val app: UtterlaneApp, val journal: ArchivalJo
     private var supervisor: ArchiveSupervisorService? = null
     private var starting = false
     private var stopping = false
+    private var quitting = false
+    @Volatile private var quitGeneration = 0L
+    private var stopWork: Deferred<Unit>? = null
     private var drainJob: Job? = null
     private var inFlight: ArchivalJob? = null
     private var controlGeneration = 0L
@@ -133,22 +136,35 @@ class ArchivalCoordinator(private val app: UtterlaneApp, val journal: ArchivalJo
     fun visible(activity: Activity, resumed: Boolean) {
         val wasEmpty = visible.isEmpty()
         if (resumed) visible.add(activity) else visible.remove(activity)
-        if (resumed && wasEmpty) retry()
+        if (resumed && wasEmpty) retryPending(explicit = false)
     }
 
-    fun retry() {
+    fun retry() = retryPending(explicit = true)
+
+    private fun retryPending(explicit: Boolean) {
+        val generation = quitGeneration
         scope.launch {
+            if (stopping || quitting) return@launch
+            if (!explicit && withContext(Dispatchers.IO) { journal.isPausedForQuit() }) return@launch
+            if (stopping || quitting) return@launch
             faults.retry()
             faults.run {
                 cleanupAllowed = true
                 mutable.update { it.copy(message = null) }
-                withContext(Dispatchers.IO) { journal.retryPaused(); journal.beginCleanupPass() }
+                withContext(Dispatchers.IO) {
+                    synchronized(journal) {
+                        if (generation != quitGeneration) return@synchronized
+                        journal.retryPaused(automatic = !explicit)
+                        journal.beginCleanupPass()
+                    }
+                }
                 signal()
             }
         }
     }
 
-    private fun ensureSupervisor(userInitiated: Boolean = false, encoding: Boolean = false) {
+    private suspend fun ensureSupervisor(userInitiated: Boolean = false, encoding: Boolean = false) {
+        if (quitting) return
         if (encoding) supervisor?.enableMediaProcessing()
         if (supervisor != null || starting || stopping || faults.paused) return
         // The microphone entry point may be a visible overlay/IME rather than an
@@ -160,15 +176,19 @@ class ArchivalCoordinator(private val app: UtterlaneApp, val journal: ArchivalJo
             return
         }
         try {
+            if (withContext(Dispatchers.IO) { journal.isPausedForQuit() }) return
+            if (supervisor != null || starting || stopping || faults.paused || quitting) return
+            if (visible.isEmpty() && !userInitiated) return
             starting = true
-            ContextCompat.startForegroundService(app, Intent(app, ArchiveSupervisorService::class.java).putExtra("encoding", encoding))
+            ContextCompat.startForegroundService(app, Intent(app, ArchiveSupervisorService::class.java)
+                .putExtra("encoding", encoding).putExtra(ArchiveSupervisorService.GENERATION, quitGeneration))
         } catch (e: Exception) {
             starting = false
             faults.fail(e)
         }
     }
     internal fun attached(service: ArchiveSupervisorService) {
-        if (faults.paused || stopping) {
+        if (faults.paused || stopping || quitting) {
             starting = false
             try { service.finish() } catch (error: Exception) { faults.fail(error) }
             return
@@ -177,6 +197,7 @@ class ArchivalCoordinator(private val app: UtterlaneApp, val journal: ArchivalJo
         mutable.update { it.copy(message = null) }
         signal()
     }
+    internal fun acceptsStart(generation: Long) = !quitting && !stopping && generation == quitGeneration
     internal fun detached(service: ArchiveSupervisorService) {
         if (supervisor !== service) return
         supervisor = null; starting = false
@@ -188,17 +209,26 @@ class ArchivalCoordinator(private val app: UtterlaneApp, val journal: ArchivalJo
 
     fun forceStopAll() { stop(cancel = true, message = null) }
     internal fun pauseAndStop(message: String) { stop(cancel = false, message = message) }
-    private fun stop(cancel: Boolean, message: String?) {
-        if (stopping) return
+    internal fun beginQuit() { quitting = true; quitGeneration++ }
+    internal fun endQuit() { quitting = false }
+    internal suspend fun stopForQuit(message: String) {
+        stopWork?.takeIf { it.isActive }?.await()
+        stop(cancel = false, message = message, userQuit = true).await()
+    }
+    internal suspend fun checkpointLateQuitProducers(message: String) = withContext(Dispatchers.IO) {
+        journal.pauseForQuit(message)
+    }
+
+    private fun stop(cancel: Boolean, message: String?, userQuit: Boolean = false): Deferred<Unit> {
+        stopWork?.takeIf { it.isActive }?.let { return it }
         stopping = true
         if (cancel) producerCancellationVersion++
         controlGeneration++
-        scope.launch {
+        return scope.async(start = CoroutineStart.LAZY) {
             try {
                 withContext(Dispatchers.IO) {
                     if (cancel) journal.cancelAll()
-                    // Queued descriptors already survive the timeout; only the
-                    // single executing job needs a new durable pause marker.
+                    else if (userQuit) journal.pauseForQuit(message.orEmpty())
                     else journal.pauseExecuting(message.orEmpty())
                     app.recordingHistory.stopActiveEncoders(message ?: "Audio compression was force-stopped; PCM capture continues")
                     inFlight?.takeIf { it.request.operation == ArchivalOperation.ENCODE_AUDIO }?.let {
@@ -210,7 +240,7 @@ class ArchivalCoordinator(private val app: UtterlaneApp, val journal: ArchivalJo
                 producers.clear()
                 cleanupAllowed = false
                 finishSupervisor()
-                drainJob?.cancel()
+                drainJob?.cancelAndJoin()
                 // One gate replaces a set containing every historical target.
                 // Private retirement may continue; provider cleanup awaits retry.
                 refresh()
@@ -221,8 +251,9 @@ class ArchivalCoordinator(private val app: UtterlaneApp, val journal: ArchivalJo
                 throw cancelled
             } catch (e: Exception) {
                 if (faults.paused) haltForFailure(e) else faults.fail(e)
+                if (userQuit) throw e
             } finally { stopping = false }
-        }
+        }.also { stopWork = it; it.start() }
     }
 
     private suspend fun drain(generation: Long) {
@@ -349,8 +380,12 @@ class ArchivalCoordinator(private val app: UtterlaneApp, val journal: ArchivalJo
     }
     private fun finishSupervisor() {
         val service = supervisor
+        val startPending = starting
         supervisor = null; starting = false
-        try { worker.stopAndKill() } finally { service?.finish() }
+        try { worker.stopAndKill() } finally {
+            if (service != null) service.finish()
+            else if (startPending) app.stopService(Intent(app, ArchiveSupervisorService::class.java))
+        }
     }
     private fun haltForFailure(error: Exception) {
         controlGeneration++

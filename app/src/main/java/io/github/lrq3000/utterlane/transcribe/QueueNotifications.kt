@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.home.HomeActivity
+import io.github.lrq3000.utterlane.service.WorkQuitReceiver
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
@@ -28,15 +29,19 @@ internal class QueueNotifications(private val app: UtterlaneApp) {
     private fun builder(): NotificationCompat.Builder =
         NotificationCompat.Builder(app, CHANNEL).setSmallIcon(R.drawable.ic_utterlane_notification)
             .setOnlyAlertOnce(true).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-    fun serviceNotification(): Notification = builder().setContentTitle(app.getString(R.string.queue_title))
+    fun serviceNotification(): Notification = WorkQuitReceiver.addAction(app, builder().setContentTitle(app.getString(R.string.queue_title))
         .setContentText(app.getString(R.string.queue_preparing_service)).setOngoing(true)
-        .setContentIntent(PendingIntent.getActivity(app, 1031, HomeActivity.intent(app), PendingIntent.FLAG_IMMUTABLE)).build()
+        .setContentIntent(PendingIntent.getActivity(app, 1031, HomeActivity.intent(app), PendingIntent.FLAG_IMMUTABLE))).build()
     fun notification(row: QueueRecord, percent: Int? = null): Notification {
         val open = PendingIntent.getActivity(app, 0, intent(app, row.id), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val text = app.getString(row.stage.label())
+        val active = row.stage.needsProcessingService || row.stage == QueueStage.CAPTURING
         val notification = builder().setContentTitle(row.label).setContentText(if (percent == null) text else "$text · $percent%")
-            .setContentIntent(open).setOngoing(!row.stage.reviewable).setAutoCancel(false)
-        if (!row.stage.reviewable && row.stage != QueueStage.PAUSED) notification.setProgress(100, percent ?: 0, percent == null)
+            .setContentIntent(open).setOngoing(active).setAutoCancel(false)
+        if (active) {
+            notification.setProgress(100, percent ?: 0, percent == null)
+            WorkQuitReceiver.addAction(app, notification)
+        }
         return notification.build()
     }
     fun post(row: QueueRecord, percent: Int? = null) = manager.notify(row.notificationId, notification(row, percent))
@@ -78,10 +83,16 @@ class TranscriptionQueueService : Service() {
             else -> ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
         }) else startForeground(id, notification)
         anchor = row
+        (application as UtterlaneApp).transcriptionQueue.attached(this)
     }
     private fun detach() {
+        val queue = (application as UtterlaneApp).transcriptionQueue
+        queue.detached(this)
         delivery.detach({ keep -> stopForeground(if (keep) STOP_FOREGROUND_DETACH else STOP_FOREGROUND_REMOVE) },
-            notices::remove, notices::publish)
+            notices::remove, { row ->
+                if (queue.isQuitting && row.stage == QueueStage.PAUSED) { notices.remove(row); false }
+                else notices.publish(row)
+            })
         anchor = null
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -96,7 +107,6 @@ class TranscriptionQueueService : Service() {
         }
         queue.admission.running()
         ImportRecoveryNotice(app).clearWaiting()
-        queue.attached(this)
         if (observer == null) observer = scope.launch {
             queue.rows.collect { rows ->
                 val next = rows.firstOrNull { it.id == anchor?.id && it.stage.needsProcessingService } ?: rows.firstOrNull { it.stage.needsProcessingService }

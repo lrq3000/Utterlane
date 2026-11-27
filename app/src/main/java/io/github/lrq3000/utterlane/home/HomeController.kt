@@ -90,6 +90,7 @@ class HomeController(private val app: UtterlaneApp) {
 
     /** Called only from a visible Activity after RECORD_AUDIO permission is granted. */
     fun record() {
+        if (app.transcriptionQueue.isQuitting) return
         if (captureOwner.state.value.phase == HomeCapturePhase.PROCESSING && state.value.queuedTail && !state.value.preparing) {
             captureDriver?.detachTail()
             captureOwner.start()
@@ -105,6 +106,7 @@ class HomeController(private val app: UtterlaneApp) {
     }
 
     fun load(uri: Uri, options: FileTranscriptionOptions = FileTranscriptionOptions()) {
+        if (app.transcriptionQueue.isQuitting) return
         if (captureOwner.state.value.active || state.value.busy) return
         pendingFile = DialogInput(uri = uri, automatic = true, fileOptions = options)
         mutable.update { it.prepareFileOperation() }
@@ -235,7 +237,7 @@ class HomeController(private val app: UtterlaneApp) {
                 }, onCaptureEnded = {
                     events.captureEnded()
                     val audio = session?.audioId
-                    if (audio != null) handoff = scope.async {
+                    if (audio != null) handoff = app.transcriptionQueue.trackPublication(scope.async {
                         try {
                             registering?.await()
                             app.transcriptionQueue.captureEnded(queueId, audio, title, session?.speakerControl?.retryPreference?.value == true)
@@ -244,7 +246,7 @@ class HomeController(private val app: UtterlaneApp) {
                             if (isCurrent() && !delivered && inputAccepted) mutable.update { it.copy(queuedTail = true) }
                             true
                         } catch (e: Exception) { showError(e); false }
-                    }
+                    })
                 },
                 onWarning = { if (captureDriver === this) showMessage(it) },
                 onReady = {
@@ -310,9 +312,9 @@ class HomeController(private val app: UtterlaneApp) {
             if (!events.input(spooledSamples, preview)) return
             inputAccepted = true
             val audio = session?.audioId
-            if (audio != null && registering == null && handoff == null) registering = scope.async {
+            if (audio != null && registering == null && handoff == null) registering = app.transcriptionQueue.trackPublication(scope.async {
                 app.transcriptionQueue.captureStarted(queueId, audio, title, session?.speakerControl?.retryPreference?.value == true)
-            }
+            })
             if (queueOwnsTail && !delivered) mutable.update { it.copy(queuedTail = true) }
             rawStore = store
             if (store != null) {
@@ -330,14 +332,14 @@ class HomeController(private val app: UtterlaneApp) {
         private fun deliverResult(store: TranscriptStore?, failure: SessionFailure?) {
             val publication = handoff
             val registration = registering
-            if (publication != null || registration != null) scope.launch {
+            if (publication != null || registration != null) app.transcriptionQueue.trackPublication(scope.launch {
                 try {
                     afterCapturePublication(registration, publication) {
                         app.transcriptionQueue.completeCapture(queueId, failure?.message, session?.speakerControl?.retryPreference?.value)
                         if (detached) store?.keepForRecovery()
                     }
                 } catch (e: CancellationException) { throw e } catch (e: Exception) { showError(e) }
-            }
+            })
             if (detached) return
             val audio = session?.audioId?.let { runCatching { app.recordingHistory.get(it) }.getOrNull() }
             if (!completion.deliver(CaptureResult(this, store, failure), audio, store?.preview().orEmpty(),
@@ -372,7 +374,7 @@ class HomeController(private val app: UtterlaneApp) {
     private fun adoptCapture(result: CaptureResult) {
         val lease = result.driver.takeLease()
         mutable.update { it.copy(preparing = true, message = result.failure?.message) }
-        scope.launch {
+        app.transcriptionQueue.trackPublication(scope.launch {
             try {
                 val metadata = withContext(Dispatchers.IO) {
                     result.driver.audioId()?.let { runCatching { TranscriptMetadata(app.recordingHistory.get(it)) }.getOrNull() }
@@ -387,7 +389,7 @@ class HomeController(private val app: UtterlaneApp) {
                 result.store?.keepForRecovery()
             } catch (error: Exception) { lease?.let { scope.launch(Dispatchers.IO) { it.close() } }; showError(error)
             } finally { mutable.update { it.copy(preparing = false) } }
-        }
+        })
     }
 
     private fun installResult(input: DialogInput, lease: Closeable? = null) {

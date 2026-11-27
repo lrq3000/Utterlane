@@ -72,6 +72,8 @@ class FloatingMicService : Service() {
     private var floatingAttached = false
     private var hiding = false
     private var tappedToFinish = false
+    private var notificationStarted = false
+    private var notificationHasWork = false
     private var legacyInsets = Insets.NONE
     private lateinit var touchListener: FloatingControlTouchListener
     private val displayListener = object : DisplayManager.DisplayListener {
@@ -124,6 +126,8 @@ class FloatingMicService : Service() {
             } else {
                 startForeground(UtterlaneApp.NOTIFICATION_ID, notification)
             }
+            notificationStarted = true
+            notificationHasWork = microphoneSession != null
             // Dismiss any failure notification from previous boot attempt
             getSystemService(android.app.NotificationManager::class.java)
                 ?.cancel(UtterlaneApp.SERVICE_ALERT_NOTIFICATION_ID)
@@ -153,6 +157,7 @@ class FloatingMicService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        notificationStarted = false
         hiding = false
         if (::touchListener.isInitialized) touchListener.cancel(persist = false)
         if (::dismissTarget.isInitialized) dismissTarget.hide()
@@ -328,7 +333,8 @@ class FloatingMicService : Service() {
             // Durable registration is not the same as an Android foreground service actually attaching.
             // Leave the existing foreground owner valid until the queue attaches or the take finishes.
             serviceScope.launch {
-                UtterlaneApp.instance.transcriptionQueue.foreground.first { it != null }
+                val owner = UtterlaneApp.instance.transcriptionQueue.foreground
+                do { owner.first { it != null } } while (owner.value == null)
                 if (hiding && microphoneSession === session) finishHiding()
             }
         }
@@ -336,6 +342,7 @@ class FloatingMicService : Service() {
 
     private fun finishHiding() {
         microphoneSession = null
+        notificationStarted = false
         if (floatingAttached) {
             floatingAttached = false
             windowManager.removeView(floatingView)
@@ -391,13 +398,16 @@ class FloatingMicService : Service() {
                 recordingChanged = { isRecording.set(it); updateMicButtonState() },
                 warning = ::showToast, released = {
                     microphoneSession = null
+                    refreshWorkAction()
                     if (hiding && floatingAttached) finishHiding()
                 }, finalized = ::onDictationFinalized)
+            refreshWorkAction()
             microphoneSession?.start()
         } catch (error: Exception) {
             Log.w(TAG, "Could not start dictation", error)
             microphoneSession?.cancel(discard = false)
             microphoneSession = null
+            refreshWorkAction()
             showToast(getString(R.string.toast_recording_error))
         }
     }
@@ -434,6 +444,17 @@ class FloatingMicService : Service() {
         UtterlaneApp.instance.serviceAlertNotification.show(R.string.service_start_floating_mic)
     }
 
+    private fun refreshWorkAction() {
+        val hasWork = microphoneSession != null
+        if (!notificationStarted || hasWork == notificationHasWork) return
+        try {
+            getSystemService(android.app.NotificationManager::class.java).notify(UtterlaneApp.NOTIFICATION_ID, createNotification())
+            notificationHasWork = hasWork
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "Could not refresh the floating mic notification", error)
+        }
+    }
+
     private fun createNotification(): Notification {
         val stopIntent = Intent(this, FloatingMicService::class.java).apply {
             action = ACTION_STOP
@@ -456,6 +477,7 @@ class FloatingMicService : Service() {
             .setContentIntent(openPendingIntent)
             .addAction(R.drawable.ic_close, getString(R.string.action_stop), stopPendingIntent)
             .setOngoing(true)
+            .apply { if (microphoneSession != null) WorkQuitReceiver.addAction(this@FloatingMicService, this) }
             .build()
     }
 

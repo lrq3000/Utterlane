@@ -1,6 +1,7 @@
 package io.github.lrq3000.utterlane
 
 import android.content.Intent
+import android.app.NotificationManager
 import android.graphics.Rect
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
@@ -19,6 +20,7 @@ import io.github.lrq3000.utterlane.history.RecordingRecovery
 import io.github.lrq3000.utterlane.service.FloatingMicService
 import io.github.lrq3000.utterlane.settings.RuntimeOptions
 import io.github.lrq3000.utterlane.settings.SettingsActivity
+import io.github.lrq3000.utterlane.transcribe.QueueRecord
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -36,6 +38,85 @@ class FloatingControlsAndroidTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val app get() = instrumentation.targetContext.applicationContext as UtterlaneApp
     private val ui = OnboardingTestUi()
+
+    @Test fun dropQueuesTheTakeWithoutClosingSettingsAndNotificationQuitClosesTheNextTake() = runBlocking {
+        assertTrue(app.packageName.endsWith(".floatingports"))
+        assertFalse("No model: test the recovery branch of the real queue", app.modelManager.isModelReady())
+        instrumentation.uiAutomation.grantRuntimePermission(app.packageName, "android.permission.RECORD_AUDIO")
+        if (android.os.Build.VERSION.SDK_INT >= 33)
+            instrumentation.uiAutomation.grantRuntimePermission(app.packageName, "android.permission.POST_NOTIFICATIONS")
+        shell("appops set ${app.packageName} SYSTEM_ALERT_WINDOW allow")
+        ui.prepare()
+        val priorFactory = app.microphoneSessions
+        val oldPosition = app.settingsRepository.buttonPosition.first()
+        val oldHistory = app.settingsRepository.audioHistoryEnabled.first()
+        val oldEnabled = app.settingsRepository.serviceEnabled.first()
+        val recordings = app.recordingHistory.list().map { it.id }.toSet()
+        val jobs = app.transcriptionQueue.rows.value.map { it.id }.toSet()
+        val first = ObservedAudioRecord()
+        val second = ObservedAudioRecord()
+        val manager = app.getSystemService(NotificationManager::class.java)
+        fun quitAction() = manager.activeNotifications.firstOrNull { it.id == UtterlaneApp.NOTIFICATION_ID }?.notification
+            ?.actions?.firstOrNull { it.title == app.getString(R.string.quit_stop_all) }
+        fun settings() = instrumentation.startActivitySync(Intent(app, SettingsActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as SettingsActivity
+        var activity: SettingsActivity? = null
+        try {
+            app.settingsRepository.setAudioHistoryEnabled(false)
+            app.settingsRepository.setButtonPosition(100, 120)
+            app.settingsRepository.setServiceEnabled(true)
+            app.microphoneSessions = MicrophoneSessionFactory { first }
+            activity = settings()
+            ui.click(buttonId(), scroll = false)
+            await { first.samples.get() >= 16_000 && quitAction() != null }
+
+            val origin = buttonBounds()
+            val time = SystemClock.uptimeMillis()
+            val start = origin.exactCenterX() to origin.exactCenterY()
+            send(time, MotionEvent.ACTION_DOWN, listOf(start))
+            send(time, MotionEvent.ACTION_MOVE, listOf((start.first + 48) to start.second))
+            val targetNode = ui.descriptionNode(app.getString(R.string.floating_hide))
+            val target = Rect().also(targetNode::getBoundsInScreen)
+            @Suppress("DEPRECATION") targetNode.recycle()
+            val drop = target.exactCenterX() to target.exactCenterY()
+            send(time, MotionEvent.ACTION_MOVE, listOf(drop))
+            send(time, MotionEvent.ACTION_UP, listOf(drop))
+            var queued: QueueRecord? = null
+            await {
+                queued = app.transcriptionQueue.rows.value.singleOrNull { it.id !in jobs && it.stage.reviewable }
+                queued != null && !ui.hasNode(buttonId())
+            }
+            assertFalse("Dropping the mic must not close an Utterlane screen", checkNotNull(activity).isFinishing)
+            assertTrue(app.settingsRepository.serviceEnabled.first())
+            assertEquals(first.samples.get(), app.recordingHistory.get(checkNotNull(queued).audio).samples)
+            await { manager.activeNotifications.none { it.id == UtterlaneApp.NOTIFICATION_ID } }
+
+            instrumentation.runOnMainSync { activity?.finish() }
+            app.microphoneSessions = MicrophoneSessionFactory { second }
+            activity = settings()
+            ui.click(buttonId(), scroll = false)
+            await { second.samples.get() >= 16_000 && quitAction() != null }
+            checkNotNull(quitAction()).actionIntent.send()
+            await { activity?.isFinishing == true && !second.running.get() && !ui.hasNode(buttonId()) }
+            assertTrue("Quit preserves the overlay setting too", app.settingsRepository.serviceEnabled.first())
+            assertNotNull("Quit does not erase an earlier queue result", app.transcriptionQueue.journal.find(checkNotNull(queued).id))
+            assertTrue(app.recordingHistory.list().any { it.id !in recordings && it.id != queued?.audio && it.samples == second.samples.get() })
+        } finally {
+            instrumentation.runOnMainSync { activity?.finish() }
+            first.stop(); second.stop()
+            app.stopService(Intent(app, FloatingMicService::class.java))
+            await { !MicrophoneSession.hasSessions() }
+            app.microphoneSessions = priorFactory
+            app.settingsRepository.setServiceEnabled(oldEnabled)
+            app.settingsRepository.setButtonPosition(oldPosition.first, oldPosition.second)
+            app.settingsRepository.setAudioHistoryEnabled(oldHistory)
+            app.transcriptionQueue.rows.value.filter { it.id !in jobs && it.stage.reviewable }.forEach { app.transcriptionQueue.acknowledge(it.id) }
+            app.recordingHistory.list().filter { it.id !in recordings }.forEach {
+                app.recordingHistory.delete(it.id)
+                RecordingRecovery.dismissNotification(app, it.id)
+            }
+        }
+    }
 
     @Test fun pinchResizeOutsideSettingsKeepsOneRealCaptureAndRecoversAllAudioWithoutAModel() = runBlocking {
         assertTrue("Use an isolated floating/combined ports QA application",

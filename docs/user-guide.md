@@ -233,6 +233,8 @@ To hide the button temporarily, drag it onto the red **×** and release. This do
 
 The floating microphone keeps the same shape and icon while recording, with a red gradient instead of purple–blue. If you tap it to finish a recording, a short rainbow fade confirms successful finalization before the usual gradient returns.
 
+To stop the app’s work instead of hiding the mic, expand a recording, transcription, or archival notification and select **Stop all jobs and quit**. The same action is available in the queue screen. It stops the microphone, parks unfinished work where it can be recovered, and closes Utterlane without deleting results. Use **Continue** on a paused file transcription or **Retry archival**; if a live take was interrupted, its audio remains available for retranscription. Utterlane stays open if it cannot safely save a checkpoint or if closing would take away access to a pending shared file. With no live recording, active queue, or enabled background feature, there is no ongoing notification just to keep Utterlane open.
+
 ## Models and languages
 
 Select a recognition model in Utterlane, then download it or use **Import from

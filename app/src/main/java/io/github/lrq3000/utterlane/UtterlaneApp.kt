@@ -40,6 +40,7 @@ class UtterlaneApp : Application() {
     val audioPlayback by lazy { io.github.lrq3000.utterlane.transcribe.AudioPlaybackController(this) }
     val homeController by lazy { io.github.lrq3000.utterlane.home.HomeController(this) }
     internal val transcriptionQueue by lazy { io.github.lrq3000.utterlane.transcribe.TranscriptionQueue(this) }
+    internal val workQuit by lazy { io.github.lrq3000.utterlane.service.WorkQuit(this) }
 
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var modelWakeObserver: DeviceWakeObserver? = null

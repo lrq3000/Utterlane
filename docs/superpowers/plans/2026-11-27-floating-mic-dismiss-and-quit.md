@@ -54,7 +54,8 @@
 
 **Interfaces:** A single app-owned quit command fences new work, awaits live capture recovery and existing queue/archival stop boundaries, and removes only app-owned tasks. Notification actions and the in-app action call that same command.
 
-- [ ] Write RED tests for active and waiting queue rows, durable archival pause, stop/close ordering, no publication or automatic restart during quit, and absence of an idle status notification.
-- [ ] Run `*QueueJournalTest`, focused archival tests and the quit coordinator test; expect missing quit or pause behavior.
-- [ ] Reuse queue pause checkpoints and archival pause before producer teardown, add the action to existing notifications and the queue screen, and retain completed notices and interrupted input.
-- [ ] Rerun focused tests, verify `.\gradlew.bat :app:testDebugUnitTest assembleDebug --offline`, exercise the real drag/notification path on an approved isolated emulator if available, review the full candidate, and commit `feat(queue): stop active work safely and quit`.
+- [x] Write RED tests for active and waiting queue rows, durable archival pause, stop/close ordering, no publication or automatic restart during quit, and absence of an idle status notification.
+- [x] Run `*QueueJournalTest`, focused archival tests and the quit coordinator test; expect missing quit or pause behavior.
+- [x] Reuse queue pause checkpoints and archival pause before producer teardown, add the action to existing notifications and the queue screen, and retain completed notices and interrupted input.
+- [x] Rerun focused tests and `assembleDebug`, review the full candidate, and commit `feat(queue): stop active work safely and quit`.
+- [ ] Verify `.\gradlew.bat :app:testDebugUnitTest assembleDebug --offline` and exercise the real drag/notification path on an approved isolated emulator if available.

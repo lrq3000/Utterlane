@@ -87,6 +87,8 @@ internal class ImportBatchStore(root: File) : Closeable {
         db.execSQL("UPDATE member SET uri=NULL WHERE job=?", arrayOf(item.jobId))
         next(item.id)
     }
+    fun uncopiedSources(id: String): List<String> = strings(
+        "SELECT uri FROM member WHERE batch=? AND uri IS NOT NULL", id)
     fun reconcile(queue: QueueJournal) {
         for (id in ids()) {
             val item = get(id) ?: continue

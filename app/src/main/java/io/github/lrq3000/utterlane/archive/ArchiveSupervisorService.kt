@@ -9,6 +9,7 @@ import androidx.core.app.NotificationCompat
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.home.HomeActivity
+import io.github.lrq3000.utterlane.service.WorkQuitReceiver
 
 /** Lives in the parent so notification control survives a hung provider/codec. */
 class ArchiveSupervisorService : Service() {
@@ -27,13 +28,20 @@ class ArchiveSupervisorService : Service() {
     }
     override fun onBind(intent: Intent): IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == STOP) {
+            app.archival.forceStopAll()
+            return START_NOT_STICKY
+        }
+        if (!app.archival.acceptsStart(intent?.getLongExtra(GENERATION, -1) ?: -1)) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         try {
             getSystemService(NotificationManager::class.java).createNotificationChannel(
                 NotificationChannel(CHANNEL, getString(R.string.archive_title), NotificationManager.IMPORTANCE_LOW))
             encoding = encoding || intent?.getBooleanExtra("encoding", false) == true
             foreground()
             app.archival.attached(this)
-            if (intent?.action == STOP) app.archival.forceStopAll()
         } catch (e: Exception) { app.archival.startFailed(e); finish() }
         return START_NOT_STICKY
     }
@@ -44,11 +52,11 @@ class ArchiveSupervisorService : Service() {
         val immutable = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val stop = PendingIntent.getService(this, ID, Intent(this, ArchiveSupervisorService::class.java).setAction(STOP), immutable)
         val open = PendingIntent.getActivity(this, ID, Intent(this, HomeActivity::class.java), immutable)
-        return NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_mic)
+        return WorkQuitReceiver.addAction(this, NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_mic)
             .setContentTitle(getString(R.string.archive_title))
             .setContentText(getString(R.string.archive_notification, state.queued + state.running, state.producers))
             .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
-            .addAction(0, getString(R.string.archive_force_stop), stop).build()
+            .addAction(0, getString(R.string.archive_force_stop), stop)).build()
     }
     override fun onTimeout(startId: Int, fgsType: Int) {
         app.archival.pauseAndStop(getString(R.string.archive_timeout))
@@ -56,6 +64,7 @@ class ArchiveSupervisorService : Service() {
     internal fun finish() { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
     override fun onDestroy() { app.archival.detached(this); super.onDestroy() }
     companion object {
+        internal const val GENERATION = "archive_service_generation"
         private const val CHANNEL = "managed_archival"
         private const val ID = 1015
         private const val STOP = "io.github.lrq3000.utterlane.archive.STOP_ALL"

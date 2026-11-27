@@ -35,6 +35,20 @@ internal class ImportBatches(private val app: UtterlaneApp, private val store: I
     }
     private fun grants() = resolver.persistedUriPermissions.filter { it.isReadPermission }.mapTo(HashSet()) { it.uri }
     fun session(id: String): Session = sessions.getOrPut(id) { Session(id) }
+    suspend fun requireRecoverableForQuit() {
+        val unfinished = sessions.values.mapNotNull { it.state.value.receipt }.filterNot { it.done }.map { it.id }
+        if (unfinished.isEmpty()) return
+        withContext(Dispatchers.IO) {
+            val retained = grants()
+            if (unfinished.any { id -> store.uncopiedSources(id).map(Uri::parse).any { uri ->
+                    when (uri.scheme) {
+                        "content" -> uri !in retained
+                        "file" -> uri.path?.let { java.io.File(it).canRead() } != true
+                        else -> true
+                    }
+                } }) throw QuitNeedsImportGrant()
+        }
+    }
 
     inner class Session(private val id: String) {
         private val mutable = MutableStateFlow(ImportScreenState())
@@ -98,7 +112,7 @@ internal class ImportBatches(private val app: UtterlaneApp, private val store: I
         }
         private fun process(retry: String? = null, prepare: suspend () -> Unit) {
             if (work?.isActive == true || stopAfterCopy) return
-            queue.beginStaging()
+            if (!queue.beginStaging()) return
             ImportRecoveryNotice(app).clearBatch(id)
             mutable.value = state.value.copy(busy = true, question = null, problem = null)
             work = app.applicationScope.launch {
@@ -108,7 +122,7 @@ internal class ImportBatches(private val app: UtterlaneApp, private val store: I
                         prepare()
                         val actions = DialogAudioActions(app)
                         var question: ImportRetentionRequest? = null
-                        val last = store.runPass(id, retry, { stopAfterCopy }) { item ->
+                        val last = store.runPass(id, retry, { stopAfterCopy || queue.isQuitting }) { item ->
                             refresh()
                             mutable.value = ImportScreenState(item, busy = true, loaded = true)
                             if (queue.resumeStaged(item)) return@runPass true
@@ -145,3 +159,5 @@ internal class ImportBatches(private val app: UtterlaneApp, private val store: I
         }
     }
 }
+
+internal class QuitNeedsImportGrant : IllegalStateException("An unfinished import still needs its transient read grant")

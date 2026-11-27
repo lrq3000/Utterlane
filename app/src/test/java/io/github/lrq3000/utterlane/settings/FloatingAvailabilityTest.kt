@@ -6,10 +6,12 @@ import android.os.Looper
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.asr.ModelManager
 import io.github.lrq3000.utterlane.service.FloatingMicService
+import io.github.lrq3000.utterlane.service.WorkQuit
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -27,6 +29,7 @@ import org.robolectric.util.ReflectionHelpers
 class FloatingAvailabilityTest {
     private val repository = SettingsRepository(MemoryStore())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val quitInProgress = MutableStateFlow(false)
     private lateinit var app: UtterlaneApp
 
     @Before fun prepare() = runBlocking {
@@ -42,6 +45,9 @@ class FloatingAvailabilityTest {
         every { app.settingsRepository } returns repository
         every { app.applicationScope } returns scope
         every { app.modelManager } returns model
+        every { app.workQuit } returns mockk<WorkQuit> {
+            every { inProgress } returns quitInProgress
+        }
         assertFalse(model.isModelReady())
         ReflectionHelpers.setStaticField(UtterlaneApp::class.java, "instance", app)
         repository.setServiceEnabled(true)
@@ -70,6 +76,13 @@ class FloatingAvailabilityTest {
         ShadowSettings.setCanDrawOverlays(false)
         resumeSettings()
         assertFalse(repository.serviceEnabled.first())
+    }
+
+    @Test fun returningToSettingsWhileQuittingDoesNotRestartTheEnabledOverlay() = runBlocking {
+        quitInProgress.value = true
+        resumeSettings()
+        assertTrue(repository.serviceEnabled.first())
+        assertNull(shadowOf(RuntimeEnvironment.getApplication()).nextStartedService)
     }
 
     private fun resumeSettings() {

@@ -140,6 +140,15 @@ class FloatingMicServiceTest {
         assertEquals(recording, gradientColors().toList())
     }
 
+    @Test @Config(sdk = [36]) fun idleFloatingNotificationDoesNotOfferStopAllJobs() {
+        fun labels() = ReflectionHelpers.callInstanceMethod<android.app.Notification>(service, "createNotification")
+            .actions.map { it.title.toString() }
+        val quit = service.getString(io.github.lrq3000.utterlane.R.string.quit_stop_all)
+        assertTrue(quit in labels())
+        ReflectionHelpers.setField(service, "microphoneSession", null)
+        assertFalse(quit in labels())
+    }
+
     private fun gradientColors(): IntArray = ((button.background as RippleDrawable).getDrawable(0) as GradientDrawable).colors!!
 
     private fun saveAnimation(): ValueAnimator? =
@@ -168,6 +177,17 @@ class FloatingMicServiceTest {
         shadowOf(Looper.getMainLooper()).idle()
         assertFalse(shadowOf(service).isStoppedBySelf)
         verify(exactly = 0) { session.stop() }
+    }
+
+    @Test fun aSecondFingerAfterEnteringTheTargetMakesTheRestOfTheGestureIneligibleForDrop() {
+        val (x, y) = dismissPoint()
+        touch(MotionEvent.ACTION_DOWN, 20f, 20f)
+        touch(MotionEvent.ACTION_MOVE, x, y)
+        multiTouch(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), x, x + 20f)
+        multiTouch(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), x, x + 20f)
+        touch(MotionEvent.ACTION_UP, x, y)
+        assertTrue(button.isEnabled)
+        verify(exactly = 0) { session.stopInBackground(any()) }
     }
 
     @Test fun droppingDuringDictationStopsAcceptingTapsWithoutTearingDownItsOwner() {
@@ -290,15 +310,20 @@ class FloatingMicServiceTest {
     }
 
     private fun dragToDismiss(end: Int) {
+        val (x, y) = dismissPoint()
+        touch(MotionEvent.ACTION_DOWN, 20f, 20f)
+        touch(MotionEvent.ACTION_MOVE, x, y)
+        touch(end, x, y)
+    }
+
+    private fun dismissPoint(): Pair<Float, Float> {
         val params = ReflectionHelpers.getField<WindowManager.LayoutParams>(service, "layoutParams")
         val manager = service.getSystemService(WindowManager::class.java)
         @Suppress("DEPRECATION") val metrics = android.util.DisplayMetrics().also { manager.defaultDisplay.getRealMetrics(it) }
         val density = service.resources.displayMetrics.density
         val x = 20f + metrics.widthPixels / 2f - params.x - params.width / 2f
         val y = 20f + metrics.heightPixels - 48 * density - params.y - params.height / 2f
-        touch(MotionEvent.ACTION_DOWN, 20f, 20f)
-        touch(MotionEvent.ACTION_MOVE, x, y)
-        touch(end, x, y)
+        return x to y
     }
 
     private fun multiTouch(action: Int, x0: Float, x1: Float) {

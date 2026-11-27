@@ -10,6 +10,7 @@ import android.net.Uri
 import androidx.core.app.NotificationCompat
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
+import io.github.lrq3000.utterlane.service.WorkQuitReceiver
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
@@ -112,6 +113,7 @@ class HomeSessionService : Service() {
             .setContentText(getString(if (microphone) R.string.home_notification_recording else R.string.home_notification_processing))
             .setContentIntent(back).setOngoing(true).setOnlyAlertOnce(true)
             .apply { stopAction?.let { addAction(0, getString(R.string.home_stop), it) } }
+            .let { WorkQuitReceiver.addAction(this, it) }
             .build()
     }
     override fun onDestroy() {

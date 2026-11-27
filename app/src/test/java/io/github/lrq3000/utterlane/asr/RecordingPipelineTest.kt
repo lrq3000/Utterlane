@@ -123,11 +123,13 @@ class RecordingPipelineTest {
         val source = FiniteCapture(100)
         var writes = 0
         var read = 0
+        var observed: Exception? = null
         val result = RecordingPipeline(source, history, recording, options, save = {
             if (++writes == 4) throw java.io.IOException("storage unavailable")
             recording.append(it)
-        }).run(prepare = {}, accept = { read += it.size }, finish = {})
+        }).run(prepare = {}, accept = { read += it.size }, finish = {}, onStorageFailed = { observed = it })
         assertEquals("storage unavailable", result.storageError?.message)
+        assertSame("Quit can observe the writer error independently of the pipeline outcome", result.storageError, observed)
         assertTrue(source.stopped.get())
         assertEquals(2400, read)
         assertEquals(2400L, recording.writtenSamples)

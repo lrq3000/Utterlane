@@ -245,6 +245,7 @@ class AudioMonitorService : Service() {
     }
 
     private fun launchTranscription(file: File) {
+        if (UtterlaneApp.instance.transcriptionQueue.isQuitting) return
         val transcribeIntent = Intent(this, TranscribeActivity::class.java).apply {
             action = TranscribeActivity.ACTION_TRANSCRIBE
             putExtra(TranscribeActivity.EXTRA_FILE_PATH, file.absolutePath)

@@ -129,6 +129,17 @@ class ManagedHistoryTest {
         assertNotNull(journal.claim())
     }
 
+    @Test fun `quit racing a closed archival writer does not cancel a valid target`() {
+        val text = TranscriptHistory(temp.newFolder(), journal)
+        val entry = text.save(temp.newFile("ready.txt").apply { writeText("Ready text") }, "model")
+        val owner = ArtifactOwner(ArtifactKind.TRANSCRIPT, entry.id)
+        val job = ready(owner, entry.file)
+        journal.pauseForQuit("Paused")
+        ArchivalPublication(journal, RecordingHistory(temp.newFolder(), journal), text).finish(job)
+        assertEquals(1, publications(journal, owner).size)
+        assertTrue(entry.file.isFile)
+    }
+
     @Test fun `archival journal failure cannot undo a complete text history publication`() {
         val text = TranscriptHistory(temp.newFolder(), journal)
         val epoch = journal.currentEpoch()

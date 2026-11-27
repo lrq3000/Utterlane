@@ -25,7 +25,8 @@ class SpeechRecognitionService : RecognitionService() {
         if (listener == null) return
         if (microphoneSession != null) { deliver { listener.error(SpeechRecognizer.ERROR_RECOGNIZER_BUSY) }; return }
         val partial = recognizerIntent?.getBooleanExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false) == true
-        microphoneSession = UtterlaneApp.instance.microphoneSessions.create(this, serviceScope,
+        lateinit var session: MicrophoneSession
+        session = UtterlaneApp.instance.microphoneSessions.create(this, serviceScope,
             onText = { _, store ->
                 if (partial) {
                     val text = withContext(Dispatchers.IO) { store.readForTransfer() }
@@ -46,8 +47,15 @@ class SpeechRecognitionService : RecognitionService() {
                 }
             }, onCaptureEnded = { deliver { listener.endOfSpeech() } },
             onWarning = { Log.w(TAG, it) },
-            onReady = { if (!deliver { listener.readyForSpeech(Bundle()); listener.beginningOfSpeech() }) microphoneSession?.stop() })
-        microphoneSession?.start()
+            onReady = { if (!deliver { listener.readyForSpeech(Bundle()); listener.beginningOfSpeech() }) microphoneSession?.stop() },
+            onSessionClosed = {
+                if (microphoneSession === session) {
+                    microphoneSession = null
+                    deliver { listener.error(SpeechRecognizer.ERROR_CLIENT) }
+                }
+            })
+        microphoneSession = session
+        session.start()
     }
     override fun onStopListening(listener: Callback?) { Log.i(TAG, "onStopListening called"); microphoneSession?.stop() }
     override fun onCancel(listener: Callback?) { Log.i(TAG, "onCancel called"); cleanup() }

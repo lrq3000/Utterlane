@@ -30,10 +30,22 @@ class MicrophoneSession(
         fun isBusy(): Boolean = admission.isBusy()
         internal fun hasSessions(): Boolean = admission.hasSessions()
         internal fun resetTargets(): List<CaptureAdmission.Lease> = admission.resetTargets()
+        internal fun beginQuit() = admission.beginQuit()
+        internal fun endQuit() = admission.endQuit()
+        internal val active get() = admission.active
         fun resetActive() { resetTargets().forEach { it.reset() } }
     }
-    private val captureLease = CaptureAdmission.Lease(::resetCapture)
+    private val captureLease = CaptureAdmission.Lease(quit = ::quitCapture, reset = ::resetCapture)
     private val settingsExit = CaptureSettingsExit()
+    @Volatile private var checkpointFailure: Exception? = null
+    private suspend fun quitCapture() {
+        cancel(discard = false)
+        job?.join() // The pipeline drains its bounded PCM writer even when inference is cancelled.
+        if (admission.needsReleaseRetry(captureLease)) withContext(Dispatchers.IO) {
+            admission.releaseHardware(captureLease, recorder::releaseAfterCapture)
+        }
+        checkpointFailure?.let { throw it }
+    }
     private fun resetCapture() {
         resetRequested = true
         cancel(discard = false)
@@ -254,7 +266,8 @@ class MicrophoneSession(
                         Log.e("MicrophoneSession", "Recognition failed; continuing audio capture", error)
                         metrics.recognitionFailed(io.github.lrq3000.utterlane.util.StorageFailure.userMessage(context, error)
                             ?: error.message ?: context.getString(R.string.transcribe_error_failed))
-                    }, closeConsumer = { session?.close() }, onCaptureClosing = settingsExit::captureClosing)
+                    }, closeConsumer = { session?.close() }, onCaptureClosing = settingsExit::captureClosing,
+                    onStorageFailed = { checkpointFailure = checkpointFailure ?: it })
                 // Reaching ASR EOF alone is not proof of a complete result. A failed capture or writer also presents EOF to its consumer.
                 session?.takeIf { it.finished }?.let { complete ->
                     try {
@@ -325,6 +338,7 @@ class MicrophoneSession(
                         }
                         catch (e: Exception) {
                             Log.e("MicrophoneSession", "History finalization failed", e)
+                            checkpointFailure = checkpointFailure ?: e
                             finalizationWarning = io.github.lrq3000.utterlane.util.StorageFailure.userMessage(context, e)
                                 ?: context.getString(R.string.history_save_failed, e.message ?: "Storage error")
                         }
@@ -336,7 +350,10 @@ class MicrophoneSession(
                                         UtterlaneApp.instance.recordingHistory.recordFailure(it.entry.id, failed.message, failed.kind.name)
                                     }
                                 }
-                            } catch (e: Exception) { Log.e("MicrophoneSession", "Could not save recovery details", e) }
+                            } catch (e: Exception) {
+                                checkpointFailure = checkpointFailure ?: e
+                                Log.e("MicrophoneSession", "Could not save recovery details", e)
+                            }
                             finally {
                                 try { lease?.close() }
                                 finally { admission.finish(captureLease) }

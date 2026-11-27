@@ -14,6 +14,29 @@ class ArchivalJobStoreTest {
         ArchivalRequest(owner, ArchivalOperation.SAVE_MARKDOWN, File(temp.root, "text.txt"), folder,
             "2026-10-10_09-30-15_Parakeet-v3.md", "text/markdown", created = 1234, model = "Parakeet v3")
 
+    @Test fun `quit persists archival pause without invalidating queued input`() {
+        val journal = store()
+        val active = journal.enqueue(request())
+        val running = checkNotNull(journal.claim())
+        val waiting = journal.enqueue(request(ArtifactOwner(ArtifactKind.TRANSCRIPT, "next")))
+        journal.pauseForQuit("Paused by Quit")
+        assertFalse(journal.ready(running.id, running.generation))
+        journal.releaseExecution(running.id, running.generation)
+        journal.close()
+        store().use { restored ->
+            assertTrue(restored.isPausedForQuit())
+            assertEquals(ArchivalState.PAUSED, restored.job(active.id)?.state)
+            assertEquals(ArchivalState.QUEUED, restored.job(waiting.id)?.state)
+            assertNull(restored.claim())
+            restored.retryPaused(automatic = true)
+            assertTrue(restored.isPausedForQuit())
+            assertNull(restored.claim())
+            restored.retryPaused()
+            assertFalse(restored.isPausedForQuit())
+            assertNotNull(restored.claim())
+        }
+    }
+
     @Test fun `restart preserves snapshots and exact URI identity`() {
         val journal = store()
         val queued = journal.enqueue(request())

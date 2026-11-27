@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="quit_stop_all">Stop all jobs and quit</string>
+    <string name="quit_archive_paused">Archival paused by Quit. Retry archival to continue.</string>
+    <string name="quit_checkpoint_failed">Utterlane could not stop all work safely. It has not quit; check the queue and try again.</string>
+    <string name="quit_import_open">Utterlane did not quit. Finish or cancel the pending audio import first so access to the remaining files is not lost.</string>
+    <string name="quit_stopping">Stopping and saving recoverable work…</string>
+</resources>
