@@ -396,11 +396,7 @@ class FloatingMicService : Service() {
         try {
             microphoneSession = StreamingDictationOverlay(this, serviceScope, target,
                 recordingChanged = { isRecording.set(it); updateMicButtonState() },
-                warning = ::showToast, released = {
-                    microphoneSession = null
-                    refreshWorkAction()
-                    if (hiding && floatingAttached) finishHiding()
-                }, finalized = ::onDictationFinalized)
+                warning = ::showToast, released = ::onDictationReleased, finalized = ::onDictationFinalized)
             refreshWorkAction()
             microphoneSession?.start()
             raiseMicAboveRecordingPanel()
@@ -411,6 +407,13 @@ class FloatingMicService : Service() {
             refreshWorkAction()
             showToast(getString(R.string.toast_recording_error))
         }
+    }
+
+    private fun onDictationReleased() {
+        if (microphoneSession == null) return // The queue may already have released this service.
+        microphoneSession = null
+        if (hiding || !floatingAttached) finishHiding()
+        else refreshWorkAction()
     }
 
     private fun raiseMicAboveRecordingPanel() {

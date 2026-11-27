@@ -206,6 +206,21 @@ class FloatingMicServiceTest {
         verify(exactly = 0) { session.cancel(any()) }
     }
 
+    @Test @Config(sdk = [36]) fun failedMicReattachmentKeepsCaptureButStopsTheDetachedServiceAfterRelease() = runBlocking {
+        repository.setServiceEnabled(true)
+        val realWindows = ReflectionHelpers.getField<WindowManager>(service, "windowManager")
+        ReflectionHelpers.setField(service, "windowManager", mockk<WindowManager> {
+            every { removeViewImmediate(any()) } answers { realWindows.removeViewImmediate(firstArg()) }
+            every { addView(any(), any()) } throws WindowManager.BadTokenException("Display is changing")
+        })
+        ReflectionHelpers.callInstanceMethod<Unit>(service, "raiseMicAboveRecordingPanel")
+        assertFalse("Do not tear down the owner during capture", shadowOf(service).isStoppedBySelf)
+        ReflectionHelpers.callInstanceMethod<Unit>(service, "onDictationReleased")
+        assertTrue("Do not leave an invisible foreground service", shadowOf(service).isStoppedBySelf)
+        assertTrue("A later app entry can restore the mic", repository.serviceEnabled.first())
+        verify(exactly = 0) { session.cancel(any()) }
+    }
+
     @Test fun pinchResizesWithoutTogglingAndRestoresCustomDpAfterServiceRecreation() = runBlocking {
         touch(MotionEvent.ACTION_DOWN, 20f, 20f)
         multiTouch(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 20f, 60f)
