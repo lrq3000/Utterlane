@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.4.0] - 2026-11-27
+
+### Added
+- Drag the floating microphone onto the red × to hide it until you reopen Utterlane. The setting stays enabled, the current take goes to the transcription queue, and other jobs keep running.
+- Choose **Stop all jobs and quit** from an active-work notification or the queue. Utterlane saves recoverable audio and progress before closing, without deleting completed results.
+
+### Changed
+- The floating mic keeps its shape and icon while recording, turns red, and plays a short rainbow animation after a successful tap-to-stop.
+
+### Fixed
+- The floating microphone stays above the recording panel so you can still tap or drag it in landscape and in short windows.
+
 ## [2.3.13] - 2026-11-26
 
 ### Added

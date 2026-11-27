@@ -47,8 +47,8 @@ android {
         applicationId = "io.github.lrq3000.utterlane"
         minSdk = 26
         targetSdk = 36
-        versionCode = 235
-        versionName = "2.3.13"
+        versionCode = 236
+        versionName = "2.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Only include arm64-v8a for modern phones (~50% smaller APK)
