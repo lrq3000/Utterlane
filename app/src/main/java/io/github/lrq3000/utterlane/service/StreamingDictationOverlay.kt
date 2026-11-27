@@ -14,7 +14,8 @@ internal class StreamingDictationOverlay(
     private val target: StreamingTextTarget,
     private val recordingChanged: (Boolean) -> Unit,
     private val warning: (String) -> Unit,
-    private val released: () -> Unit
+    private val released: () -> Unit,
+    private val finalized: (Boolean) -> Unit = {}
 ) {
     private var hosting = true
     private val overlay: RecordingOverlay = RecordingOverlay(context, ::confirmSettings).apply {
@@ -28,6 +29,7 @@ internal class StreamingDictationOverlay(
             val speakerSettings = if (hasHost) capture.speakerControl.speakerSettingsAction(context) else null
             if (hasHost) {
                 detach()
+                finalized(error == null && capture.audioFinalized)
                 error?.let { warning(it.message) }
             }
             target.finishDictation(context, capture, store, error, speakerSettings,
@@ -51,6 +53,17 @@ internal class StreamingDictationOverlay(
         if (!hosting || session.metrics.state.value.phase !in listOf(CapturePhase.LOADING, CapturePhase.CAPTURING)) return
         recordingChanged(false)
         session.stop()
+    }
+
+    fun stopInBackground(queued: () -> Unit) {
+        if (!hosting) return
+        recordingChanged(false)
+        session.stopInBackground {
+            // Publication owns the full transcript, including any prefix previously streamed to the editor.
+            target.close()
+            overlay.hide()
+            queued()
+        }
     }
 
     fun cancel(discard: Boolean = true) {

@@ -41,6 +41,7 @@
             android:exported="false" android:process=":recognition" />
         <service android:name=".archive.ArchiveWorkerService"
             android:exported="false" android:process=":archive" />
+        <receiver android:name=".service.WorkQuitReceiver" android:exported="false" />
         <service android:name=".archive.ArchiveSupervisorService"
             android:exported="false" android:foregroundServiceType="dataSync|mediaProcessing|specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"

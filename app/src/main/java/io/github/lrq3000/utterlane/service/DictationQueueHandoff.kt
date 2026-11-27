@@ -19,7 +19,8 @@ internal class DictationQueueHandoff(
     private val file: File?,
     private val register: suspend (String, Boolean) -> Unit,
     private val finish: suspend (String?, Boolean?) -> Unit,
-    private val isRegistered: (String) -> Boolean = { false }
+    private val isRegistered: (String) -> Boolean = { false },
+    private val track: (Job) -> Unit = {}
 ) {
     val producerScope = if (file == null) scope else CoroutineScope(scope.coroutineContext + QueueTranscriptTarget(file))
     private var publication: CompletableDeferred<Boolean>? = null
@@ -48,7 +49,7 @@ internal class DictationQueueHandoff(
                 }
             }
             try { accepted() } finally { result.complete(true) }
-        }
+        }.also(track)
         return true
     }
 
@@ -66,7 +67,7 @@ internal class DictationQueueHandoff(
                 // The durable DRAINING row and transcript can still be repaired on cold start.
                 Log.e("DictationQueueHandoff", "Could not finalize queued dictation ${file?.name}", failure)
             } finally { store?.keepForRecovery() }
-        }
+        }.also(track)
     }
 
     fun interrupted(error: String): Job? =
@@ -87,7 +88,8 @@ internal class DictationQueueHandoff(
                     queue.wake()
                 },
                 finish = { error, speakers -> queue.completeCapture(textId, error, speakers) },
-                isRegistered = { audio -> queue.journal.find(textId)?.audio == audio })
+                isRegistered = { audio -> queue.journal.find(textId)?.audio == audio },
+                track = { queue.trackPublication(it) })
         }
     }
 }

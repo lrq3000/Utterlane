@@ -4,6 +4,21 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CaptureAdmissionTest {
+    @Test fun quitFencesNewRecordingsAndIncludesAnOldTailAndTheCurrentMic() {
+        val admission = CaptureAdmission()
+        val tail = CaptureAdmission.Lease {}
+        val live = CaptureAdmission.Lease {}
+        val next = CaptureAdmission.Lease {}
+        assertTrue(admission.acquire(tail))
+        admission.releaseHardware(tail) {}
+        assertTrue(admission.acquire(live))
+        assertEquals(setOf(tail, live), admission.beginQuit().toSet())
+        admission.releaseHardware(live) {}
+        assertFalse(admission.acquire(next))
+        admission.endQuit()
+        assertTrue(admission.acquire(next))
+    }
+
     @Test fun stopDropsPriorityButOnlyHardwareCloseAdmitsTheNextCapture() {
         val admission = CaptureAdmission()
         val old = CaptureAdmission.Lease {}

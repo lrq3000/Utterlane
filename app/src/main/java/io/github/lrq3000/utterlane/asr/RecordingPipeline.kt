@@ -32,7 +32,8 @@ class RecordingPipeline(
         onCaptureEnded: suspend () -> Unit = {},
         onProcessingFailed: suspend (Exception) -> Unit = {},
         closeConsumer: () -> Unit = {},
-        onCaptureClosing: () -> Unit = {}
+        onCaptureClosing: () -> Unit = {},
+        onStorageFailed: (Exception) -> Unit = {}
     ): Outcome = coroutineScope {
         val owner = currentCoroutineContext()
         val queue = BoundedAudioQueue(options, recording.rolling?.format ?: io.github.lrq3000.utterlane.archive.PcmFormat())
@@ -82,9 +83,14 @@ class RecordingPipeline(
                 }
             } catch (e: Exception) {
                 storageError = e
+                onStorageFailed(e)
                 source.stop()
             } finally {
-                try { recording.closeCapture() } catch (e: Exception) { storageError = storageError ?: e; source.stop() }
+                try { recording.closeCapture() } catch (e: Exception) {
+                    storageError = storageError ?: e
+                    onStorageFailed(e)
+                    source.stop()
+                }
                 published.value = Publication(recording.writtenSamples, done = true)
             }
         }

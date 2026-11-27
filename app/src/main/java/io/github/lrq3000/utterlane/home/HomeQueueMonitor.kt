@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.lrq3000.utterlane.R
 import io.github.lrq3000.utterlane.UtterlaneApp
+import io.github.lrq3000.utterlane.asr.MicrophoneSession
 import io.github.lrq3000.utterlane.history.HistoryRetention
 import io.github.lrq3000.utterlane.history.QueueHistoryIndex
 import io.github.lrq3000.utterlane.history.QueueJobRow
@@ -38,6 +39,11 @@ import kotlinx.coroutines.flow.map
 internal fun HomeQueueMonitor(recording: Boolean) {
     val app = UtterlaneApp.instance
     val jobs by app.transcriptionQueue.rows.collectAsStateWithLifecycle()
+    val quitting by app.workQuit.inProgress.collectAsStateWithLifecycle()
+    val captureActive by MicrophoneSession.active.collectAsStateWithLifecycle()
+    val standalone by app.transcriptionQueue.standaloneActive.collectAsStateWithLifecycle()
+    val archive by app.archival.state.collectAsStateWithLifecycle()
+    val otherWork = captureActive || standalone > 0 || archive.running > 0 || archive.producers > 0
     val index = remember(jobs) { QueueHistoryIndex(jobs) }
     var expanded by rememberSaveable { mutableStateOf(false) }
     var cancelId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -57,6 +63,10 @@ internal fun HomeQueueMonitor(recording: Boolean) {
                 if (monitor.stage == QueueStage.PROCESSING) MonitorPercent(app.transcriptionQueue, monitor.id)
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
             }
+        }
+    } else if (otherWork) {
+        TextButton({ expanded = true }, modifier = Modifier.testTag("home_queue")) {
+            Text(stringResource(R.string.queue_title))
         }
     }
     // An open monitor stays usable when its last active job finishes or pauses. The compact Home widget itself goes away immediately.
@@ -81,7 +91,14 @@ internal fun HomeQueueMonitor(recording: Boolean) {
                     }
                 }
             }, confirmButton = {
-                TextButton({ expanded = false }, modifier = Modifier.testTag("home_queue_close")) { Text(stringResource(R.string.transcribe_close)) }
+                Column(horizontalAlignment = Alignment.End) {
+                    if (monitor != null || otherWork || quitting) {
+                        TextButton(app.workQuit::request, enabled = !quitting, modifier = Modifier.testTag("home_queue_quit")) {
+                            Text(stringResource(if (quitting) R.string.quit_stopping else R.string.quit_stop_all))
+                        }
+                    }
+                    TextButton({ expanded = false }, modifier = Modifier.testTag("home_queue_close")) { Text(stringResource(R.string.transcribe_close)) }
+                }
             })
     }
     cancelId?.let { QueueCancelDialog(it) { cancelId = null } }

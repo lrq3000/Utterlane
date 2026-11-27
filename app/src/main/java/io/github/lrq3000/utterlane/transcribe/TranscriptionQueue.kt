@@ -28,7 +28,12 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
     val batchStore = ImportBatchStore(root)
     val imports = ImportBatches(app, batchStore)
     val admission = QueueServiceAdmission()
-    private var staging = 0
+    private val staging = MutableStateFlow(0)
+    private val standalone = LinkedHashMap<Job, () -> Unit>()
+    private val standaloneCount = MutableStateFlow(0)
+    val standaloneActive = standaloneCount.asStateFlow()
+    @Volatile var isQuitting = false
+        private set
     fun protectsAudio(id: String) = synchronized(journal) { journal.protectsAudio(id) || batchStore.protectsAudio(id) }
     private val mutable = MutableStateFlow<List<QueueRecord>>(emptyList())
     val rows = mutable.asStateFlow()
@@ -84,7 +89,7 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
         init.start()
     }
     suspend fun initialized() { init.await() }
-    fun wake(): Boolean = admission.request {
+    fun wake(): Boolean = !isQuitting && admission.request {
         checkNotNull(ContextCompat.startForegroundService(app, Intent(app, TranscriptionQueueService::class.java)))
     }.also { if (!it) serviceRefused() }
     fun serviceRefused() {
@@ -98,8 +103,65 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
         if (pending == null) notices.clearWaiting() else notices.waiting(pending)
     }
     /** Call on Main at the visible submission/resume click, before copying. The runner must not exit in the empty interval between two accepted files. */
-    fun beginStaging() { staging++; wake() }
-    fun endStaging() { staging--; changed.trySend(Unit) }
+    fun beginStaging(): Boolean {
+        if (isQuitting) return false
+        staging.update { it + 1 }
+        wake()
+        return true
+    }
+    fun endStaging() { staging.update { it - 1 }; changed.trySend(Unit) }
+
+    /** Account for registrations/finalizers launched outside the producing microphone or file Job. */
+    fun <T : Job> trackPublication(job: T): T {
+        staging.update { it + 1 }
+        job.invokeOnCompletion { endStaging() }
+        return job
+    }
+
+    fun trackStandalone(job: Job, stop: () -> Unit) {
+        standalone[job] = stop
+        standaloneCount.value = standalone.size
+        // Standalone work is a Quit participant, but must not keep an already-empty queue service running.
+        job.invokeOnCompletion {
+            app.applicationScope.launch { standalone.remove(job); standaloneCount.value = standalone.size }
+        }
+        if (isQuitting) stop()
+    }
+
+    fun beginQuit() {
+        isQuitting = true
+        journal.beginQuit()
+        changed.trySend(Unit)
+    }
+
+    suspend fun pauseFilesForQuit() {
+        init.await()
+        commands.withLock {
+            withContext(Dispatchers.IO) {
+                journal.pauseFilesForQuit().filter { it.stage == QueueStage.PAUSED }.forEach(terminalNotices::remove)
+                refresh()
+                updateWaitingNotice()
+            }
+            standalone.values.toList().forEach { it() }
+            current.value?.second?.interruptFile()
+            executing?.second?.join()
+        }
+    }
+
+    suspend fun awaitQuitIdle() {
+        // An accepted Android start can still arrive with no attached owner or queue row.
+        combine(staging, rows, foreground, standaloneCount, admission.status) { publishing, all, foreground, direct, service ->
+            publishing == 0 && direct == 0 && foreground == null && service == QueueServiceAdmission.Status.STOPPED &&
+                all.none { it.stage.needsProcessingService || it.stage == QueueStage.CAPTURING }
+        }.first { it }
+        imports.requireRecoverableForQuit()
+    }
+
+    fun endQuit() {
+        journal.endQuit()
+        isQuitting = false
+        changed.trySend(Unit)
+    }
 
     suspend fun resumeStaged(item: ImportReceipt): Boolean {
         journal.find(item.jobId)?.let { batchStore.advance(item, accepted = true); return true }
@@ -131,16 +193,17 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
     }
 
     fun retry(audio: String, speakers: Boolean, modelId: String? = null, accepted: (String) -> Unit = {}) {
-        app.applicationScope.launch {
+        if (isQuitting) return
+        trackPublication(app.applicationScope.launch {
             init.await()
             try {
                 val job = withContext(Dispatchers.IO) {
                     registerRetry(audio, speakers, modelId).also { refresh() }
                 }
                 wake()
-                accepted(job.id)
+                if (!isQuitting) accepted(job.id)
             } catch (e: Exception) { app.homeController.showMessage(e.message ?: app.getString(R.string.transcribe_error_failed)) }
-        }
+        })
     }
 
     private fun registerRetry(audio: String, speakers: Boolean, modelId: String?, previous: String? = null): QueueRecord =
@@ -150,6 +213,7 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
         app.applicationScope.launch {
             try {
                 init.await()
+                if (isQuitting) return@launch
                 if (withDisposition) disposition.run { commands.withLock { action() } }
                 else commands.withLock { action() }
             }
@@ -272,14 +336,17 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
             init.await()
             while (isActive) {
                 val snapshot = rows.value
-                val row = nextEligibleFile(snapshot, app.modelManager.selected.value.id)
+                val row = if (isQuitting) null else nextEligibleFile(snapshot, app.modelManager.selected.value.id)
                 if (row != null) {
                     val job = launch(start = CoroutineStart.LAZY) { process(row) }
                     executing = row.id to job
                     try { job.start(); job.join() } finally { executing = null }
                     continue
                 }
-                if (staging == 0 && snapshot.none { it.stage == QueueStage.DRAINING || it.stage == QueueStage.WAITING }) break
+                if (staging.value == 0 && snapshot.none {
+                    if (isQuitting) it.stage.needsProcessingService || it.stage == QueueStage.CAPTURING
+                    else it.stage == QueueStage.DRAINING || it.stage == QueueStage.WAITING
+                }) break
                 changed.receive()
             }
             idle()
@@ -356,7 +423,9 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
                     }
                      if (finished?.stage == QueueStage.PAUSED) synchronized(journal) {
                          // A separate screen can continue the job before the producer's final notification. Never overwrite the new stage with a stale pause notice.
-                         if (journal.find(row.id) == finished) terminalNotices.publish(finished)
+                          if (journal.find(row.id) == finished) {
+                              if (isQuitting) terminalNotices.remove(finished) else terminalNotices.publish(finished)
+                          }
                      } else deliverTerminal(row.id)
                      refresh()
                 }

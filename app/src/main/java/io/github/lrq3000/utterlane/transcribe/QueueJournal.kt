@@ -41,6 +41,7 @@ internal class QueueJournal(private val root: File) {
     private val texts = HashSet<String>()
     private var loaded = false
     private var sequence = 0L
+    private var quitting = false
     private fun index(row: QueueRecord) {
         jobs[row.id] = row
         audioRefs[row.audio] = (audioRefs[row.audio] ?: 0) + 1
@@ -97,7 +98,8 @@ internal class QueueJournal(private val root: File) {
         load()
         require(UUID.fromString(id).toString() == id && id !in jobs)
         check(sequence < Int.MAX_VALUE)
-        val row = QueueRecord(id, sequence + 1, audio, label, speakers, stage, modelId = modelId)
+        val initial = if (quitting && stage == QueueStage.WAITING) QueueStage.PAUSED else stage
+        val row = QueueRecord(id, sequence + 1, audio, label, speakers, initial, modelId = modelId)
         write(row); index(row)
         return row
     }
@@ -112,9 +114,21 @@ internal class QueueJournal(private val root: File) {
     }
     /** A stale selection, finalizer or double tap must not overwrite a newer disposition of this job. */
     @Synchronized fun transition(id: String, from: Set<QueueStage>, change: (QueueRecord) -> QueueRecord): QueueRecord? =
-        find(id)?.takeIf { it.stage in from }?.let(change)?.also(::update)
+        find(id)?.takeIf { it.stage in from }?.let(change)
+            ?.takeUnless { quitting && it.stage == QueueStage.PROCESSING }?.also(::update)
     @Synchronized fun continueJob(id: String): QueueRecord? =
-        find(id)?.takeIf { it.canContinue }?.continued()?.copy(terminalPosted = false)?.also(::update)
+        find(id)?.takeIf { !quitting && it.canContinue }?.continued()?.copy(terminalPosted = false)?.also(::update)
+
+    @Synchronized fun beginQuit() { quitting = true }
+    @Synchronized fun endQuit() { quitting = false }
+    @Synchronized fun pauseFilesForQuit(): List<QueueRecord> = records().mapNotNull { row ->
+        val stage = when (row.stage) {
+            QueueStage.WAITING -> QueueStage.PAUSED
+            QueueStage.PROCESSING -> QueueStage.PAUSING
+            else -> return@mapNotNull null
+        }
+        row.copy(stage = stage).also(::update)
+    }
     @Synchronized fun finishCapture(id: String, failure: String?, interrupted: String, speakers: Boolean?): QueueRecord? {
         val row = find(id) ?: return null
         if (row.stage != QueueStage.CAPTURING && row.stage != QueueStage.DRAINING) return null

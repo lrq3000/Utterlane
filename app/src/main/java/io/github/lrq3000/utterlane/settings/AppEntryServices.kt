@@ -21,7 +21,9 @@ object AppEntryServices {
         app.diarizationModels.refreshModelStatus()
         app.applicationScope.launch {
             try {
+                if (app.workQuit.inProgress.value) return@launch
                 if (app.settingsRepository.serviceEnabled.first()) {
+                    if (app.workQuit.inProgress.value) return@launch
                     // Capture is independent of recognition/model availability.
                     // Keep the shared Home/Settings restoration path permission-only.
                     val available = Settings.canDrawOverlays(app) &&
@@ -32,7 +34,7 @@ object AppEntryServices {
                         app.startService(Intent(app, FloatingMicService::class.java).setAction(FloatingMicService.ACTION_STOP))
                     }
                 }
-                if (app.settingsRepository.audioMonitorEnabled.first()) app.transcribeManager.setAudioMonitorEnabled(true)
+                if (app.settingsRepository.audioMonitorEnabled.first() && !app.workQuit.inProgress.value) app.transcribeManager.setAudioMonitorEnabled(true)
                 // Only dismiss the boot reminder after enabled services were restored.
                 app.serviceAlertNotification.dismiss()
             } catch (cancelled: CancellationException) { throw cancelled

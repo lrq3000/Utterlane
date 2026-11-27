@@ -26,4 +26,13 @@ internal class FloatingControlGeometry(
         return x.coerceIn(start, (width - end - windowWidth).coerceAtLeast(start)) to
             y.coerceIn(top, (height - bottom - windowHeight).coerceAtLeast(top))
     }
+
+    fun physicalLeft(start: Int, windowWidth: Int, rtl: Boolean): Int =
+        if (rtl) width - start - windowWidth else start
+
+    fun bottomTarget(size: Int, margin: Int): Triple<Int, Int, Int> {
+        val diameter = size.coerceIn(1, minOf(width - left - right, height - top - bottom).coerceAtLeast(1))
+        return Triple(left + (width - left - right - diameter).coerceAtLeast(0) / 2,
+            (height - bottom - diameter - margin).coerceAtLeast(top), diameter)
+    }
 }

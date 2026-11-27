@@ -32,7 +32,7 @@ An Android voice typing app that works **completely offline**. Speak into your p
 - **Works in any app** - Uses Android Accessibility to inject text into any focused text field
 - **Two input methods**:
   - Accessibility button (system nav bar) - works system-wide
-  - Floating mic button (draggable overlay) - optional, always visible
+  - Floating mic button (draggable, resizable overlay) - optional; drop on the red × to hide it until reopening Utterlane without stopping background work or changing the setting
 - **Word corrections** - Custom dictionary to fix recurring recognition errors (e.g., "Tamtam" → "Tamdam")
 - **Voice message transcription** - Share or open audio files (OPUS, AAC, OGG, M4A, MP3) to transcribe them
 - **Multi-language** - Supports 25 languages with auto-detection
@@ -145,6 +145,8 @@ When bumping a version, update all of these:
 ## Architecture
 
 Utterlane-owned dictation launched by the keyboard mic (voice intent or IME), floating mic, accessibility shortcut, or onboarding practice button must use the same `RecordingPanel` and `DictationSession`. Keep Android window hosting and result delivery in the entry-point adapters, not separate control layouts or separate Settings/discard logic.
+
+Floating mic dismissal and application Quit are distinct. Dismissal transfers the recording tail to the existing queue and closes only the floating service. **Stop all jobs and quit** is an explicit action on active-work notifications and the queue screen; checkpoint unfinished work before closing the app’s own tasks. Do not introduce an idle keep-alive service or replace this with Android package force-stop.
 
 ### Core Components
 | Component | Purpose |

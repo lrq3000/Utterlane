@@ -24,6 +24,7 @@ class ArchivalJobStore(private val root: File) : Closeable {
     private var closed = false
     private var epoch = 0L
     private var pass = 0L
+    private var pausedForQuit = false
     private var queued = 0
     private var running = 0
     private var ready = 0
@@ -61,8 +62,9 @@ class ArchivalJobStore(private val root: File) : Closeable {
     private fun queue(state: ArchivalState, epoch: Long = this.epoch) = File(indexes, "${state.name}-$epoch")
     private fun ownerJobs(owner: ArtifactOwner) = File(indexes, "owner-jobs/${ArchiveDisk.owner(owner)}")
     private fun stateMarker(job: ArchivalJob) = File(queue(job.state, job.epoch), "${job.id}.ref")
-    private fun saveControl(nextEpoch: Long = epoch, nextPass: Long = pass) = ArchiveDisk.write(File(root, "control.properties"), Properties().apply {
+    private fun saveControl(nextEpoch: Long = epoch, nextPass: Long = pass, quit: Boolean = pausedForQuit) = ArchiveDisk.write(File(root, "control.properties"), Properties().apply {
         setProperty("epoch", nextEpoch.toString()); setProperty("pass", nextPass.toString())
+        if (quit) setProperty("pausedForQuit", "true")
     })
 
     @Synchronized private fun initialize() {
@@ -71,7 +73,10 @@ class ArchivalJobStore(private val root: File) : Closeable {
         check(root.mkdirs() || root.isDirectory)
         epoch = 0; pass = 0
         val control = File(root, "control.properties")
-        if (control.isFile) ArchiveDisk.read(control).let { epoch = it.getProperty("epoch").toLong(); pass = it.getProperty("pass", "0").toLong() }
+        if (control.isFile) ArchiveDisk.read(control).let {
+            epoch = it.getProperty("epoch").toLong(); pass = it.getProperty("pass", "0").toLong()
+            pausedForQuit = it.getProperty("pausedForQuit").toBoolean()
+        }
         migrateLegacy()
         // Runtime leases disappeared with the old parent. A new cleanup pass may
         // inspect pending intents, but never enumerates published owners/tombstones.
@@ -260,10 +265,10 @@ class ArchivalJobStore(private val root: File) : Closeable {
             ArchiveDisk.remove(file)
         }
     }
-    @Synchronized fun nextReady(): ArchivalJob? { initialize(); return if (ready == 0) null else first(ArchivalState.READY) }
+    @Synchronized fun nextReady(): ArchivalJob? { initialize(); return if (pausedForQuit || ready == 0) null else first(ArchivalState.READY) }
     @Synchronized fun claim(): ArchivalJob? {
         initialize()
-        if (execution != null || ready > 0 || queued == 0) return null
+        if (pausedForQuit || execution != null || ready > 0 || queued == 0) return null
         val previous = first(ArchivalState.QUEUED) ?: return null
         val job = previous.copy(state = ArchivalState.RUNNING, generation = previous.generation + 1, uri = null, error = null)
         changing {
@@ -282,7 +287,7 @@ class ArchivalJobStore(private val root: File) : Closeable {
         require(if (job.request.operation == ArchivalOperation.ENCODE_AUDIO)
             uri == File(job.request.source.parentFile, job.targetName).toURI().toString()
         else uri.startsWith("content://"))
-        val accepted = live(job, generation) && job.state == ArchivalState.RUNNING && job.phase == ArchivalPhase.PRIMARY
+        val accepted = !pausedForQuit && live(job, generation) && job.state == ArchivalState.RUNNING && job.phase == ArchivalPhase.PRIMARY
         val current = targets.get(targets.canonical(id, generation))
         if (current?.uri != null && current.uri != uri) {
             val extra = reference(job, uri = current.uri, generation = generation, extra = true)
@@ -302,7 +307,7 @@ class ArchivalJobStore(private val root: File) : Closeable {
     @Synchronized fun ready(id: String, generation: Long): Boolean {
         initialize()
         val job = job(id) ?: return false
-        if (!live(job, generation) || job.state != ArchivalState.RUNNING || job.uri == null || job.phase != ArchivalPhase.PRIMARY) return false
+        if (pausedForQuit || !live(job, generation) || job.state != ArchivalState.RUNNING || job.uri == null || job.phase != ArchivalPhase.PRIMARY) return false
         if (execution == (id to generation)) execution = null // DONE acknowledged writer close.
         put(job.copy(state = ArchivalState.READY)); return true
     }
@@ -328,6 +333,8 @@ class ArchivalJobStore(private val root: File) : Closeable {
     @Synchronized fun publish(id: String, generation: Long, action: (ArchivalJob) -> Unit): Boolean {
         initialize()
         val job = job(id) ?: return false
+        // A READY writer has already closed its provider. A local commit racing Quit may finish;
+        // rejecting it would look like owner deletion to the publication caller.
         if (!live(job, generation) || job.state != ArchivalState.READY) return false
         val published = job.copy(state = ArchivalState.PUBLISHED, error = null)
         catalog.write(published) // Single durable URI authority / commit point.
@@ -378,10 +385,23 @@ class ArchivalJobStore(private val root: File) : Closeable {
         if (job.state == ArchivalState.PAUSED && job.epoch == epoch && !catalog.isDeleted(job.request.owner) &&
             (!oncePerPass || job.retryPass != pass)) put(job.copy(state = ArchivalState.QUEUED, error = null, retryPass = pass))
     }
-    @Synchronized fun retryPaused() {
+    @Synchronized fun retryPaused(automatic: Boolean = false) {
         initialize()
+        if (automatic && pausedForQuit) return
+        if (pausedForQuit) { saveControl(quit = false); pausedForQuit = false }
         retrySweep?.close(); retrySweep = ArchiveDisk.Cursor(queue(ArchivalState.PAUSED), ".ref")
         changes.value++
+    }
+    @Synchronized fun isPausedForQuit(): Boolean { initialize(); return pausedForQuit }
+    @Synchronized fun pauseForQuit(message: String) {
+        initialize()
+        // A single durable gate parks even a large backlog without rewriting every descriptor or invalidating a producer's epoch.
+        if (!pausedForQuit && (queued != 0 || running != 0 || ready != 0)) {
+            saveControl(quit = true); pausedForQuit = true
+            retrySweep?.close(); retrySweep = null
+            changes.value++
+        }
+        pauseExecuting(message)
     }
     @Synchronized fun pauseExecuting(message: String) {
         initialize()
@@ -391,7 +411,7 @@ class ArchivalJobStore(private val root: File) : Closeable {
         initialize()
         val active = execution?.first ?: nextReady()?.id
         val next = epoch + 1
-        saveControl(nextEpoch = next); epoch = next
+        saveControl(nextEpoch = next, quit = false); epoch = next; pausedForQuit = false
         cache.clear(); queued = 0; running = 0; ready = 0; paused = 0
         active?.let(::job) // At most one descriptor, never a sweep before worker kill.
         sweep?.close(); sweep = ArchiveDisk.Cursor(work, ".job")

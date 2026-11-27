@@ -172,7 +172,8 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
                     mutable.update { it.copy(fileProgress = progress.snapshot(CaptureSnapshot(capturedSamples = offset, processedSamples = offset))) }
                 }
                 mutable.update { it.copy(importing = false) }
-                if (input.automatic && ownedAudioId != null && input.queueId == null) transcribe(archival = archival)
+                if (input.automatic && ownedAudioId != null && input.queueId == null && !app.transcriptionQueue.isQuitting)
+                    transcribe(archival = archival)
                 else mutable.value.audio?.takeIf {
                     // Recovery protection also owns successful temporary results;
                     // only a real failure/interruption warrants recovery wording.
@@ -187,6 +188,14 @@ class TranscriptionDialogModel(private val app: UtterlaneApp, val input: DialogI
             } catch (e: CancellationException) { throw e
             } catch (e: Exception) { showError(e)
             } finally { archival?.close(); mutable.update { it.copy(importing = false) } }
+        }
+        if (input.automatic && input.queueId == null) operation?.let { job ->
+            app.transcriptionQueue.trackStandalone(job) {
+                importRetention.cancel()
+                // This legacy direct path keeps its input and working result in history;
+                // it has no window checkpoint to advertise as a resumable queue offset.
+                job.cancel()
+            }
         }
     }
 

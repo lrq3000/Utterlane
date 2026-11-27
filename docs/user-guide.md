@@ -216,7 +216,7 @@ observed source, route, mode and effects. These process-local details contain no
 redact device addresses, and are copied only when you tap **Copy diagnostics**. They
 describe the recorded session, not the settings that will apply to the next one.
 
-### Resizing the floating microphone
+### Moving, resizing, and hiding the floating microphone
 
 Use **two fingers directly on the floating mic**: spread them to enlarge it, or pinch
 them together to shrink it. One finger drags it to another position; a deliberate tap
@@ -228,6 +228,12 @@ and inside the display. Resizing works during capture without restarting the rec
 There is no Button Size menu in Settings. Previously saved Small/Medium/Large sizes
 are retained until you resize. The floating mic can record without an installed speech
 model; after stopping, the retained audio is available through model recovery.
+
+To hide the button temporarily, drag it onto the red **×** and release. This does not turn off the floating microphone setting or close Utterlane. If the button is recording, new capture stops and the recorded speech continues in the background queue. Other jobs keep running. Reopen Utterlane to bring the floating button back.
+
+The floating microphone keeps the same shape and icon while recording, with a red gradient instead of purple–blue. If you tap it to finish a recording, a short rainbow fade confirms successful finalization before the usual gradient returns.
+
+To stop the app’s work instead of hiding the mic, expand a recording, transcription, or archival notification and select **Stop all jobs and quit**. The same action is available in the queue screen. It stops the microphone, parks unfinished work where it can be recovered, and closes Utterlane without deleting results. Use **Continue** on a paused file transcription or **Retry archival**; if a live take was interrupted, its audio remains available for retranscription. Utterlane stays open if it cannot safely save a checkpoint or if closing would take away access to a pending shared file. With no live recording, active queue, or enabled background feature, there is no ongoing notification just to keep Utterlane open.
 
 ## Models and languages
 

@@ -1,17 +1,26 @@
 package io.github.lrq3000.utterlane.service
 
+import android.animation.ValueAnimator
 import android.app.Application
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.ImageView
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.settings.MemoryStore
 import io.github.lrq3000.utterlane.settings.SettingsRepository
+import io.github.lrq3000.utterlane.transcribe.TranscriptionQueue
+import io.github.lrq3000.utterlane.transcribe.TranscriptionQueueService
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
 import org.junit.After
@@ -34,6 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class FloatingMicServiceTest {
     private val repository = SettingsRepository(MemoryStore())
     private val session = mockk<StreamingDictationOverlay>(relaxed = true)
+    private val queueForeground = MutableStateFlow<TranscriptionQueueService?>(null)
     private lateinit var controller: ServiceController<FloatingMicService>
     private lateinit var service: FloatingMicService
     private lateinit var button: View
@@ -41,6 +51,9 @@ class FloatingMicServiceTest {
     @Before fun create() {
         val app = mockk<UtterlaneApp>()
         every { app.settingsRepository } returns repository
+        every { app.transcriptionQueue } returns mockk<TranscriptionQueue> {
+            every { foreground } returns queueForeground
+        }
         ReflectionHelpers.setStaticField(UtterlaneApp::class.java, "instance", app)
         ShadowSettings.setCanDrawOverlays(true)
         controller = Robolectric.buildService(FloatingMicService::class.java).create()
@@ -82,6 +95,130 @@ class FloatingMicServiceTest {
         touch(MotionEvent.ACTION_DOWN, 20f, 20f)
         touch(MotionEvent.ACTION_UP, 20f, 20f)
         verify(exactly = 1) { session.stop() }
+    }
+
+    @Test fun recordingRecolorsTheOvalWithoutReplacingTheMicGlyph() {
+        val image = button as ImageView
+        val glyph = image.drawable
+        val idle = gradientColors().toList()
+        ReflectionHelpers.callInstanceMethod<Unit>(service, "updateMicButtonState")
+        assertSame("The inner mic glyph must remain unchanged", glyph, image.drawable)
+        val red = gradientColors()
+        assertTrue(red.distinct().size > 1)
+        assertTrue(red.all { Color.red(it) > Color.green(it) && Color.red(it) > Color.blue(it) })
+        assertNotEquals(idle, red.toList())
+    }
+
+    @Test @Config(sdk = [36]) fun savingAfterATapShowsRainbowThenRestoresIdleGradient() {
+        val idle = gradientColors().toList()
+        tapAndConfirmFinalization(success = true)
+        val animation = checkNotNull(saveAnimation()) { "Successful tap-stop must start feedback" }
+        animation.setCurrentFraction(.25f)
+        assertNotEquals("An intermediate save frame must not be idle", idle, gradientColors().toList())
+        animation.setCurrentFraction(.66f)
+        assertTrue(Color.blue(gradientColors().first()) > Color.green(gradientColors().first()))
+        animation.end()
+        assertEquals(idle, gradientColors().toList())
+    }
+
+    @Test @Config(sdk = [36]) fun failedFinalizationDoesNotPlaySuccessFeedback() {
+        val idle = gradientColors().toList()
+        tapAndConfirmFinalization(success = false)
+        assertNull(saveAnimation())
+        assertEquals(idle, gradientColors().toList())
+    }
+
+    @Test @Config(sdk = [36]) fun earlierSaveAnimationCannotRecolorANewTake() {
+        tapAndConfirmFinalization(success = true)
+        val animation = checkNotNull(saveAnimation())
+        animation.setCurrentFraction(.15f)
+        ReflectionHelpers.getField<AtomicBoolean>(service, "isRecording").set(true)
+        ReflectionHelpers.callInstanceMethod<Unit>(service, "updateMicButtonState")
+        val recording = gradientColors().toList()
+        assertNull(saveAnimation())
+        animation.end()
+        assertEquals(recording, gradientColors().toList())
+    }
+
+    @Test @Config(sdk = [36]) fun idleFloatingNotificationDoesNotOfferStopAllJobs() {
+        fun labels() = ReflectionHelpers.callInstanceMethod<android.app.Notification>(service, "createNotification")
+            .actions.map { it.title.toString() }
+        val quit = service.getString(io.github.lrq3000.utterlane.R.string.quit_stop_all)
+        assertTrue(quit in labels())
+        ReflectionHelpers.setField(service, "microphoneSession", null)
+        assertFalse(quit in labels())
+    }
+
+    private fun gradientColors(): IntArray = ((button.background as RippleDrawable).getDrawable(0) as GradientDrawable).colors!!
+
+    private fun saveAnimation(): ValueAnimator? =
+        ReflectionHelpers.getField(ReflectionHelpers.getField<Any>(service, "appearance"), "feedback")
+
+    private fun tapAndConfirmFinalization(success: Boolean) {
+        touch(MotionEvent.ACTION_DOWN, 20f, 20f)
+        touch(MotionEvent.ACTION_UP, 20f, 20f)
+        ReflectionHelpers.callInstanceMethod<Unit>(service, "onDictationFinalized", ReflectionHelpers.ClassParameter.from(Boolean::class.java, success))
+    }
+
+    @Test fun droppingIdleMicOnBottomTargetStopsOnlyItsServiceAndKeepsPreferenceAndPosition() = runBlocking {
+        repository.setServiceEnabled(true)
+        repository.setButtonPosition(100, 300)
+        ReflectionHelpers.setField(service, "microphoneSession", null)
+        ReflectionHelpers.getField<AtomicBoolean>(service, "isRecording").set(false)
+        dragToDismiss(MotionEvent.ACTION_UP)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue("A drop should stop the floating service", shadowOf(service).isStoppedBySelf)
+        assertTrue(repository.serviceEnabled.first())
+        assertEquals(100 to 300, repository.buttonPosition.first())
+    }
+
+    @Test fun cancellingDragOnBottomTargetDoesNotHideTheMic() {
+        dragToDismiss(MotionEvent.ACTION_CANCEL)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(shadowOf(service).isStoppedBySelf)
+        verify(exactly = 0) { session.stop() }
+    }
+
+    @Test fun aSecondFingerAfterEnteringTheTargetMakesTheRestOfTheGestureIneligibleForDrop() {
+        val (x, y) = dismissPoint()
+        touch(MotionEvent.ACTION_DOWN, 20f, 20f)
+        touch(MotionEvent.ACTION_MOVE, x, y)
+        multiTouch(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), x, x + 20f)
+        multiTouch(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), x, x + 20f)
+        touch(MotionEvent.ACTION_UP, x, y)
+        assertTrue(button.isEnabled)
+        verify(exactly = 0) { session.stopInBackground(any()) }
+    }
+
+    @Test fun droppingDuringDictationStopsAcceptingTapsWithoutTearingDownItsOwner() {
+        val accepted = slot<() -> Unit>()
+        every { session.stopInBackground(capture(accepted)) } returns Unit
+        dragToDismiss(MotionEvent.ACTION_UP)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse("No new taps while transferring the active take", button.isEnabled)
+        assertFalse("Keep the foreground owner until handoff or completion", shadowOf(service).isStoppedBySelf)
+        accepted.captured()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse("A durable row alone is not a foreground owner", shadowOf(service).isStoppedBySelf)
+        queueForeground.value = mockk()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue("Release only the floating service after the queue attaches", shadowOf(service).isStoppedBySelf)
+        verify(exactly = 0) { session.cancel(any()) }
+    }
+
+    @Test @Config(sdk = [36]) fun failedMicReattachmentKeepsCaptureButStopsTheDetachedServiceAfterRelease() = runBlocking {
+        repository.setServiceEnabled(true)
+        val realWindows = ReflectionHelpers.getField<WindowManager>(service, "windowManager")
+        ReflectionHelpers.setField(service, "windowManager", mockk<WindowManager> {
+            every { removeViewImmediate(any()) } answers { realWindows.removeViewImmediate(firstArg()) }
+            every { addView(any(), any()) } throws WindowManager.BadTokenException("Display is changing")
+        })
+        ReflectionHelpers.callInstanceMethod<Unit>(service, "raiseMicAboveRecordingPanel")
+        assertFalse("Do not tear down the owner during capture", shadowOf(service).isStoppedBySelf)
+        ReflectionHelpers.callInstanceMethod<Unit>(service, "onDictationReleased")
+        assertTrue("Do not leave an invisible foreground service", shadowOf(service).isStoppedBySelf)
+        assertTrue("A later app entry can restore the mic", repository.serviceEnabled.first())
+        verify(exactly = 0) { session.cancel(any()) }
     }
 
     @Test fun pinchResizesWithoutTogglingAndRestoresCustomDpAfterServiceRecreation() = runBlocking {
@@ -185,6 +322,23 @@ class FloatingMicServiceTest {
     private fun touch(action: Int, x: Float, y: Float) {
         val event = MotionEvent.obtain(0, 10, action, x, y, 0)
         try { button.dispatchTouchEvent(event) } finally { event.recycle() }
+    }
+
+    private fun dragToDismiss(end: Int) {
+        val (x, y) = dismissPoint()
+        touch(MotionEvent.ACTION_DOWN, 20f, 20f)
+        touch(MotionEvent.ACTION_MOVE, x, y)
+        touch(end, x, y)
+    }
+
+    private fun dismissPoint(): Pair<Float, Float> {
+        val params = ReflectionHelpers.getField<WindowManager.LayoutParams>(service, "layoutParams")
+        val manager = service.getSystemService(WindowManager::class.java)
+        @Suppress("DEPRECATION") val metrics = android.util.DisplayMetrics().also { manager.defaultDisplay.getRealMetrics(it) }
+        val density = service.resources.displayMetrics.density
+        val x = 20f + metrics.widthPixels / 2f - params.x - params.width / 2f
+        val y = 20f + metrics.heightPixels - 48 * density - params.y - params.height / 2f
+        return x to y
     }
 
     private fun multiTouch(action: Int, x0: Float, x1: Float) {

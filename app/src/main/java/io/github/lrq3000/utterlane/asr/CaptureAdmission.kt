@@ -1,8 +1,11 @@
 package io.github.lrq3000.utterlane.asr
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
 /** Hardware ownership ends when the recorder closes. The session remains resettable until its independent writer/recognizer cleanup finishes. */
 internal class CaptureAdmission {
-    class Lease(val reset: () -> Unit) {
+    class Lease(val quit: suspend () -> Unit = {}, val reset: () -> Unit) {
         @Volatile var isLive = true
             private set
         fun stopped() { isLive = false }
@@ -10,11 +13,15 @@ internal class CaptureAdmission {
     private var hardware: Lease? = null
     private var failedRelease: Lease? = null
     private val sessions = mutableSetOf<Lease>()
+    private var quitting = false
+    private val mutableActive = MutableStateFlow(false)
+    val active = mutableActive.asStateFlow()
 
     @Synchronized fun acquire(lease: Lease): Boolean {
-        if (hardware != null) return false
+        if (hardware != null || quitting) return false
         hardware = lease
         sessions.add(lease)
+        mutableActive.value = true
         return true
     }
 
@@ -26,14 +33,20 @@ internal class CaptureAdmission {
             synchronized(this) { failedRelease = lease }
             throw error
         }
-        synchronized(this) { hardware = null; failedRelease = null }
+        synchronized(this) { hardware = null; failedRelease = null; mutableActive.value = sessions.isNotEmpty() }
     }
 
     @Synchronized fun finish(lease: Lease) {
         sessions.remove(lease)
+        mutableActive.value = sessions.isNotEmpty() || hardware != null
     }
 
     @Synchronized fun needsReleaseRetry(lease: Lease): Boolean = failedRelease === lease
+    @Synchronized fun beginQuit(): List<Lease> {
+        quitting = true
+        return resetTargets()
+    }
+    @Synchronized fun endQuit() { quitting = false }
     @Synchronized fun releaseFailed(): Boolean = failedRelease != null
     @Synchronized fun resetTargets(): List<Lease> = (sessions + listOfNotNull(hardware)).toList()
     @Synchronized fun isBusy(): Boolean = hardware != null

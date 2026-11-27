@@ -10,6 +10,27 @@ import java.io.File
 class QueueJournalTest {
     @get:Rule val temp = TemporaryFolder()
 
+    @Test fun quitParksFileJobsAndFencesLateAddsWithoutTouchingLiveOrFinishedResults() {
+        val journal = QueueJournal(temp.root)
+        val waiting = journal.add("file", "Waiting", false)
+        val processing = journal.add("current", "Processing", false, QueueStage.PROCESSING)
+        val microphone = journal.add("mic", "Microphone", false, QueueStage.DRAINING)
+        val finished = journal.add("completed", "Completed", false, QueueStage.READY)
+        journal.beginQuit()
+        val late = journal.add("late", "Late import publication", false)
+        journal.pauseFilesForQuit()
+        assertNull(journal.continueJob(waiting.id))
+        val reopened = QueueJournal(temp.root)
+        assertEquals(QueueStage.PAUSED, reopened.find(waiting.id)?.stage)
+        assertEquals(QueueStage.PAUSING, reopened.find(processing.id)?.stage)
+        assertEquals(QueueStage.PAUSED, reopened.find(late.id)?.stage)
+        assertEquals(microphone, reopened.find(microphone.id))
+        assertEquals(finished, reopened.find(finished.id))
+        assertNull(nextEligibleFile(reopened.records(), "current"))
+        journal.endQuit()
+        assertNotNull(journal.continueJob(waiting.id))
+    }
+
     @Test fun legacyStoppedDescriptorCannotResumeFromItsPreviousPausePosition() {
         val journal = QueueJournal(temp.root)
         val row = journal.add("audio", "Legacy", false, QueueStage.STOPPED)

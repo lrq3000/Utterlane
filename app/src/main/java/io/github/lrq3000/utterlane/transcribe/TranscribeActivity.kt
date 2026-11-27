@@ -64,6 +64,7 @@ class TranscribeActivity : io.github.lrq3000.utterlane.settings.LocalizedActivit
             metadata = TranscriptMetadata.fromBundle(savedInstanceState),
             recovered = intent.hasExtra(EXTRA_RECOVERY_ID) || intent.hasExtra("transcript_path"),
             fileOptions = FileTranscriptionOptions.from(intent))
+        if (request.automatic && app.transcriptionQueue.isQuitting) { finish(); return }
         model = ViewModelProvider(this, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = TranscriptionDialogModel(app, request) as T
         })[TranscriptionDialogModel::class.java]
