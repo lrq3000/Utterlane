@@ -149,8 +149,9 @@ internal class TranscriptionQueue(private val app: UtterlaneApp) {
     }
 
     suspend fun awaitQuitIdle() {
-        combine(staging, rows, foreground, standaloneCount) { publishing, all, foreground, direct ->
-            publishing == 0 && direct == 0 && foreground == null &&
+        // An accepted Android start can still arrive with no attached owner or queue row.
+        combine(staging, rows, foreground, standaloneCount, admission.status) { publishing, all, foreground, direct, service ->
+            publishing == 0 && direct == 0 && foreground == null && service == QueueServiceAdmission.Status.STOPPED &&
                 all.none { it.stage.needsProcessingService || it.stage == QueueStage.CAPTURING }
         }.first { it }
         imports.requireRecoverableForQuit()
