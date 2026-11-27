@@ -13,17 +13,27 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.lrq3000.utterlane.asr.CaptureMetrics
 import io.github.lrq3000.utterlane.asr.LiveSpeakerControl
+import io.github.lrq3000.utterlane.asr.ModelArtifact
+import io.github.lrq3000.utterlane.asr.ModelBackend
+import io.github.lrq3000.utterlane.asr.ModelDefinition
+import io.github.lrq3000.utterlane.asr.ModelManager
 import io.github.lrq3000.utterlane.onboarding.*
 import io.github.lrq3000.utterlane.ui.RecordingPanel
 import io.github.lrq3000.utterlane.ui.WaveformButton
 import io.github.lrq3000.utterlane.ui.theme.UtterlaneTheme
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.Assert.*
 import org.junit.runner.RunWith
+import java.security.MessageDigest
+import java.util.UUID
 
 /** Exercise controller interleavings on Android's real Main dispatcher/DataStore. */
 @RunWith(AndroidJUnit4::class)
@@ -216,6 +226,50 @@ class OnboardingControllerAndroidTest {
         } finally { instrumentation.runOnMainSync { activity.finish() } }
     }
 
+    @Test fun resumedSpeechDownloadShowsCompletionThenContinuesWithoutReselection(): Unit = runBlocking {
+        val requests = mutableListOf<String?>()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val request = chain.request()
+            requests += request.header("Range")
+            // A short initial response simulates the connection closing after three bytes; only the missing suffix is served on retry.
+            Response.Builder().request(request).protocol(Protocol.HTTP_1_1).message("Fixture")
+                .apply {
+                    if (requests.size == 1) code(200).body("abc".toResponseBody())
+                    else code(206).header("Content-Range", "bytes 3-5/6").body("def".toResponseBody())
+                }.build()
+        }.build()
+        val bytes = "abcdef".toByteArray()
+        val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        val definition = ModelDefinition("onboarding-retry-${UUID.randomUUID()}", "Retry fixture", ModelBackend.CRISP,
+            listOf(ModelArtifact("https://onboarding-retry.invalid/model.gguf", "model.gguf", bytes.size.toLong(), hash)))
+        val manager = ModelManager(app, client, definition)
+        try {
+            services.speechManager = manager
+            services.device.value = services.device.value.copy(speechTransfer = OnboardingTransfer())
+            withScreen(OnboardingStep.MODELS) {
+                ui.click("onboarding_next", scroll = false)
+                withTimeout(5000) { model.state.first { it.step == OnboardingStep.DOWNLOAD && !it.busy && it.transfer.phase == TransferPhase.ERROR } }
+                ui.scrollToText(app.getString(R.string.onboarding_download_saved_progress, 50))
+                ui.clickText(app.getString(R.string.onboarding_retry))
+                withTimeout(5000) { model.state.first { it.step == OnboardingStep.DOWNLOAD && !it.busy && it.transfer.phase == TransferPhase.READY } }
+                ui.scrollTo("onboarding_page_download", backwards = true)
+                assertTrue(ui.hasVisibleText(app.getString(R.string.onboarding_download_ready)))
+                val offersCancelAfterCompletion = ui.hasNode("onboarding_skip")
+                ui.clickText(app.getString(R.string.onboarding_continue))
+                withTimeout(5000) { model.state.first { !it.busy && it.step == OnboardingStep.MICROPHONE } }
+                ui.scrollTo("onboarding_page_microphone")
+                assertEquals("full", repository.progress.first().modelId)
+                assertEquals(listOf(null, "bytes=3-"), requests)
+                assertArrayEquals(bytes, manager.directory().resolve("model.gguf").readBytes())
+                assertFalse("A completed download should not offer cancellation back to the model list", offersCancelAfterCompletion)
+            }
+        } finally {
+            manager.deleteModel()
+            client.dispatcher.executorService.shutdown()
+            client.connectionPool.evictAll()
+        }
+    }
+
     @Test fun cancelClosesThePanelAndTheNextTrialStartsWithAnEmptyPreview(): Unit = runBlocking {
         withTrialScreen { activity ->
             startTrial()
@@ -250,11 +304,14 @@ class OnboardingControllerAndroidTest {
         }
     }
 
-    private suspend fun withTrialScreen(test: suspend (OnboardingActivity) -> Unit) {
+    private suspend fun withTrialScreen(test: suspend (OnboardingActivity) -> Unit) =
+        withScreen(OnboardingStep.VOICE_TRIAL, test)
+
+    private suspend fun withScreen(step: OnboardingStep, test: suspend (OnboardingActivity) -> Unit) {
         ui.prepare()
         val activity = launchNativeActivity(Intent(app, OnboardingActivity::class.java)) as OnboardingActivity
         try {
-            repository.update { it.copy(stepId = OnboardingStep.VOICE_TRIAL.id, modelId = "full") }
+            repository.update { it.copy(stepId = step.id, modelId = "full") }
             initialize()
             instrumentation.runOnMainSync {
                 activity.setContent {
@@ -276,6 +333,7 @@ class OnboardingControllerAndroidTest {
         val initialization = CompletableDeferred<Unit>()
         var failInitialization = false
         var verification = CompletableDeferred(true)
+        var speechManager: ModelManager? = null
         val imported = MutableStateFlow<Pair<Boolean, Uri?>?>(null)
         val folder = MutableStateFlow<String?>(null)
         val sessionsStarted = MutableStateFlow(0)
@@ -296,8 +354,27 @@ class OnboardingControllerAndroidTest {
         }
         override fun refreshPermissions() = Unit
         override suspend fun selectModel(id: String) { device.value = device.value.copy(selectedModelId = id) }
-        override suspend fun transfer(speakers: Boolean, folder: Uri?) { imported.value = speakers to folder }
-        override suspend fun verify(speakers: Boolean): Boolean = verification.await()
+        override suspend fun transfer(speakers: Boolean, folder: Uri?) {
+            val manager = speechManager
+            if (!speakers && manager != null) {
+                check(folder == null)
+                manager.downloadModel()
+                when (val result = manager.downloadState.value) {
+                    ModelManager.DownloadState.Ready -> device.value = device.value.copy(speechTransfer = OnboardingTransfer(TransferPhase.READY, 100))
+                    is ModelManager.DownloadState.Error -> {
+                        device.value = device.value.copy(speechTransfer = OnboardingTransfer(TransferPhase.ERROR, result.savedProgress, result.details))
+                        error(result.details.orEmpty())
+                    }
+                    else -> error("Unexpected transfer result: $result")
+                }
+            } else {
+                imported.value = speakers to folder
+            }
+        }
+        override suspend fun verify(speakers: Boolean): Boolean = when {
+            !speakers && speechManager != null -> checkNotNull(speechManager).ensureVerified()
+            else -> verification.await()
+        }
         override fun cancelTransfer(speakers: Boolean) = Unit
         override suspend fun setTheme(mode: String) {
             device.value = device.value.copy(preferences = device.value.preferences.copy(theme = mode, previouslyConfigured = true))

@@ -174,8 +174,8 @@ private fun OnboardingFooter(state: OnboardingUiState, action: (OnboardingAction
         OnboardingStep.USES -> stringResource(R.string.onboarding_setup_phone)
         OnboardingStep.MODELS -> stringResource(R.string.onboarding_download_action, ((state.choice?.bytes ?: 0) / 1_000_000L).toInt())
         OnboardingStep.DOWNLOAD, OnboardingStep.SPEAKER_DOWNLOAD -> when {
-            state.transfer.active || state.busy -> stringResource(if (state.transfer.phase == TransferPhase.VERIFYING) R.string.onboarding_download_verifying else R.string.action_download)
             state.transfer.phase == TransferPhase.READY -> stringResource(R.string.onboarding_continue)
+            state.transfer.active || state.busy -> stringResource(if (state.transfer.phase == TransferPhase.VERIFYING) R.string.onboarding_download_verifying else R.string.action_download)
             else -> { primaryAction = OnboardingAction.Download; stringResource(if (state.transfer.phase == TransferPhase.ERROR) R.string.onboarding_retry else R.string.action_download) }
         }
         OnboardingStep.MICROPHONE -> if (!state.device.permissions.microphone) {
@@ -197,7 +197,7 @@ private fun OnboardingFooter(state: OnboardingUiState, action: (OnboardingAction
         }
         val secondary = when (state.step) {
             OnboardingStep.MODELS -> R.string.onboarding_have_files
-            OnboardingStep.DOWNLOAD -> R.string.onboarding_change_model
+            OnboardingStep.DOWNLOAD -> R.string.onboarding_change_model.takeUnless { state.transfer.phase == TransferPhase.READY }
             OnboardingStep.MICROPHONE -> R.string.onboarding_not_now
             OnboardingStep.INPUT -> R.string.onboarding_input_later
             OnboardingStep.FOLDERS -> R.string.onboarding_monitor_skip

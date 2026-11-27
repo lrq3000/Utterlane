@@ -66,7 +66,7 @@
     <string name="onboarding_download_kicker">YOUR OFFLINE TOOLKIT</string>
     <string name="onboarding_download_heading">A little download.\nA lot of possibility.</string>
     <string name="onboarding_download_body">Your phone is getting its own speech tools. This is the part that needs a connection.</string>
-    <string name="onboarding_download_ready">Ready for your words.</string>
+    <string name="onboarding_download_ready">Download complete</string>
     <string name="onboarding_download_ready_body">Your model is installed. Recognition can now happen right on your phone.</string>
     <string name="onboarding_download_error">Let’s try that again.</string>
     <string name="onboarding_download_error_body">The transfer did not finish. Retry, import local files, or choose another model.</string>
