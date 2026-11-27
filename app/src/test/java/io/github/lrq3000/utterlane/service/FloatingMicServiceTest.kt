@@ -1,11 +1,16 @@
 package io.github.lrq3000.utterlane.service
 
+import android.animation.ValueAnimator
 import android.app.Application
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.ImageView
 import io.github.lrq3000.utterlane.UtterlaneApp
 import io.github.lrq3000.utterlane.settings.MemoryStore
 import io.github.lrq3000.utterlane.settings.SettingsRepository
@@ -90,6 +95,60 @@ class FloatingMicServiceTest {
         touch(MotionEvent.ACTION_DOWN, 20f, 20f)
         touch(MotionEvent.ACTION_UP, 20f, 20f)
         verify(exactly = 1) { session.stop() }
+    }
+
+    @Test fun recordingRecolorsTheOvalWithoutReplacingTheMicGlyph() {
+        val image = button as ImageView
+        val glyph = image.drawable
+        val idle = gradientColors().toList()
+        ReflectionHelpers.callInstanceMethod<Unit>(service, "updateMicButtonState")
+        assertSame("The inner mic glyph must remain unchanged", glyph, image.drawable)
+        val red = gradientColors()
+        assertTrue(red.distinct().size > 1)
+        assertTrue(red.all { Color.red(it) > Color.green(it) && Color.red(it) > Color.blue(it) })
+        assertNotEquals(idle, red.toList())
+    }
+
+    @Test @Config(sdk = [36]) fun savingAfterATapShowsRainbowThenRestoresIdleGradient() {
+        val idle = gradientColors().toList()
+        tapAndConfirmFinalization(success = true)
+        val animation = checkNotNull(saveAnimation()) { "Successful tap-stop must start feedback" }
+        animation.setCurrentFraction(.25f)
+        assertNotEquals("An intermediate save frame must not be idle", idle, gradientColors().toList())
+        animation.setCurrentFraction(.66f)
+        assertTrue(Color.blue(gradientColors().first()) > Color.green(gradientColors().first()))
+        animation.end()
+        assertEquals(idle, gradientColors().toList())
+    }
+
+    @Test @Config(sdk = [36]) fun failedFinalizationDoesNotPlaySuccessFeedback() {
+        val idle = gradientColors().toList()
+        tapAndConfirmFinalization(success = false)
+        assertNull(saveAnimation())
+        assertEquals(idle, gradientColors().toList())
+    }
+
+    @Test @Config(sdk = [36]) fun earlierSaveAnimationCannotRecolorANewTake() {
+        tapAndConfirmFinalization(success = true)
+        val animation = checkNotNull(saveAnimation())
+        animation.setCurrentFraction(.15f)
+        ReflectionHelpers.getField<AtomicBoolean>(service, "isRecording").set(true)
+        ReflectionHelpers.callInstanceMethod<Unit>(service, "updateMicButtonState")
+        val recording = gradientColors().toList()
+        assertNull(saveAnimation())
+        animation.end()
+        assertEquals(recording, gradientColors().toList())
+    }
+
+    private fun gradientColors(): IntArray = ((button.background as RippleDrawable).getDrawable(0) as GradientDrawable).colors!!
+
+    private fun saveAnimation(): ValueAnimator? =
+        ReflectionHelpers.getField(ReflectionHelpers.getField<Any>(service, "appearance"), "feedback")
+
+    private fun tapAndConfirmFinalization(success: Boolean) {
+        touch(MotionEvent.ACTION_DOWN, 20f, 20f)
+        touch(MotionEvent.ACTION_UP, 20f, 20f)
+        ReflectionHelpers.callInstanceMethod<Unit>(service, "onDictationFinalized", ReflectionHelpers.ClassParameter.from(Boolean::class.java, success))
     }
 
     @Test fun droppingIdleMicOnBottomTargetStopsOnlyItsServiceAndKeepsPreferenceAndPosition() = runBlocking {

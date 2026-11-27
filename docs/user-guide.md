@@ -231,6 +231,8 @@ model; after stopping, the retained audio is available through model recovery.
 
 To hide the button temporarily, drag it onto the red **×** and release. This does not turn off the floating microphone setting or close Utterlane. If the button is recording, new capture stops and the recorded speech continues in the background queue. Other jobs keep running. Reopen Utterlane to bring the floating button back.
 
+The floating microphone keeps the same shape and icon while recording, with a red gradient instead of purple–blue. If you tap it to finish a recording, a short rainbow fade confirms successful finalization before the usual gradient returns.
+
 ## Models and languages
 
 Select a recognition model in Utterlane, then download it or use **Import from

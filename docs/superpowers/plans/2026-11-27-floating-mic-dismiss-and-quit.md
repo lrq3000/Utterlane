@@ -43,10 +43,10 @@
 
 **Interfaces:** An overlay completion callback takes the confirmed outcome; `FloatingMicAppearance` owns button rendering and animation invalidation. Only explicit tap-stop arms success feedback.
 
-- [ ] Write RED tests that render a gradient rather than an inner circle, verify purple–blue idle and red recording fills with the same glyph, and verify successful tap feedback returns to idle without stale callbacks changing a new take.
-- [ ] Run the focused `*FloatingMic*Test`; expect failed appearance assertions.
-- [ ] Reuse the current theme and shape; adapt AudioRecorder’s hue/desaturation calculation to an idle gradient, preserving animation scale settings and stopping feedback on a new take or removal.
-- [ ] Rerun the tests and `.\gradlew.bat assembleDebug --offline`, then commit `feat(floating): add recording gradient and rainbow save feedback`.
+- [x] Write RED tests that render a gradient rather than an inner circle, verify purple–blue idle and red recording fills with the same glyph, and verify successful tap feedback returns to idle without stale callbacks changing a new take.
+- [x] Run the focused `*FloatingMicServiceTest`; expect failed appearance assertions.
+- [x] Reuse the current theme and shape; adapt AudioRecorder’s hue/desaturation calculation to an idle gradient, preserving animation scale settings and stopping feedback on a new take or removal.
+- [x] Rerun the tests and `.\gradlew.bat assembleDebug --offline`, then commit `feat(floating): add recording gradient and rainbow save feedback`.
 
 ### Task 3: Stop all jobs and quit
 

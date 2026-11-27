@@ -43,7 +43,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import io.github.lrq3000.utterlane.settings.SettingsRepository
 import io.github.lrq3000.utterlane.settings.FloatingButtonSize
-import io.github.lrq3000.utterlane.ui.theme.NativeBrandStyle
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToInt
 
@@ -61,6 +60,7 @@ class FloatingMicService : Service() {
     private lateinit var dismissTarget: OverlayDismissTarget
     private lateinit var floatingView: View
     private lateinit var micButton: ImageView
+    private lateinit var appearance: FloatingMicAppearance
     private lateinit var layoutParams: WindowManager.LayoutParams
 
     private var microphoneSession: StreamingDictationOverlay? = null
@@ -71,6 +71,7 @@ class FloatingMicService : Service() {
     private var preferredDiameterDp = FloatingButtonSize.DEFAULT_DP
     private var floatingAttached = false
     private var hiding = false
+    private var tappedToFinish = false
     private var legacyInsets = Insets.NONE
     private lateinit var touchListener: FloatingControlTouchListener
     private val displayListener = object : DisplayManager.DisplayListener {
@@ -155,6 +156,7 @@ class FloatingMicService : Service() {
         hiding = false
         if (::touchListener.isInitialized) touchListener.cancel(persist = false)
         if (::dismissTarget.isInitialized) dismissTarget.hide()
+        if (::appearance.isInitialized) appearance.cancelFeedback()
         // Only an explicit Stop disables the preference; unexpected teardown keeps recovery intact.
         if (isIntentionalStop) {
             UtterlaneApp.instance.applicationScope.launch {
@@ -175,6 +177,7 @@ class FloatingMicService : Service() {
     private fun setupFloatingView() {
         floatingView = LayoutInflater.from(this).inflate(R.layout.floating_mic, null)
         micButton = floatingView.findViewById(R.id.floating_mic_button)
+        appearance = FloatingMicAppearance(micButton)
         updateMicButtonState()
         serviceScope.launch {
             UtterlaneApp.instance.settingsRepository.themeMode.collect { mode ->
@@ -315,6 +318,8 @@ class FloatingMicService : Service() {
     private fun hideFloatingMic() {
         if (hiding) return
         hiding = true
+        tappedToFinish = false
+        appearance.cancelFeedback()
         micButton.isEnabled = false
         dismissTarget.hide()
         val session = microphoneSession
@@ -380,13 +385,14 @@ class FloatingMicService : Service() {
         }
 
         val target = TextInjectionService.instance?.captureStreamingTarget() ?: StreamingTextTarget(this) { false }
+        tappedToFinish = false
         try {
             microphoneSession = StreamingDictationOverlay(this, serviceScope, target,
                 recordingChanged = { isRecording.set(it); updateMicButtonState() },
                 warning = ::showToast, released = {
                     microphoneSession = null
                     if (hiding && floatingAttached) finishHiding()
-                })
+                }, finalized = ::onDictationFinalized)
             microphoneSession?.start()
         } catch (error: Exception) {
             Log.w(TAG, "Could not start dictation", error)
@@ -398,21 +404,20 @@ class FloatingMicService : Service() {
 
     private fun stopRecording() {
         Log.i(TAG, "stopRecording called")
+        tappedToFinish = true
         isRecording.set(false)
         updateMicButtonState()
 
         microphoneSession?.stop()
     }
 
-    private fun updateMicButtonState() {
-        val recording = isRecording.get()
-        micButton.setImageResource(
-            if (recording) R.drawable.ic_mic_recording else R.drawable.ic_mic
-        )
-        if (recording) micButton.setBackgroundResource(R.drawable.mic_button_recording_bg)
-        else micButton.background = NativeBrandStyle.waveform(
-            NativeBrandStyle.palette(this, themeMode), 0f, oval = true)
+    private fun onDictationFinalized(success: Boolean) {
+        val showFeedback = tappedToFinish && success && !hiding && floatingAttached
+        tappedToFinish = false
+        if (showFeedback) appearance.saved()
     }
+
+    private fun updateMicButtonState() = appearance.show(isRecording.get(), themeMode)
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)

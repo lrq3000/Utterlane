@@ -54,6 +54,8 @@ class MicrophoneSession(
     val audioId: String? get() = recordingId
     @Volatile internal var captureReleased: Boolean = false
         private set
+    internal var audioFinalized = false
+        private set
     @Volatile var savedTranscriptId: String? = null
         private set
     @Volatile var speakerLabels: Boolean = false
@@ -315,7 +317,12 @@ class MicrophoneSession(
                         catch (e: Exception) { Log.e("MicrophoneSession", "Could not save speaker metadata", e) }
                         try { if (discardRequested) recording?.let { discardAudio(it.entry.id) } }
                         catch (e: Exception) { Log.e("MicrophoneSession", "Discard persistence failed; still finalizing audio", e) }
-                        try { recording?.finish((failure != null && failure.kind != SessionFailure.Kind.NO_SPEECH) || cancelled) }
+                        try {
+                            recording?.let {
+                                it.finish((failure != null && failure.kind != SessionFailure.Kind.NO_SPEECH) || cancelled)
+                                audioFinalized = it.writtenSamples > 0
+                            }
+                        }
                         catch (e: Exception) {
                             Log.e("MicrophoneSession", "History finalization failed", e)
                             finalizationWarning = io.github.lrq3000.utterlane.util.StorageFailure.userMessage(context, e)

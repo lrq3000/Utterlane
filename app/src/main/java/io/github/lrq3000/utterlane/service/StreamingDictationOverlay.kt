@@ -14,7 +14,8 @@ internal class StreamingDictationOverlay(
     private val target: StreamingTextTarget,
     private val recordingChanged: (Boolean) -> Unit,
     private val warning: (String) -> Unit,
-    private val released: () -> Unit
+    private val released: () -> Unit,
+    private val finalized: (Boolean) -> Unit = {}
 ) {
     private var hosting = true
     private val overlay: RecordingOverlay = RecordingOverlay(context, ::confirmSettings).apply {
@@ -28,6 +29,7 @@ internal class StreamingDictationOverlay(
             val speakerSettings = if (hasHost) capture.speakerControl.speakerSettingsAction(context) else null
             if (hasHost) {
                 detach()
+                finalized(error == null && capture.audioFinalized)
                 error?.let { warning(it.message) }
             }
             target.finishDictation(context, capture, store, error, speakerSettings,
