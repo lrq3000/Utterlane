@@ -18,38 +18,31 @@ object ModelRecommendation {
 enum class OnboardingStep(val id: String, val phase: Int) {
     WELCOME("welcome", 0), USES("uses", 0), MODELS("models", 1),
     DOWNLOAD("download", 1), MICROPHONE("microphone", 1), INPUT("input", 1),
-    FOLDERS("folders", 1), SPEAKERS("speakers", 1), SPEAKER_DOWNLOAD("speaker-download", 1),
+    FOLDERS("folders", 1), SPEAKERS("speakers", 1),
     VOICE_TRIAL("try-voice", 2), FILE_TRIAL("try-file", 2), COMPLETE("finish", 2)
 }
 
 /** Navigation is independent of Compose, Android, and the available ASR engines. */
 class OnboardingFlow(steps: List<OnboardingStep> = OnboardingStep.entries) {
-    private class Route(val steps: List<OnboardingStep>) {
-        val indices = steps.withIndex().associate { it.value to it.index }
-        val byId = steps.associateBy { it.id }
-    }
-    init {
-        require(steps.isNotEmpty())
-        require(steps.map { it.id }.toSet().size == steps.size)
-    }
-    // Build both routes once; next/back/restore stay O(1) during navigation.
-    private val withSpeakers = Route(steps.toList())
-    private val withoutSpeakers = Route(steps.filter { it != OnboardingStep.SPEAKER_DOWNLOAD })
-    private fun route(speakers: Boolean) = if (speakers) withSpeakers else withoutSpeakers
+    private val pages = steps.toList()
+    private val indices = pages.withIndex().associate { it.value to it.index }
+    private val byId = pages.associateBy { it.id }
 
-    fun restore(id: String, speakers: Boolean): OnboardingStep {
-        val route = route(speakers)
-        if (!speakers && id == OnboardingStep.SPEAKER_DOWNLOAD.id && OnboardingStep.SPEAKERS in route.indices) {
-            return OnboardingStep.SPEAKERS
-        }
-        return route.byId[id] ?: route.steps.first()
+    init {
+        require(pages.isNotEmpty())
+        require(byId.size == pages.size)
     }
-    fun next(step: OnboardingStep, speakers: Boolean): OnboardingStep? = move(step, speakers, 1)
-    fun previous(step: OnboardingStep, speakers: Boolean): OnboardingStep? = move(step, speakers, -1)
-    private fun move(step: OnboardingStep, speakers: Boolean, offset: Int): OnboardingStep? {
-        val route = route(speakers)
-        val index = route.indices[step] ?: return null
-        return route.steps.getOrNull(index + offset)
+
+    fun restore(id: String): OnboardingStep {
+        // An interrupted older wizard can still have the now-merged download page saved.
+        val currentId = if (id == "speaker-download") OnboardingStep.SPEAKERS.id else id
+        return byId[currentId] ?: pages.first()
+    }
+    fun next(step: OnboardingStep): OnboardingStep? = move(step, 1)
+    fun previous(step: OnboardingStep): OnboardingStep? = move(step, -1)
+    private fun move(step: OnboardingStep, offset: Int): OnboardingStep? {
+        val index = indices[step] ?: return null
+        return pages.getOrNull(index + offset)
     }
 }
 
@@ -61,10 +54,6 @@ data class OnboardingProgress(
     val speakersWanted: Boolean = false,
     val monitorWanted: Boolean = false
 ) {
-    // Fixed-one labeling uses the recognizer's single-identity path, without
-    // loading the optional diarizer. Keep that preference intact during replay.
-    fun needsSpeakerDownload(speakerCount: Int): Boolean = speakersWanted && speakerCount != 1
-
     fun shouldLaunch(existingConfiguration: Boolean): Boolean =
         if (initialized) !completed else !existingConfiguration
 }

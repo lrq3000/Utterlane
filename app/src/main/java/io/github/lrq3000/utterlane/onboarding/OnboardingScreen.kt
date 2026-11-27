@@ -70,7 +70,7 @@ fun OnboardingScreen(state: OnboardingUiState, onAction: (OnboardingAction) -> U
                                 OnboardingStep.WELCOME -> WelcomePage(page)
                                 OnboardingStep.USES -> EverydayUsesPage(page, dispatch)
                                 OnboardingStep.MODELS -> ModelChoicePage(page, state, dispatch)
-                                OnboardingStep.DOWNLOAD, OnboardingStep.SPEAKER_DOWNLOAD -> ModelDownloadPage(page, state, dispatch)
+                                OnboardingStep.DOWNLOAD -> ModelDownloadPage(page, state, dispatch)
                                 OnboardingStep.MICROPHONE -> MicrophoneSetupPage(page)
                                 OnboardingStep.INPUT -> InputSetupPage(page, state, dispatch)
                                 OnboardingStep.FOLDERS -> FolderSetupPage(page, state, dispatch)
@@ -173,23 +173,23 @@ private fun OnboardingFooter(state: OnboardingUiState, action: (OnboardingAction
         OnboardingStep.WELCOME -> stringResource(R.string.onboarding_begin)
         OnboardingStep.USES -> stringResource(R.string.onboarding_setup_phone)
         OnboardingStep.MODELS -> stringResource(R.string.onboarding_download_action, ((state.choice?.bytes ?: 0) / 1_000_000L).toInt())
-        OnboardingStep.DOWNLOAD, OnboardingStep.SPEAKER_DOWNLOAD -> when {
+        OnboardingStep.DOWNLOAD -> when {
             state.transfer.phase == TransferPhase.READY -> stringResource(R.string.onboarding_continue)
             state.transfer.active || state.busy -> stringResource(if (state.transfer.phase == TransferPhase.VERIFYING) R.string.onboarding_download_verifying else R.string.action_download)
-            else -> { primaryAction = OnboardingAction.Download; stringResource(if (state.transfer.phase == TransferPhase.ERROR) R.string.onboarding_retry else R.string.action_download) }
+            else -> { primaryAction = OnboardingAction.Download(false); stringResource(if (state.transfer.phase == TransferPhase.ERROR) R.string.onboarding_retry else R.string.action_download) }
         }
         OnboardingStep.MICROPHONE -> if (!state.device.permissions.microphone) {
             primaryAction = OnboardingAction.Permission(SetupPermission.MICROPHONE); stringResource(R.string.onboarding_allow_mic)
         } else stringResource(R.string.onboarding_continue)
         OnboardingStep.FOLDERS -> stringResource(if (state.progress.monitorWanted && !state.device.preferences.monitor) R.string.onboarding_monitor_enable else R.string.onboarding_continue)
-        OnboardingStep.SPEAKERS -> stringResource(if (state.speakerDownloadRequired) R.string.onboarding_speaker_download else R.string.onboarding_continue)
         OnboardingStep.FILE_TRIAL -> stringResource(R.string.onboarding_finish_setup)
         OnboardingStep.COMPLETE -> stringResource(R.string.onboarding_finish)
         else -> stringResource(R.string.onboarding_continue)
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
-        val transferPage = state.step == OnboardingStep.DOWNLOAD || state.step == OnboardingStep.SPEAKER_DOWNLOAD || state.step == OnboardingStep.MODELS
-        Button(onClick = { action(primaryAction) }, enabled = !state.busy && !state.trial.active && !(transferPage && state.transfer.active),
+        val transferPage = state.step == OnboardingStep.DOWNLOAD || state.step == OnboardingStep.SPEAKERS || state.step == OnboardingStep.MODELS
+        val speakerSetupBlocked = state.step == OnboardingStep.SPEAKERS && state.speakerModelNeeded
+        Button(onClick = { action(primaryAction) }, enabled = !state.busy && !state.trial.active && !(transferPage && state.transfer.active) && !speakerSetupBlocked,
             modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp).testTag("onboarding_next"), shape = MaterialTheme.shapes.small) {
             Text(label, Modifier.weight(1f, fill = false), fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
             Spacer(Modifier.width(8.dp))
@@ -201,7 +201,7 @@ private fun OnboardingFooter(state: OnboardingUiState, action: (OnboardingAction
             OnboardingStep.MICROPHONE -> R.string.onboarding_not_now
             OnboardingStep.INPUT -> R.string.onboarding_input_later
             OnboardingStep.FOLDERS -> R.string.onboarding_monitor_skip
-            OnboardingStep.SPEAKERS, OnboardingStep.SPEAKER_DOWNLOAD -> R.string.onboarding_speaker_skip
+            OnboardingStep.SPEAKERS -> R.string.onboarding_speaker_skip
             OnboardingStep.VOICE_TRIAL, OnboardingStep.FILE_TRIAL -> R.string.onboarding_skip_test
             else -> null
         }
@@ -211,7 +211,7 @@ private fun OnboardingFooter(state: OnboardingUiState, action: (OnboardingAction
                 OnboardingStep.DOWNLOAD -> OnboardingAction.CancelDownload
                 else -> OnboardingAction.Skip
             })
-        }, enabled = !state.busy || state.step == OnboardingStep.DOWNLOAD || state.step == OnboardingStep.SPEAKER_DOWNLOAD,
+        }, enabled = !state.busy || state.step == OnboardingStep.DOWNLOAD,
             modifier = Modifier.fillMaxWidth().testTag("onboarding_skip")) { Text(stringResource(secondary), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         else Text(stringResource(if (state.step == OnboardingStep.WELCOME) R.string.onboarding_no_account else R.string.onboarding_tagline),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))

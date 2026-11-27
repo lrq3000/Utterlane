@@ -20,42 +20,24 @@ class OnboardingFlowTest {
         assertNull(ModelRecommendation.tier(-1))
     }
 
-    @Test fun optionalDownloadIsPresentOnlyForTheChosenFeature() {
-        val flow = OnboardingFlow()
-        assertEquals(OnboardingStep.VOICE_TRIAL, flow.next(OnboardingStep.SPEAKERS, false))
-        assertEquals(OnboardingStep.SPEAKER_DOWNLOAD, flow.next(OnboardingStep.SPEAKERS, true))
-        assertEquals(OnboardingStep.SPEAKERS, flow.previous(OnboardingStep.VOICE_TRIAL, false))
-        assertEquals(OnboardingStep.SPEAKER_DOWNLOAD, flow.previous(OnboardingStep.VOICE_TRIAL, true))
-        assertNull(flow.previous(OnboardingStep.WELCOME, false))
-        assertNull(flow.next(OnboardingStep.COMPLETE, true))
+    @Test fun speakerSetupIsOnePage() {
+        val flow = OnboardingContent.flow
+        assertEquals(OnboardingStep.VOICE_TRIAL, flow.next(OnboardingStep.SPEAKERS))
+        assertEquals(OnboardingStep.SPEAKERS, flow.previous(OnboardingStep.VOICE_TRIAL))
+        assertNull(flow.previous(OnboardingStep.WELCOME))
+        assertNull(flow.next(OnboardingStep.COMPLETE))
     }
 
     @Test fun persistedIdsSurviveReorderingAndRemovedScreensFallBackSafely() {
         val flow = OnboardingFlow(listOf(OnboardingStep.WELCOME, OnboardingStep.MODELS, OnboardingStep.COMPLETE))
-        assertEquals(OnboardingStep.MODELS, flow.restore("models", false))
-        assertEquals(OnboardingStep.WELCOME, flow.restore("input", false))
-        assertEquals(OnboardingStep.WELCOME, flow.restore("unknown-future-page", true))
-        assertEquals(OnboardingStep.COMPLETE, flow.next(OnboardingStep.MODELS, false))
+        assertEquals(OnboardingStep.MODELS, flow.restore("models"))
+        assertEquals(OnboardingStep.WELCOME, flow.restore("input"))
+        assertEquals(OnboardingStep.WELCOME, flow.restore("unknown-future-page"))
+        assertEquals(OnboardingStep.COMPLETE, flow.next(OnboardingStep.MODELS))
     }
 
-    @Test fun disablingSpeakerChoiceWhileResumingSkipsItsDownload() {
-        assertEquals(OnboardingStep.SPEAKERS, OnboardingFlow().restore("speaker-download", false))
-    }
-
-    @Test fun singleSpeakerReplaySkipsTheAuxiliaryModelInBothDirections() {
-        val progress = OnboardingProgress(speakersWanted = true)
-        val flow = OnboardingFlow()
-        for (count in 0..8) {
-            val download = progress.needsSpeakerDownload(count)
-            assertEquals(count != 1, download)
-            assertFalse(progress.copy(speakersWanted = false).needsSpeakerDownload(count))
-            assertEquals(if (count == 1) OnboardingStep.VOICE_TRIAL else OnboardingStep.SPEAKER_DOWNLOAD,
-                flow.next(OnboardingStep.SPEAKERS, download))
-            assertEquals(if (count == 1) OnboardingStep.SPEAKERS else OnboardingStep.SPEAKER_DOWNLOAD,
-                flow.previous(OnboardingStep.VOICE_TRIAL, download))
-        }
-        assertEquals(OnboardingStep.SPEAKERS,
-            flow.restore(OnboardingStep.SPEAKER_DOWNLOAD.id, progress.needsSpeakerDownload(1)))
+    @Test fun restoringTheFormerDownloadPageReturnsToTheCombinedSpeakerSetup() {
+        assertEquals(OnboardingStep.SPEAKERS, OnboardingContent.flow.restore("speaker-download"))
     }
 
     @Test fun launchPolicyDistinguishesFreshExistingAndInterruptedSetups() {

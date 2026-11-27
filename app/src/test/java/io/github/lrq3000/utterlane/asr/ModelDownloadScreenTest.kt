@@ -44,8 +44,10 @@ class ModelDownloadScreenTest {
         val device = OnboardingDeviceState(speechTransfer = download, speakerTransfer = download)
         val state = OnboardingUiState(step = OnboardingStep.DOWNLOAD, device = device)
         assertTrue(state.keepSetupScreenOn)
-        assertTrue(state.copy(step = OnboardingStep.SPEAKER_DOWNLOAD).keepSetupScreenOn)
+        assertTrue(state.copy(step = OnboardingStep.SPEAKERS).keepSetupScreenOn)
         assertFalse(state.copy(step = OnboardingStep.WELCOME).keepSetupScreenOn)
+        assertFalse(state.copy(step = OnboardingStep.SPEAKERS,
+            device = device.copy(speakerTransfer = OnboardingTransfer())).keepSetupScreenOn)
         assertFalse(state.copy(device = device.copy(speechTransfer = OnboardingTransfer(TransferPhase.IMPORTING))).keepSetupScreenOn)
         assertFalse(state.copy(device = device.copy(speechTransfer = OnboardingTransfer(TransferPhase.ERROR))).keepSetupScreenOn)
     }

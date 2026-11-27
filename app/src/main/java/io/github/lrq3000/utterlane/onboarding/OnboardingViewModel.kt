@@ -27,12 +27,14 @@ data class OnboardingUiState(
     val finished: Boolean = false,
     val exit: Boolean = false
 ) {
-    val speakerDownloadRequired: Boolean get() = progress.needsSpeakerDownload(device.preferences.speakerCount)
+    // Fixed-one labeling does not require the auxiliary model, even during a replay.
+    val speakerModelNeeded: Boolean get() = progress.speakersWanted && device.preferences.speakerCount != 1 &&
+        device.speakerTransfer.phase != TransferPhase.READY
     val modelReady: Boolean get() = choice?.id == device.selectedModelId && device.speechTransfer.phase == TransferPhase.READY
     val floatingActive: Boolean get() = device.preferences.floating && device.permissions.floatingRunning && device.permissions.canFloat(modelReady)
-    val transfer: OnboardingTransfer get() = if (step == OnboardingStep.SPEAKER_DOWNLOAD) device.speakerTransfer else device.speechTransfer
+    val transfer: OnboardingTransfer get() = if (step == OnboardingStep.SPEAKERS) device.speakerTransfer else device.speechTransfer
     internal val keepSetupScreenOn get() = trial.active ||
-        (step == OnboardingStep.DOWNLOAD || step == OnboardingStep.SPEAKER_DOWNLOAD) && transfer.phase == TransferPhase.DOWNLOADING
+        (step == OnboardingStep.DOWNLOAD || step == OnboardingStep.SPEAKERS) && transfer.phase == TransferPhase.DOWNLOADING
 }
 
 class OnboardingViewModel(
@@ -59,7 +61,7 @@ class OnboardingViewModel(
             modelsById = current.models.associateBy { it.id }
         }
         val tier = ModelRecommendation.tier(current.ramBytes)
-        OnboardingUiState(work.ready, progress, OnboardingContent.flow.restore(progress.stepId, progress.needsSpeakerDownload(current.preferences.speakerCount)), current,
+        OnboardingUiState(work.ready, progress, OnboardingContent.flow.restore(progress.stepId), current,
             modelsById[progress.modelId] ?: modelsById[current.selectedModelId],
             tier?.let { wanted -> current.models.firstOrNull { it.tier == wanted }?.id },
             work.busy, work.error, voice, work.finished, work.exit)
@@ -96,7 +98,14 @@ class OnboardingViewModel(
                 catch (error: Exception) { showError(error.message ?: message(R.string.model_error_storage)) }
             }
             OnboardingAction.Back -> back()
-            OnboardingAction.CancelDownload -> cancelAndMove(if (state.value.step == OnboardingStep.SPEAKER_DOWNLOAD) OnboardingStep.SPEAKERS else OnboardingStep.MODELS)
+            OnboardingAction.CancelDownload -> when (state.value.step) {
+                OnboardingStep.DOWNLOAD -> cancelAndMove(OnboardingStep.MODELS)
+                OnboardingStep.SPEAKERS -> {
+                    if (transferTarget == true) cancelAndMove()
+                    else services.cancelTransfer(true)
+                }
+                else -> Unit
+            }
             OnboardingAction.StopRecording -> trial.stop()
             OnboardingAction.CancelRecording -> trial.cancel()
             is OnboardingAction.EditText -> trial.setText(action.text)
@@ -107,7 +116,7 @@ class OnboardingViewModel(
             is OnboardingAction.RemoveFolder -> runOperation { services.removeFolder(action.path) }
             is OnboardingAction.Speakers -> runOperation { repository.update { it.copy(speakersWanted = action.enabled) } }
             OnboardingAction.EnableFloating -> runOperation { services.enableFloating() }
-            OnboardingAction.Download -> startTransfer(state.value.step == OnboardingStep.SPEAKER_DOWNLOAD)
+            is OnboardingAction.Download -> startTransfer(action.speakers)
             OnboardingAction.Skip -> skip()
             OnboardingAction.Next -> next()
             else -> Unit // Android handoffs are owned by the Activity, not the controller.
@@ -119,16 +128,16 @@ class OnboardingViewModel(
         val current = state.value
         when (current.step) {
             OnboardingStep.MODELS -> startTransfer(false)
-            OnboardingStep.DOWNLOAD, OnboardingStep.SPEAKER_DOWNLOAD -> runOperation {
-                val speakers = current.step == OnboardingStep.SPEAKER_DOWNLOAD
-                check(services.verify(speakers)) { message(R.string.onboarding_download_needed) }
-                if (speakers) services.setSpeakers(true)
+            OnboardingStep.DOWNLOAD -> runOperation {
+                check(services.verify(false)) { message(R.string.onboarding_download_needed) }
                 advance()
             }
             OnboardingStep.FOLDERS -> runOperation { services.setMonitor(current.progress.monitorWanted); advance() }
             OnboardingStep.SPEAKERS -> {
-                if (current.speakerDownloadRequired) startTransfer(true)
-                else runOperation { services.setSpeakers(current.progress.speakersWanted); advance() }
+                if (!current.speakerModelNeeded && !current.transfer.active) runOperation {
+                    services.setSpeakers(current.progress.speakersWanted)
+                    advance()
+                }
             }
             OnboardingStep.COMPLETE -> runOperation {
                 repository.complete()
@@ -139,17 +148,15 @@ class OnboardingViewModel(
     }
 
     private suspend fun advance() {
-        val progress = repository.progress.first()
-        val download = progress.needsSpeakerDownload(device.value.preferences.speakerCount)
-        val step = OnboardingContent.flow.restore(progress.stepId, download)
-        OnboardingContent.flow.next(step, download)?.let { move(it) }
+        val step = OnboardingContent.flow.restore(repository.progress.first().stepId)
+        OnboardingContent.flow.next(step)?.let { move(it) }
     }
     private suspend fun move(step: OnboardingStep) = repository.update { it.copy(stepId = step.id) }
 
     private fun back() {
         if (trial.ownsNavigation) return
         trial.cancel()
-        val previous = OnboardingContent.flow.previous(state.value.step, state.value.speakerDownloadRequired)
+        val previous = OnboardingContent.flow.previous(state.value.step)
         if (previous == null) interaction.value = interaction.value.copy(exit = true)
         else if (transferTarget != null) cancelAndMove(previous)
         else runOperation { move(previous) }
@@ -158,17 +165,14 @@ class OnboardingViewModel(
     private fun skip() {
         val current = state.value
         trial.cancel()
-        if (current.step == OnboardingStep.SPEAKER_DOWNLOAD) {
-            cancelAndMove(OnboardingStep.VOICE_TRIAL, restoreSpeakerChoice = true)
-        } else runOperation {
-            // A replay is an introduction, not a reset. Skipping leaves existing
-            // feature settings intact; only an explicit Continue applies a toggle.
+        runOperation {
+            // A replay is an introduction, not a reset. Skipping leaves existing feature settings intact; only an explicit Continue applies a toggle.
             when (current.step) {
                 OnboardingStep.FOLDERS -> repository.update { it.copy(monitorWanted = device.value.preferences.monitor) }
                 OnboardingStep.SPEAKERS -> repository.update { it.copy(speakersWanted = device.value.preferences.speakers) }
                 else -> Unit
             }
-            if (current.step == OnboardingStep.SPEAKERS) move(OnboardingStep.VOICE_TRIAL) else advance()
+            advance()
         }
     }
 
@@ -178,9 +182,11 @@ class OnboardingViewModel(
     }
 
     private suspend fun performTransfer(speakers: Boolean, folder: Uri?) {
-        if (!speakers) services.selectModel(checkNotNull(state.value.choice).id)
-        if (speakers) repository.update { it.copy(speakersWanted = true) }
-        move(if (speakers) OnboardingStep.SPEAKER_DOWNLOAD else OnboardingStep.DOWNLOAD)
+        if (!speakers) {
+            services.selectModel(checkNotNull(state.value.choice).id)
+            move(OnboardingStep.DOWNLOAD)
+        }
+        // Installing the optional model does not commit or alter the separate default-label preference.
         transferTarget = speakers
         if (folder != null || !services.verify(speakers)) services.transfer(speakers, folder)
         check(services.verify(speakers)) { message(R.string.model_error_checksum) }
@@ -202,15 +208,15 @@ class OnboardingViewModel(
         }
     }
 
-    private fun cancelAndMove(step: OnboardingStep, restoreSpeakerChoice: Boolean = false) {
+    private fun cancelAndMove(step: OnboardingStep? = null) {
         val previous = operation
         transferTarget?.let { services.cancelTransfer(it) }
         previous?.cancel()
         viewModelScope.launch {
             previous?.join()
-            if (restoreSpeakerChoice) repository.update { it.copy(speakersWanted = device.value.preferences.speakers) }
             interaction.value = interaction.value.copy(error = null)
-            move(step)
+            // The inline speaker Cancel has no destination and must not undo a concurrent Back action.
+            step?.let { move(it) }
         }
     }
 
@@ -233,7 +239,7 @@ class OnboardingViewModel(
         trial.confirmSettings(phase, open)
     override fun onCleared() {
         trial.cancel()
-        // The scope cancels the request when the wizard is destroyed; only explicit Back discards the download checkpoint.
+        // The scope cancels the request when the wizard is destroyed; explicit navigation away during a transfer or cancelling it discards the checkpoint.
         super.onCleared()
     }
 

@@ -270,6 +270,95 @@ class OnboardingControllerAndroidTest {
         }
     }
 
+    @Test fun speakerModelCanBeDownloadedOnTheLabelingPageWithLabelsOff(): Unit = runBlocking {
+        services.speakerDownloadOnTransfer = true
+        withScreen(OnboardingStep.SPEAKERS) {
+            ui.scrollTo("onboarding_speaker_model_download")
+            ui.click("onboarding_speaker_model_download")
+            val downloaded = withTimeout(5000) { model.state.first { !it.busy && it.device.speakerTransfer.phase == TransferPhase.READY } }
+            assertEquals(OnboardingStep.SPEAKERS, downloaded.step)
+            assertFalse(downloaded.progress.speakersWanted)
+            ui.scrollToText(app.getString(R.string.onboarding_installed))
+            ui.clickText(app.getString(R.string.onboarding_continue))
+            withTimeout(5000) { model.state.first { !it.busy && it.step == OnboardingStep.VOICE_TRIAL } }
+            assertFalse(services.speakersEnabled.value)
+        }
+    }
+
+    @Test fun speakersWithoutTheModelCanBeSkippedWithoutStartingADownload(): Unit = runBlocking {
+        services.speakerDownloadOnTransfer = true
+        repository.update { it.copy(stepId = "speaker-download", modelId = "full", speakersWanted = true) }
+        initialize()
+        val restored = model.state.value
+        assertEquals(OnboardingStep.SPEAKERS, restored.step)
+        assertTrue(restored.progress.speakersWanted)
+        instrumentation.runOnMainSync { model.act(OnboardingAction.Skip) }
+        withTimeout(5000) { model.state.first { !it.busy && it.step == OnboardingStep.VOICE_TRIAL } }
+        assertNull(services.imported.value)
+        assertFalse(services.speakersEnabled.value)
+    }
+
+    @Test fun continueEnablesSpeakerLabelsWhenTheModelIsAlreadyInstalled(): Unit = runBlocking {
+        services.speakerDownloadOnTransfer = true
+        services.device.value = services.device.value.copy(speakerTransfer = OnboardingTransfer(TransferPhase.READY, 100))
+        repository.update { it.copy(stepId = OnboardingStep.SPEAKERS.id, modelId = "full", speakersWanted = true) }
+        initialize()
+        instrumentation.runOnMainSync { model.act(OnboardingAction.Next) }
+        withTimeout(5000) { model.state.first { !it.busy && it.step == OnboardingStep.VOICE_TRIAL } }
+        assertTrue(services.speakersEnabled.value)
+        assertNull(services.imported.value)
+    }
+
+    @Test fun speakerImportFailureKeepsTheNetworkDownloadActionExplicit(): Unit = runBlocking {
+        services.speakerTransferWork = { folder ->
+            checkNotNull(folder)
+            services.device.value = services.device.value.copy(
+                speakerTransfer = OnboardingTransfer(TransferPhase.ERROR, error = "Model file missing from folder"))
+            error("Model file missing from folder")
+        }
+        withScreen(OnboardingStep.SPEAKERS) {
+            instrumentation.runOnMainSync { model.startTransfer(true, Uri.parse("content://fixture/missing-model")) }
+            withTimeout(5000) { model.state.first { !it.busy && it.transfer.phase == TransferPhase.ERROR } }
+            ui.scrollTo("onboarding_speaker_model_download")
+            assertTrue("Do not present a network request as a retry of the local import",
+                ui.hasVisibleText(app.getString(R.string.onboarding_speaker_download)))
+        }
+    }
+
+    @Test fun cancellingASpeakerTransferDoesNotOverrideBack(): Unit = runBlocking {
+        val release = CompletableDeferred<Unit>()
+        services.speakerDownloadOnTransfer = true
+        services.speakerTransferWork = {
+            services.device.value = services.device.value.copy(speakerTransfer = OnboardingTransfer(TransferPhase.DOWNLOADING, 42))
+            try {
+                awaitCancellation()
+            } finally {
+                withContext(NonCancellable) { release.await() }
+                services.device.value = services.device.value.copy(speakerTransfer = OnboardingTransfer())
+            }
+        }
+        repository.update { it.copy(stepId = OnboardingStep.SPEAKERS.id, modelId = "full") }
+        initialize()
+        lateinit var actions: List<Job>
+        try {
+            instrumentation.runOnMainSync { model.act(OnboardingAction.Download(true)) }
+            withTimeout(5000) { model.state.first { it.transfer.active } }
+            instrumentation.runOnMainSync {
+                // Hold the transfer teardown until both actions have been queued, then join both before reading the saved page.
+                val scopeJob = checkNotNull(model.viewModelScope.coroutineContext[Job])
+                val before = scopeJob.children.toSet()
+                model.act(OnboardingAction.Back)
+                model.act(OnboardingAction.CancelDownload)
+                actions = scopeJob.children.filterNot { it in before }.toList()
+            }
+        } finally {
+            release.complete(Unit)
+        }
+        withTimeout(5000) { actions.joinAll() }
+        assertEquals("Inline cancel must not subsequently navigate back to the speaker page",
+            OnboardingStep.FOLDERS.id, repository.progress.first().stepId)
+    }
+
     @Test fun cancelClosesThePanelAndTheNextTrialStartsWithAnEmptyPreview(): Unit = runBlocking {
         withTrialScreen { activity ->
             startTrial()
@@ -334,6 +423,8 @@ class OnboardingControllerAndroidTest {
         var failInitialization = false
         var verification = CompletableDeferred(true)
         var speechManager: ModelManager? = null
+        var speakerDownloadOnTransfer = false
+        var speakerTransferWork: (suspend (Uri?) -> Unit)? = null
         val imported = MutableStateFlow<Pair<Boolean, Uri?>?>(null)
         val folder = MutableStateFlow<String?>(null)
         val sessionsStarted = MutableStateFlow(0)
@@ -369,10 +460,16 @@ class OnboardingControllerAndroidTest {
                 }
             } else {
                 imported.value = speakers to folder
+                val work = speakerTransferWork
+                if (speakers && work != null) work(folder)
+                else if (speakers && speakerDownloadOnTransfer) {
+                    device.value = device.value.copy(speakerTransfer = OnboardingTransfer(TransferPhase.READY, 100))
+                }
             }
         }
         override suspend fun verify(speakers: Boolean): Boolean = when {
             !speakers && speechManager != null -> checkNotNull(speechManager).ensureVerified()
+            speakers && speakerDownloadOnTransfer -> device.value.speakerTransfer.phase == TransferPhase.READY
             else -> verification.await()
         }
         override fun cancelTransfer(speakers: Boolean) = Unit

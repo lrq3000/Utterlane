@@ -65,20 +65,15 @@ The model recommendation uses Android-reported total RAM, not free RAM:
 
 The thresholds use binary gigabytes. You can choose any featured model, including
 the original Parakeet v3. A recommendation does not guarantee memory availability.
-**Next/Download** installs the selected model; progress, retry and cancellation
-are shown on a separate page. **Import from folder** supports offline setup,
-including the optional speaker model.
+**Next/Download** installs the selected speech model; progress, retry and cancellation are shown on a separate page. When the page says **Download complete**, tap **Continue** to proceed. **Import from folder** supports offline setup.
 
-While a speech or speaker model is downloading on screen, Utterlane prevents automatic screen timeout. You can still lock the device yourself. If a download is interrupted, use **Retry** or **Download** to reuse verified files and resume a partial file when the server supports it. Explicitly canceling the download removes its partial files.
+While a speech or speaker model is downloading on screen, Utterlane prevents automatic screen timeout. You can still lock the device yourself. If a download is interrupted, use **Try again**, **Resume speaker model download**, or **Download** to reuse verified files and resume a partial file when the server supports it. Explicitly canceling an active download removes its partial files.
 
 Microphone access is optional for people who only transcribe files. Keyboard,
 floating-mic and accessibility shortcuts can be configured later. Folder
 monitoring requests audio access only when selected; choose a supported local
 folder or **Use Downloads**. You can remove unavailable folders from the list.
-Speaker labels are also optional. Automatic or multiple-speaker labeling needs
-an additional model (about 107 MB). A saved one-speaker setting labels everything
-as Speaker 1 without that model; replay retains the count and skips its download.
-Replaying the guide retains existing settings unless you explicitly change them.
+Speaker labels are also optional. On the speaker-labeling page, you can download or import the additional model (about 107 MB) and leave labels off by default. Installing it now lets you turn on labels with one tap during a recording, without waiting for a download. A saved one-speaker setting labels everything as Speaker 1 without that model. Replaying the guide retains the count and any other settings you do not explicitly change.
 
 The optional **Try your voice** page records directly into an editable text field
 without a keyboard setup. Practice recordings stop after two minutes and follow

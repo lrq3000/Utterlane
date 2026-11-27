@@ -60,8 +60,7 @@ internal fun ModelChoicePage(page: OnboardingPage, state: OnboardingUiState, act
 @Composable
 internal fun ModelDownloadPage(page: OnboardingPage, state: OnboardingUiState, action: (OnboardingAction) -> Unit) {
     val transfer = state.transfer
-    val speaker = state.step == OnboardingStep.SPEAKER_DOWNLOAD
-    val bytes = if (speaker) state.device.speakerBytes else state.choice?.bytes ?: 0
+    val bytes = state.choice?.bytes ?: 0
     val ready = transfer.phase == TransferPhase.READY
     val error = transfer.phase == TransferPhase.ERROR
     OnboardingArt(if (ready) OnboardingArtKind.SUCCESS else OnboardingArtKind.DOWNLOAD, Modifier.fillMaxWidth().height(174.dp))
@@ -69,28 +68,37 @@ internal fun ModelDownloadPage(page: OnboardingPage, state: OnboardingUiState, a
         heading = if (ready) R.string.onboarding_download_ready else if (error) R.string.onboarding_download_error else page.heading,
         body = if (ready) R.string.onboarding_download_ready_body else if (error) R.string.onboarding_download_error_body else page.body)
     OnboardingCard {
-        Text(if (speaker) stringResource(R.string.onboarding_speaker_model) else state.choice?.name.orEmpty(), style = MaterialTheme.typography.titleMedium)
-        Text(when (transfer.phase) {
-            TransferPhase.READY -> stringResource(R.string.onboarding_installed)
-            TransferPhase.VERIFYING -> stringResource(R.string.onboarding_download_verifying)
-            TransferPhase.IDLE -> stringResource(R.string.onboarding_download_pending, (bytes / 1_000_000L).toInt())
-            TransferPhase.ERROR -> if (transfer.progress > 0)
-                stringResource(R.string.onboarding_download_saved_progress, transfer.progress)
-            else stringResource(R.string.onboarding_download_pending, (bytes / 1_000_000L).toInt())
-            TransferPhase.DOWNLOADING if transfer.connecting -> if (transfer.progress > 0)
-                stringResource(R.string.onboarding_download_reconnecting, transfer.progress)
-            else stringResource(R.string.onboarding_download_connecting)
-            else -> stringResource(R.string.onboarding_download_progress, (bytes * transfer.progress / 100 / 1_000_000L).toInt(), (bytes / 1_000_000L).toInt(), transfer.progress)
-        }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (transfer.active && transfer.phase == TransferPhase.VERIFYING) LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp))
-        else LinearProgressIndicator(progress = { transfer.progress / 100f }, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
-        transfer.error?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
-        if (transfer.active) Text(stringResource(R.string.onboarding_download_keep_open), style = MaterialTheme.typography.bodySmall)
+        Text(state.choice?.name.orEmpty(), style = MaterialTheme.typography.titleMedium)
+        TransferDetails(transfer, bytes, alwaysShowProgress = true)
     }
-    if (!transfer.active && !state.busy && !ready) TextButton(onClick = { action(OnboardingAction.Import(speaker)) }) {
+    if (!transfer.active && !state.busy && !ready) TextButton(onClick = { action(OnboardingAction.Import(false)) }) {
         Text(stringResource(R.string.action_load_local))
     }
     OnboardingNote(stringResource(R.string.onboarding_download_private))
+}
+
+@Composable
+private fun TransferDetails(transfer: OnboardingTransfer, bytes: Long, alwaysShowProgress: Boolean = false) {
+    val sizeMb = (bytes / 1_000_000L).toInt()
+    Text(when (transfer.phase) {
+        TransferPhase.READY -> stringResource(R.string.onboarding_installed)
+        TransferPhase.VERIFYING -> stringResource(R.string.onboarding_download_verifying)
+        TransferPhase.IMPORTING -> stringResource(R.string.model_copying, transfer.progress)
+        TransferPhase.IDLE -> stringResource(R.string.onboarding_download_pending, sizeMb)
+        TransferPhase.ERROR -> if (transfer.progress > 0)
+            stringResource(R.string.onboarding_download_saved_progress, transfer.progress)
+        else stringResource(R.string.onboarding_download_pending, sizeMb)
+        TransferPhase.DOWNLOADING if transfer.connecting -> if (transfer.progress > 0)
+            stringResource(R.string.onboarding_download_reconnecting, transfer.progress)
+        else stringResource(R.string.onboarding_download_connecting)
+        else -> stringResource(R.string.onboarding_download_progress, (bytes * transfer.progress / 100 / 1_000_000L).toInt(), sizeMb, transfer.progress)
+    }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val bar = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+    if (transfer.phase == TransferPhase.VERIFYING) LinearProgressIndicator(bar)
+    else if (alwaysShowProgress || transfer.active || (transfer.phase == TransferPhase.ERROR && transfer.progress > 0))
+        LinearProgressIndicator(progress = { transfer.progress / 100f }, modifier = bar)
+    transfer.error?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
+    if (transfer.phase == TransferPhase.DOWNLOADING) Text(stringResource(R.string.onboarding_download_keep_open), style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable
@@ -213,6 +221,10 @@ internal fun FolderSetupPage(page: OnboardingPage, state: OnboardingUiState, act
 internal fun SpeakerSetupPage(page: OnboardingPage, state: OnboardingUiState, action: (OnboardingAction) -> Unit) {
     val palette = LocalBrandPalette.current
     OnboardingHeading(page)
+    SetupSwitch(R.string.diarization_enable, R.string.onboarding_speakers_help, state.progress.speakersWanted, !state.busy) { action(OnboardingAction.Speakers(it)) }
+    Spacer(Modifier.height(12.dp))
+    SpeakerModelCard(state, action)
+    Spacer(Modifier.height(16.dp))
     listOf(R.string.onboarding_speaker_one to R.string.onboarding_speaker_question, R.string.onboarding_speaker_two to R.string.onboarding_speaker_reply).forEachIndexed { index, (label, sentence) ->
         Surface(Modifier.fillMaxWidth().padding(start = if (index == 1) 32.dp else 0.dp, end = if (index == 0) 30.dp else 0.dp, bottom = 12.dp),
             color = if (index == 0) palette.container else palette.violetContainer, shape = MaterialTheme.shapes.medium) {
@@ -222,17 +234,40 @@ internal fun SpeakerSetupPage(page: OnboardingPage, state: OnboardingUiState, ac
             }
         }
     }
-    Spacer(Modifier.height(12.dp))
-    SetupSwitch(R.string.diarization_enable, R.string.onboarding_speakers_help, state.progress.speakersWanted, !state.busy) { action(OnboardingAction.Speakers(it)) }
-    Spacer(Modifier.height(14.dp))
     if (state.device.preferences.speakerCount == 1) OnboardingNote(stringResource(R.string.onboarding_speaker_single))
-    else OnboardingCard {
-        Text(stringResource(R.string.onboarding_speaker_size, (state.device.speakerBytes / 1_000_000L).toInt()), style = MaterialTheme.typography.titleMedium)
-        Text(stringResource(R.string.onboarding_speaker_cost), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-    if (state.speakerDownloadRequired) TextButton(onClick = { action(OnboardingAction.Import(true)) }, enabled = !state.busy) {
-        Text(stringResource(R.string.action_load_local))
-    }
     OnboardingNote(if (state.device.preferences.speakerCount == 0) stringResource(R.string.onboarding_speaker_note)
         else stringResource(R.string.onboarding_speaker_note_fixed, state.device.preferences.speakerCount), Icons.Default.PeopleOutline)
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SpeakerModelCard(state: OnboardingUiState, action: (OnboardingAction) -> Unit) {
+    val transfer = state.device.speakerTransfer
+    OnboardingCard {
+        Text(stringResource(R.string.speaker_model_heading), style = MaterialTheme.typography.titleMedium)
+        TransferDetails(transfer, state.device.speakerBytes)
+        when {
+            transfer.active -> TextButton(onClick = { action(OnboardingAction.CancelDownload) }) {
+                Text(stringResource(R.string.action_cancel))
+            }
+            transfer.phase == TransferPhase.READY -> Text(stringResource(R.string.onboarding_speaker_model_ready),
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else -> {
+                Text(stringResource(if (state.device.preferences.speakerCount == 1) R.string.onboarding_speaker_model_for_conversations
+                    else R.string.onboarding_speaker_model_recommendation), style = MaterialTheme.typography.bodyMedium)
+                if (state.speakerModelNeeded) Text(stringResource(R.string.onboarding_speaker_model_needed),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(onClick = { action(OnboardingAction.Download(true)) }, enabled = !state.busy,
+                        modifier = Modifier.testTag("onboarding_speaker_model_download")) {
+                        Text(stringResource(if (transfer.phase == TransferPhase.ERROR && transfer.progress > 0)
+                            R.string.onboarding_speaker_resume_download else R.string.onboarding_speaker_download))
+                    }
+                    TextButton(onClick = { action(OnboardingAction.Import(true)) }, enabled = !state.busy) {
+                        Text(stringResource(R.string.action_load_local))
+                    }
+                }
+            }
+        }
+    }
 }
