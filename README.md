@@ -17,8 +17,7 @@ npm ci
 npm run dev -- --host 127.0.0.1
 ```
 
-Open the local URL printed by Vite. All artwork is bundled locally. There are no
-remote fonts, analytics, cookies, microphone requests, or third-party embeds.
+Open the local URL printed by Vite. All artwork is bundled locally. There are no remote fonts, analytics, cookies, microphone requests, or third-party embeds. The only cross-origin request on page load is a public GitHub API lookup for the release line. GitHub receives the website origin and the visitor’s IP address, but no cookies or page referrer.
 
 ```text
 npm run check

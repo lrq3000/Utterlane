@@ -8,4 +8,4 @@ Put the current GitHub release next to the first place visitors go to download U
 - **Generate static metadata on release:** this avoids browser requests, but would add coordination between the app and the orphan website branch, plus deployment permissions and recovery for failed refreshes.
 - **Maintain a manual value:** this adds no code but can advertise an outdated release. Use it only if automatic updates are not practical.
 
-The first approach keeps GitHub Releases authoritative. The website makes one request without cookies or a referrer. Missing metadata, a failed request, and disabled JavaScript must never prevent the download link from working.
+The first approach keeps GitHub Releases authoritative. The website makes one request without cookies or a referrer. This is a narrow exception to the original website's no-external-requests-on-load check: GitHub receives the website origin and visitor IP. Missing metadata, a failed request, and disabled JavaScript must never prevent the download link from working. The README badges link to the release page so readers who cannot read badge images can get the version and date there.
