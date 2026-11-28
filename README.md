@@ -19,6 +19,9 @@
 <p align="center">
   <a href="https://github.com/lrq3000/Utterlane/releases/latest"><img src="https://img.shields.io/badge/Download_APK-GitHub_Releases-18283B?style=for-the-badge&amp;logo=github&amp;logoColor=white" alt="Download APK from GitHub Releases"></a>
   <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/lrq3000/Utterlane"><img src="https://img.shields.io/badge/Track_updates-Obtainium-067A9B?style=for-the-badge" alt="Add Utterlane to Obtainium"></a>
+  <br>
+  <a href="https://github.com/lrq3000/Utterlane/releases/latest"><img src="https://img.shields.io/github/v/release/lrq3000/Utterlane.svg?display_name=tag&amp;label=Latest%20release&amp;color=18283B" alt="Latest release version"></a>
+  <a href="https://github.com/lrq3000/Utterlane/releases/latest"><img src="https://img.shields.io/github/release-date/lrq3000/Utterlane.svg?display_date=published_at&amp;label=Published&amp;color=18283B" alt="Latest release publication date"></a>
 </p>
 
 <p align="center">
