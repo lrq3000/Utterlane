@@ -20,8 +20,10 @@
   <a href="https://github.com/lrq3000/Utterlane/releases/latest"><img src="https://img.shields.io/badge/Download_APK-GitHub_Releases-18283B?style=for-the-badge&amp;logo=github&amp;logoColor=white" alt="Download APK from GitHub Releases"></a>
   <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/lrq3000/Utterlane"><img src="https://img.shields.io/badge/Track_updates-Obtainium-067A9B?style=for-the-badge" alt="Add Utterlane to Obtainium"></a>
   <br>
-  <a href="https://github.com/lrq3000/Utterlane/releases/latest"><img src="https://img.shields.io/github/v/release/lrq3000/Utterlane.svg?display_name=tag&amp;label=Latest%20release&amp;color=18283B" alt="Latest release version"></a>
-  <a href="https://github.com/lrq3000/Utterlane/releases/latest"><img src="https://img.shields.io/github/release-date/lrq3000/Utterlane.svg?display_date=published_at&amp;label=Published&amp;color=18283B" alt="Latest release publication date"></a>
+  <a href="https://github.com/lrq3000/Utterlane/releases/latest">
+    <img src="https://img.shields.io/github/v/release/lrq3000/Utterlane.svg?display_name=tag&amp;label=Latest%20release&amp;color=18283B" alt="View the latest release version and publication date on GitHub">
+    <img src="https://img.shields.io/badge/dynamic/json.svg?url=https%3A%2F%2Fapi.github.com%2Frepos%2Flrq3000%2FUtterlane%2Freleases%2Flatest&amp;query=%24.published_at&amp;label=Published%20%28UTC%29&amp;color=18283B" alt="">
+  </a>
 </p>
 
 <p align="center">
