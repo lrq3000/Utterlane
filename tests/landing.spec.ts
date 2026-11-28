@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, latestReleaseApi, test } from './fixtures';
 import AxeBuilder from '@axe-core/playwright';
 
 test('meeting speech flows into matching transcript rows and respects motion controls', async ({ page }) => {
@@ -47,8 +47,48 @@ test('presents the promised product and usable download route', async ({ page })
   );
   await expect(page.getByRole('heading', { level: 1 })).toContainText('100%');
   const downloads = page.getByRole('main').getByRole('link', { name: 'Get Utterlane', exact: true });
-  await expect(downloads.first()).toHaveAttribute('href', 'https://github.com/lrq3000/Utterlane/releases');
+  await expect(downloads.first()).toHaveAttribute('href', 'https://github.com/lrq3000/Utterlane/releases/latest');
   await expect(page.locator('#setup')).toContainText('Size varies by model');
+});
+
+test.describe('latest release metadata', () => {
+  test.use({ timezoneId: 'America/Los_Angeles' });
+
+  test('shows the GitHub tag and UTC publication date below only the first main download', async ({ page }) => {
+    await page.goto('./');
+    const detail = page.getByText('Latest release: v90.8.7 · Published Feb 3, 2025', { exact: true });
+    await expect(detail).toBeVisible();
+    await expect(detail).toHaveCount(1);
+    await expect(detail.locator('time')).toHaveAttribute('datetime', '2025-02-03');
+    const download = page.getByRole('main').getByRole('link', { name: 'Get Utterlane', exact: true }).first();
+    const button = (await download.boundingBox())!;
+    expect((await detail.boundingBox())!.y).toBeGreaterThan(button.y + button.height);
+    await expect(page.getByText('Latest release:', { exact: false })).toHaveCount(1);
+  });
+
+  for (const [description, published_at] of [['missing', undefined], ['invalid', 'not a date']] as const) {
+    test(`shows the version with a ${description} publication date`, async ({ page }) => {
+      await page.route(latestReleaseApi, route => route.fulfill({
+        headers: { 'access-control-allow-origin': '*' },
+        json: { tag_name: 'v91.2.3', published_at },
+      }));
+      await page.goto('./');
+      await expect(page.getByText('Latest release: v91.2.3', { exact: true })).toBeVisible();
+    });
+  }
+
+  test('keeps the download usable when GitHub does not return release metadata', async ({ page }) => {
+    await page.route(latestReleaseApi, route => route.fulfill({
+      status: 403,
+      headers: { 'access-control-allow-origin': '*' },
+    }));
+    const response = page.waitForResponse(latestReleaseApi);
+    await page.goto('./');
+    await response;
+    await expect(page.locator('.hero').getByText('Latest release:', { exact: false })).toBeHidden();
+    await expect(page.locator('.hero').getByRole('link', { name: 'Get Utterlane' }))
+      .toHaveAttribute('href', 'https://github.com/lrq3000/Utterlane/releases/latest');
+  });
 });
 
 test('places the speed interlude before the complete on-device and everyday story', async ({ page }) => {
@@ -220,10 +260,12 @@ test('keeps content and FAQ usable with JavaScript disabled', async ({ browser }
   await expect(page.locator('#faq details').first()).toHaveAttribute('open', '');
   await expect(page.locator('#faq details').first()).toContainText('import');
   await expect(page.getByRole('button', { name: /animations/ })).toBeHidden();
+  await expect(page.locator('.hero').getByRole('link', { name: 'Get Utterlane' }))
+    .toHaveAttribute('href', 'https://github.com/lrq3000/Utterlane/releases/latest');
   await context.close();
 });
 
-test('loads assets from the Pages subpath without third-party requests or runtime errors', async ({ page }) => {
+test('loads assets from the Pages subpath with only one GitHub metadata request and no runtime errors', async ({ page }) => {
   const errors: string[] = [];
   const external: string[] = [];
   const failed: string[] = [];
@@ -250,7 +292,7 @@ test('loads assets from the Pages subpath without third-party requests or runtim
       .every(image => image.complete && image.naturalWidth > 0))).toBe(true);
   }
   expect(errors).toEqual([]);
-  expect(external).toEqual([]);
+  expect(external).toEqual([latestReleaseApi]);
   expect(failed).toEqual([]);
 });
 

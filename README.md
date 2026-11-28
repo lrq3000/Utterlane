@@ -82,6 +82,7 @@ Graph URLs in `index.html`, `public/robots.txt`, and `public/sitemap.xml`.
 - `src/styles.css`: Blue harmony tokens, typography, layout and breakpoints.
 - `src/illustrations.css`: original CSS phone and on-device processing scenes.
 - `src/theme.ts`: explicit light/dark choice, local persistence and header control.
+- `src/release.ts`: loads the latest version and publication date from GitHub for the first download button only, without cookies or a referrer.
 - `src/motion.ts`: autoplay and manual Play/Pause, offscreen/background pausing.
 - `ViewportReveals` in `src/motion.ts`: one-shot section entrances that settle on
   completion, pause, or keyboard focus; resuming does not replay
@@ -91,11 +92,7 @@ Graph URLs in `index.html`, `public/robots.txt`, and `public/sitemap.xml`.
 - `public/brand/`: original artwork and its provenance.
 - `tests/landing.spec.ts`: user-facing contracts and accessibility checks.
 
-Animations start automatically on every visit, even when `prefers-reduced-motion`
-is enabled. The fixed control lets a visitor explicitly play or pause them for
-that visit; OS preference changes do not override this control. No motion preference is stored. Without
-JavaScript, all content, download links, and FAQs remain available. On small or
-short screens, the story uses normal page flow rather than a pinned viewport.
+Animations start automatically on every visit, even when `prefers-reduced-motion` is enabled. The fixed control lets a visitor explicitly play or pause them for that visit; OS preference changes do not override this control. No motion preference is stored. Without JavaScript, the core page content, download links, and FAQs remain available. On small or short screens, the story uses normal page flow rather than a pinned viewport.
 
 The header's moon/sun button switches the complete website between light and dark
 mode, independently of device appearance. Light is the initial default. A choice
