@@ -66,7 +66,7 @@
     <string name="onboarding_download_kicker">YOUR OFFLINE TOOLKIT</string>
     <string name="onboarding_download_heading">A little download.\nA lot of possibility.</string>
     <string name="onboarding_download_body">Your phone is getting its own speech tools. This is the part that needs a connection.</string>
-    <string name="onboarding_download_ready">Ready for your words.</string>
+    <string name="onboarding_download_ready">Download complete</string>
     <string name="onboarding_download_ready_body">Your model is installed. Recognition can now happen right on your phone.</string>
     <string name="onboarding_download_error">Let’s try that again.</string>
     <string name="onboarding_download_error_body">The transfer did not finish. Retry, import local files, or choose another model.</string>
@@ -142,13 +142,15 @@
     <string name="onboarding_speaker_question">Shall we meet tomorrow?</string>
     <string name="onboarding_speaker_reply">Yes, that works for me.</string>
     <string name="onboarding_speakers_help">Useful for meetings and interviews.</string>
-    <string name="onboarding_speaker_size">One extra model · %1$d MB</string>
-    <string name="onboarding_speaker_cost">Downloaded only if you choose this feature. Uses additional memory and processing.</string>
+    <string name="onboarding_speaker_model_recommendation">Strongly recommended: download the model now, even if you leave labels off. Then you can turn on speaker labels with one tap during a recording without waiting for a download.</string>
+    <string name="onboarding_speaker_model_for_conversations">Your one-speaker setting does not need this model. Download it now if you plan to label multiple speakers later.</string>
+    <string name="onboarding_speaker_model_ready">You can turn on speaker labels with one tap during a recording, without another download.</string>
+    <string name="onboarding_speaker_model_needed">To enable labels by default, download or import the model. You can also turn the switch off and continue.</string>
     <string name="onboarding_speaker_note">Speaker count is detected automatically. Labels tell voices apart; they do not identify people.</string>
     <string name="onboarding_speaker_note_fixed">Speaker count is set to %1$d. You can change it in Settings. Labels tell voices apart; they do not identify people.</string>
     <string name="onboarding_speaker_download">Download speaker model</string>
+    <string name="onboarding_speaker_resume_download">Resume speaker model download</string>
     <string name="onboarding_speaker_skip">Skip speaker labels</string>
-    <string name="onboarding_speaker_model">Nemotron speaker labels</string>
     <string name="onboarding_voice_kicker">TRY IT · OPTIONAL</string>
     <string name="onboarding_voice_heading">Something to say?</string>
     <string name="onboarding_voice_body">Tap the mic, say a sentence, then tap again to finish. Your words will appear here.</string>

@@ -19,7 +19,6 @@ object OnboardingContent {
         OnboardingPage(OnboardingStep.INPUT, R.string.onboarding_input_kicker, R.string.onboarding_input_heading, R.string.onboarding_input_body),
         OnboardingPage(OnboardingStep.FOLDERS, R.string.onboarding_folders_kicker, R.string.onboarding_folders_heading, R.string.onboarding_folders_body),
         OnboardingPage(OnboardingStep.SPEAKERS, R.string.onboarding_speakers_kicker, R.string.onboarding_speakers_heading, R.string.onboarding_speakers_body),
-        OnboardingPage(OnboardingStep.SPEAKER_DOWNLOAD, R.string.onboarding_speakers_kicker, R.string.onboarding_download_heading, R.string.onboarding_download_body),
         OnboardingPage(OnboardingStep.VOICE_TRIAL, R.string.onboarding_voice_kicker, R.string.onboarding_voice_heading, R.string.onboarding_voice_body),
         OnboardingPage(OnboardingStep.FILE_TRIAL, R.string.onboarding_voice_kicker, R.string.onboarding_files_heading, R.string.onboarding_files_body),
         OnboardingPage(OnboardingStep.COMPLETE, R.string.onboarding_complete_kicker, R.string.onboarding_complete_heading, R.string.onboarding_complete_body)
@@ -40,7 +39,7 @@ sealed interface OnboardingAction {
     data object Next : OnboardingAction
     data object Back : OnboardingAction
     data object Skip : OnboardingAction
-    data object Download : OnboardingAction
+    data class Download(val speakers: Boolean) : OnboardingAction
     data object CancelDownload : OnboardingAction
     data class Import(val speakers: Boolean) : OnboardingAction
     data class SelectModel(val id: String) : OnboardingAction
