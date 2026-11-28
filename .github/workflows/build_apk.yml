@@ -60,11 +60,23 @@ jobs:
         run: chmod +x gradlew
 
       - name: Test and build APKs and Play bundle
+        id: test-build
         run: |
           python3 -m unittest discover -s tools/tests
           ./gradlew testDebugUnitTest assembleDebug assembleRelease bundleRelease --console=plain --quiet
           python3 tools/release_artifacts.py app/build/outputs/apk/release/app-release-unsigned.apk app/build/outputs/bundle/release/app-release.aab
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Preserve Android test failure reports
+        if: ${{ failure() && steps.test-build.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: Utterlane-android-test-failure
+          path: |
+            app/build/test-results/testDebugUnitTest/
+            app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload APK
         uses: actions/upload-artifact@v7.0.1

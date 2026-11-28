@@ -127,9 +127,21 @@ jobs:
       run: chmod +x gradlew
 
     - name: Build release APK and AAB
+      id: test-build
       run: |
         python3 -m unittest discover -s tools/tests
         ./gradlew testDebugUnitTest assembleRelease bundleRelease --console=plain --quiet
+
+    - name: Preserve Android test failure reports
+      if: ${{ failure() && steps.test-build.outcome == 'failure' }}
+      uses: actions/upload-artifact@v7.0.1
+      with:
+        name: Utterlane-release-test-failure
+        path: |
+          app/build/test-results/testDebugUnitTest/
+          app/build/reports/tests/testDebugUnitTest/
+        if-no-files-found: ignore
+        retention-days: 7
 
     # Keep tag publishing, but use the same credentials, validation and filenames
     # as the published-release workflow instead of a second signing contract.
