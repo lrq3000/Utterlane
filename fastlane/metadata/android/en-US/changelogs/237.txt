@@ -1,0 +1,2 @@
+Download or import the optional speaker model directly on the speaker-labeling setup page, even with labels off by default.
+When a speech model finishes downloading, tap Continue to proceed to microphone setup without reselecting it.

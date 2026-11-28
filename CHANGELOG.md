@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [2.4.2] - 2026-11-28
+
+### Changed
+- Download or import the optional speaker model on the speaker-labeling setup page, even with labels off by default. Installing it ahead of time lets you enable labels with one tap during a recording.
+
+### Fixed
+- After a speech-model download completes, onboarding shows a clear completion message and a Continue button to move on to microphone setup without reselecting the model.
+
 ## [2.4.0] - 2026-11-27
 
 ### Added
